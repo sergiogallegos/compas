@@ -1,0 +1,16 @@
+[package]
+name = "compas-dsp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Pure DSP for compas: biquad EQ/filters, equal-power crossfade (real-time safe), and offline BPM/key analysis."
+
+[dependencies]
+# rustfft is used only by the OFFLINE analysis module (BPM/key), never on the audio thread.
+rustfft = { workspace = true }
+
+[dev-dependencies]
+# Property/unit tests for DSP live alongside the modules.

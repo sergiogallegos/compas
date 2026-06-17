@@ -1,0 +1,20 @@
+[package]
+name = "compas-sources"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Audio source abstraction for compas: local-file PCM decode (symphonia) and streaming control-only handles."
+
+[dependencies]
+compas-core = { workspace = true }
+tracing = { workspace = true }
+
+[dependencies.symphonia]
+workspace = true
+# Permissive (MPL-2.0). Enable the formats/codecs we need; AAC/ALAC/MP4 coverage is
+# partial in symphonia — see ARCHITECTURE.md §"Decoding & licensing" for the FFmpeg
+# fallback decision. Patent note: MP3 patents have expired; AAC patents have not.
+features = ["mp3", "flac", "wav", "pcm", "ogg", "vorbis", "isomp4", "aac"]

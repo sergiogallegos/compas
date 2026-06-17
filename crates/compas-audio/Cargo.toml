@@ -1,0 +1,16 @@
+[package]
+name = "compas-audio"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "compas real-time audio engine: cpal output, lock-free ring buffers, deck mixer."
+
+[dependencies]
+compas-core = { workspace = true }
+compas-dsp = { workspace = true }
+cpal = { workspace = true }
+rtrb = { workspace = true }
+tracing = { workspace = true }
