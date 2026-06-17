@@ -186,7 +186,20 @@
 .library { flex: 1; display: flex; min-height: 0; border-top: 1px solid var(--border-hairline); }
 .sources { width: 208px; flex: none; background: var(--bg-rail); border-right: 1px solid var(--border-hairline); padding: 12px 10px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; }
 .src-group { margin: 10px 4px 4px; }
-.src-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; }
+.src-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 6px; color: var(--text-secondary); font-size: 12px; width: 100%; background: none; border: none; border-left: 2px solid transparent; text-align: left; cursor: pointer; }
+button.src-row:hover { background: rgba(255, 255, 255, 0.04); }
+.src-row--muted { cursor: default; }
+
+/* Spotify connect panel */
+.sp-connect { padding: 22px 20px; max-width: 560px; }
+.sp-connect h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 15px; }
+.sp-steps { margin: 0 0 16px; padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.7; }
+.sp-steps .mono { color: var(--accent-glow); font-size: 11px; }
+.sp-row { display: flex; gap: 8px; }
+.sp-input { flex: 1; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: 7px; padding: 8px 10px; color: var(--text-primary); font-family: var(--font-mono); font-size: 12px; outline: none; }
+.sp-btn { background: #1db954; border: none; color: #04210f; font-weight: 700; border-radius: 7px; padding: 8px 16px; font-size: 12px; }
+.sp-btn:disabled { opacity: 0.5; }
+.sp-error { color: var(--status-alarm); font-size: 12px; margin-top: 10px; }
 .src-row--active { background: rgba(255, 46, 126, 0.1); color: #fff; border-left: 2px solid var(--accent); }
 .src-row--muted { color: var(--text-tertiary); font-size: 11px; }
 .src-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }

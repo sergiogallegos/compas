@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+mod spotify;
+
 use compas_audio::{
     compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
 };
@@ -400,6 +402,7 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(engine)
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
@@ -417,7 +420,8 @@ pub fn run() {
             set_deck_eq,
             set_deck_filter,
             set_crossfader,
-            set_master_gain
+            set_master_gain,
+            spotify::spotify_listen
         ])
         .run(tauri::generate_context!());
 
