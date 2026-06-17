@@ -1,0 +1,5 @@
+# cargo-audit configuration (https://github.com/rustsec/rustsec/tree/main/cargo-audit).
+# Keep `ignore` empty; add a RUSTSEC id with a justification only when an advisory is
+# reviewed and accepted, and revisit each entry regularly.
+[advisories]
+ignore = []

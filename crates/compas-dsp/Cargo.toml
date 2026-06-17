@@ -13,4 +13,8 @@ description = "Pure DSP for compas: biquad EQ/filters, equal-power crossfade (re
 rustfft = { workspace = true }
 
 [dev-dependencies]
-# Property/unit tests for DSP live alongside the modules.
+criterion = "0.5"
+
+[[bench]]
+name = "dsp"
+harness = false

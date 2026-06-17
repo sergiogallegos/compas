@@ -95,6 +95,25 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 ---
 
+## Infrastructure & distribution (pending)
+
+- 🔨 **Release pipeline** (`.github/workflows/release.yml`, via `tauri-action`): on a `v*` tag,
+  build **Windows `.msi`/NSIS** and **macOS `.dmg`** installers and publish them as GitHub Release
+  assets. Feeds the website download buttons. *(Scaffolded; code signing is a follow-up.)*
+- ⬜ **In-app auto-update** (user-requested) via **`tauri-plugin-updater`**: on launch (and via a
+  manual **"Check for updates"** button) the app pings the releases endpoint, detects a newer
+  version, and offers a one-click **download + install**. Requires:
+  1. an updater signing keypair (`tauri signer generate`) — **pubkey** in `tauri.conf.json`,
+     **privkey** as a CI secret (`TAURI_SIGNING_PRIVATE_KEY`);
+  2. the release workflow emitting a `latest.json` manifest the app checks;
+  3. an "Update available → Install & restart" UI.
+- ⬜ **Build/version info** via `vergen` — show the real version + git short-SHA in the status bar
+  (replaces the hardcoded `compas 0.1.0`).
+- ✅ **CI** (fmt + clippy + tests + frontend build + `cargo audit`); **`audit.toml`**.
+- 🔨 **Criterion benchmarks** for the DSP hot loops (biquad/EQ/crossfade, tempo analysis).
+- ⬜ **Code signing / notarization** (Windows Authenticode, macOS notarization) so installers and
+  auto-updates aren't flagged — needed before a public release.
+
 ## Dependency licensing table (things we actually link)
 
 | Dependency | Role | License | Verdict |
