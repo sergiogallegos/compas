@@ -12,6 +12,10 @@ All notable changes to compas are documented here. Format follows
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
 - **Tempo SYNC:** one-shot beat-tempo match (per-deck + title-bar).
+- **Beat loops:** manual IN/OUT + 4/8/16-beat grid-snapped loops (RT-safe play-head wrap), with a
+  loop region drawn on the waveform; **hot cues** (set/jump/clear).
+- **Local library:** add files (persisted), search, load to deck A/B (double-click / buttons),
+  with load-progress feedback.
 - **Performance UI:** dual decks, center mixer, scrolling zoom waveforms with beat grid, VU
   metering, library browser, frameless window with custom controls.
 - **Spotify (Phase 2a):** Authorization Code + PKCE auth and live catalog search (control-only).
