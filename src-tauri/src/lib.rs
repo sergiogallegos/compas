@@ -1,63 +1,123 @@
-//! compas Tauri shell.
+//! compas Tauri shell — Phase 1.
 //!
-//! The webview (frontend) talks to the native core exclusively through the Tauri
-//! commands declared here. The real-time audio engine lives on its OWN thread
-//! (`compas-audio`), because a `cpal::Stream` is not `Send` on all platforms and must
-//! not be owned by Tauri's shared state. We bridge to it with a plain mpsc channel of
-//! coarse control messages; the engine then forwards them as lock-free
-//! [`compas_audio::AudioCommand`]s into the audio callback.
-//!
-//! This is the P0 scaffold: the window opens, the engine thread starts (and degrades
-//! gracefully if no audio device is available), and a couple of commands prove the
-//! IPC path end-to-end. No decks are loaded yet — that is Phase 1.
+//! Threading: the real-time audio engine (`compas-audio`) lives on its own thread
+//! because `cpal::Stream` is not `Send`. Tauri commands send coarse [`EngineMsg`]s over
+//! an mpsc channel; the engine thread forwards them as lock-free `AudioCommand`s.
+//! Decoding/analysis runs on a per-load worker thread and reports back via Tauri events.
+//! A telemetry thread samples lock-free deck position/state and emits it at UI rate.
 
 use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
-use compas_audio::{AudioCommand, AudioEngine, EngineConfig};
+use compas_audio::{
+    compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
+};
 use serde::Serialize;
+use tauri::{AppHandle, Emitter, State};
 use tracing_subscriber::EnvFilter;
+
+/// Frames per waveform peak bin (≈10.7 ms at 48 kHz). Tunes overview resolution.
+const WAVEFORM_BIN_FRAMES: usize = 512;
+/// Cap BPM analysis to the first N seconds for responsiveness on long tracks.
+const ANALYSIS_MAX_SECS: usize = 90;
+/// UI telemetry rate.
+const TELEMETRY_HZ: u64 = 30;
 
 /// Coarse, `Send` control messages from Tauri commands to the audio thread.
 enum EngineMsg {
     SetCrossfader(f32),
     SetMasterGain(f32),
-    SetDeckGain { deck: usize, gain: f32 },
+    DeckGain { deck: usize, gain: f32 },
+    DeckEq { deck: usize, low: f32, mid: f32, high: f32 },
+    DeckFilter { deck: usize, mode: FilterMode, cutoff: f32, resonance: f32 },
+    DeckPlaying { deck: usize, playing: bool },
+    DeckTempo { deck: usize, ratio: f64 },
+    DeckSeek { deck: usize, frame: f64 },
+    Load { deck: usize, buffer: Arc<DeckBuffer> },
+    Unload { deck: usize },
 }
 
-/// Tauri-managed handle to the audio thread.
+/// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
+/// negotiated device sample rate.
 struct EngineHandle {
     tx: Sender<EngineMsg>,
+    telemetry: Arc<DeckTelemetry>,
+    sample_rate: u32,
+}
+
+impl EngineHandle {
+    fn send(&self, msg: EngineMsg) -> Result<(), String> {
+        self.tx.send(msg).map_err(|e| e.to_string())
+    }
 }
 
 /// Spawn the dedicated audio thread that owns the [`AudioEngine`].
 fn spawn_engine() -> EngineHandle {
     let (tx, rx) = channel::<EngineMsg>();
+    let telemetry = Arc::new(DeckTelemetry::new());
+
+    // Sample rate is discovered inside the thread; hand it back over a one-shot channel.
+    let (sr_tx, sr_rx) = channel::<u32>();
+    let telemetry_for_thread = telemetry.clone();
 
     let spawn_result = thread::Builder::new()
         .name("compas-audio".to_string())
         .spawn(move || {
-            let mut engine = match AudioEngine::new(EngineConfig::default()) {
+            let mut engine = match AudioEngine::new(EngineConfig::default(), telemetry_for_thread) {
                 Ok(engine) => {
-                    tracing::info!("audio engine started @ {} Hz", engine.sample_rate());
+                    let sr = engine.sample_rate();
+                    tracing::info!("audio engine started @ {sr} Hz");
+                    let _ = sr_tx.send(sr);
                     Some(engine)
                 }
                 Err(e) => {
                     tracing::error!("audio engine failed to start (continuing headless): {e}");
+                    let _ = sr_tx.send(0);
                     None
                 }
             };
 
             while let Ok(msg) = rx.recv() {
                 let Some(engine) = engine.as_mut() else {
-                    continue; // No device; drain and ignore until app exits.
+                    continue;
                 };
                 let cmd = match msg {
                     EngineMsg::SetCrossfader(p) => AudioCommand::SetCrossfader(p),
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
-                    EngineMsg::SetDeckGain { deck, gain } => {
-                        AudioCommand::SetDeckGain { deck, gain }
+                    EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
+                    EngineMsg::DeckEq {
+                        deck,
+                        low,
+                        mid,
+                        high,
+                    } => AudioCommand::SetDeckEq {
+                        deck,
+                        low_db: low,
+                        mid_db: mid,
+                        high_db: high,
+                    },
+                    EngineMsg::DeckFilter {
+                        deck,
+                        mode,
+                        cutoff,
+                        resonance,
+                    } => AudioCommand::SetDeckFilter {
+                        deck,
+                        mode,
+                        cutoff_hz: cutoff,
+                        resonance,
+                    },
+                    EngineMsg::DeckPlaying { deck, playing } => {
+                        AudioCommand::SetDeckPlaying { deck, playing }
                     }
+                    EngineMsg::DeckTempo { deck, ratio } => {
+                        AudioCommand::SetDeckTempo { deck, ratio }
+                    }
+                    EngineMsg::DeckSeek { deck, frame } => AudioCommand::SeekDeck { deck, frame },
+                    EngineMsg::Load { deck, buffer } => AudioCommand::LoadDeck { deck, buffer },
+                    EngineMsg::Unload { deck } => AudioCommand::UnloadDeck { deck },
                 };
                 if let Err(e) = engine.send(cmd) {
                     tracing::warn!("dropped audio command: {e}");
@@ -69,69 +129,271 @@ fn spawn_engine() -> EngineHandle {
         tracing::error!("failed to spawn audio thread: {e}");
     }
 
-    EngineHandle { tx }
-}
+    let sample_rate = sr_rx.recv_timeout(Duration::from_secs(5)).unwrap_or(0);
 
-#[derive(Serialize)]
-struct AppInfo {
-    name: &'static str,
-    version: &'static str,
-    phase: &'static str,
-}
-
-/// Basic app/build info — used by the frontend shell to prove the IPC bridge works.
-#[tauri::command]
-fn app_info() -> AppInfo {
-    AppInfo {
-        name: "compas",
-        version: env!("CARGO_PKG_VERSION"),
-        phase: "P0 — scaffold",
+    EngineHandle {
+        tx,
+        telemetry,
+        sample_rate,
     }
 }
 
-#[tauri::command]
-fn set_crossfader(state: tauri::State<'_, EngineHandle>, value: f32) -> Result<(), String> {
-    state
-        .tx
-        .send(EngineMsg::SetCrossfader(value))
-        .map_err(|e| e.to_string())
-}
+// ----------------------------------------------------------------------------------
+// Event payloads (Rust → frontend)
+// ----------------------------------------------------------------------------------
 
-#[tauri::command]
-fn set_master_gain(state: tauri::State<'_, EngineHandle>, value: f32) -> Result<(), String> {
-    state
-        .tx
-        .send(EngineMsg::SetMasterGain(value))
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn set_deck_gain(
-    state: tauri::State<'_, EngineHandle>,
+#[derive(Serialize, Clone)]
+struct DeckLoadedEvent {
     deck: usize,
-    gain: f32,
-) -> Result<(), String> {
-    state
-        .tx
-        .send(EngineMsg::SetDeckGain { deck, gain })
-        .map_err(|e| e.to_string())
+    title: String,
+    artist: String,
+    duration_ms: u64,
+    source_rate: u32,
+    frames: usize,
+    bpm: f32,
+    bpm_confidence: f32,
+    /// Max-abs amplitude per `WAVEFORM_BIN_FRAMES` frames; used to draw the overview.
+    peaks: Vec<f32>,
 }
 
-/// Application entry point (shared by desktop `main.rs` and future mobile targets).
+#[derive(Serialize, Clone)]
+struct DeckPositionEvent {
+    deck: usize,
+    frame: f64,
+    playing: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct DeckErrorEvent {
+    deck: usize,
+    message: String,
+}
+
+// ----------------------------------------------------------------------------------
+// Commands
+// ----------------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct EngineStatus {
+    sample_rate: u32,
+    decks: Vec<DeckStatus>,
+}
+
+#[derive(Serialize)]
+struct DeckStatus {
+    deck: usize,
+    loaded: bool,
+    playing: bool,
+    frame: f64,
+}
+
+#[tauri::command]
+fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
+    let decks = (0..2)
+        .map(|deck| DeckStatus {
+            deck,
+            loaded: state.telemetry.is_loaded(deck),
+            playing: state.telemetry.is_playing(deck),
+            frame: state.telemetry.playhead_frames(deck),
+        })
+        .collect();
+    EngineStatus {
+        sample_rate: state.sample_rate,
+        decks,
+    }
+}
+
+/// Decode + analyze a file on a worker thread, then install it on `deck` and emit
+/// `deck:loaded` (or `deck:error`). Returns immediately.
+#[tauri::command]
+fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path: String) {
+    let tx = state.tx.clone();
+    thread::spawn(move || {
+        let (buffer, metadata) = match compas_sources::decode_full(&path) {
+            Ok(v) => v,
+            Err(e) => {
+                let _ = app.emit(
+                    "deck:error",
+                    DeckErrorEvent {
+                        deck,
+                        message: format!("decode failed: {e}"),
+                    },
+                );
+                return;
+            }
+        };
+
+        let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
+        let (bpm, bpm_confidence) = analyze_bpm(&buffer);
+
+        let _ = app.emit(
+            "deck:loaded",
+            DeckLoadedEvent {
+                deck,
+                title: metadata.title.clone(),
+                artist: metadata.artist.clone(),
+                duration_ms: buffer.duration_ms(),
+                source_rate: buffer.source_rate,
+                frames: buffer.frames(),
+                bpm,
+                bpm_confidence,
+                peaks,
+            },
+        );
+
+        let _ = tx.send(EngineMsg::Load {
+            deck,
+            buffer: Arc::new(buffer),
+        });
+    });
+}
+
+/// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate tempo.
+fn analyze_bpm(buffer: &DeckBuffer) -> (f32, f32) {
+    let max_frames = ANALYSIS_MAX_SECS * buffer.source_rate as usize;
+    let frames = buffer.frames().min(max_frames);
+    let mut mono = Vec::with_capacity(frames);
+    for f in 0..frames {
+        mono.push(0.5 * (buffer.samples[f * 2] + buffer.samples[f * 2 + 1]));
+    }
+    let est = compas_dsp::analysis::estimate_tempo(&mono, buffer.source_rate);
+    (est.bpm, est.confidence)
+}
+
+#[tauri::command]
+fn deck_play(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
+    state.send(EngineMsg::DeckPlaying {
+        deck,
+        playing: true,
+    })
+}
+
+#[tauri::command]
+fn deck_pause(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
+    state.send(EngineMsg::DeckPlaying {
+        deck,
+        playing: false,
+    })
+}
+
+#[tauri::command]
+fn deck_seek(state: State<'_, EngineHandle>, deck: usize, frame: f64) -> Result<(), String> {
+    state.send(EngineMsg::DeckSeek { deck, frame })
+}
+
+#[tauri::command]
+fn deck_unload(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
+    state.send(EngineMsg::Unload { deck })
+}
+
+#[tauri::command]
+fn set_deck_tempo(state: State<'_, EngineHandle>, deck: usize, ratio: f64) -> Result<(), String> {
+    state.send(EngineMsg::DeckTempo { deck, ratio })
+}
+
+#[tauri::command]
+fn set_deck_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) -> Result<(), String> {
+    state.send(EngineMsg::DeckGain { deck, gain })
+}
+
+#[tauri::command]
+fn set_deck_eq(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    low: f32,
+    mid: f32,
+    high: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckEq {
+        deck,
+        low,
+        mid,
+        high,
+    })
+}
+
+#[tauri::command]
+fn set_deck_filter(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    mode: String,
+    cutoff: f32,
+    resonance: f32,
+) -> Result<(), String> {
+    let mode = match mode.as_str() {
+        "lowpass" => FilterMode::LowPass,
+        "highpass" => FilterMode::HighPass,
+        _ => FilterMode::Off,
+    };
+    state.send(EngineMsg::DeckFilter {
+        deck,
+        mode,
+        cutoff,
+        resonance,
+    })
+}
+
+#[tauri::command]
+fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::SetCrossfader(value))
+}
+
+#[tauri::command]
+fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::SetMasterGain(value))
+}
+
+/// Spawn the telemetry emitter: samples lock-free deck state and emits `deck:position`.
+fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
+    thread::spawn(move || {
+        let period = Duration::from_millis(1000 / TELEMETRY_HZ);
+        loop {
+            for deck in 0..2 {
+                if telemetry.is_loaded(deck) {
+                    let _ = app.emit(
+                        "deck:position",
+                        DeckPositionEvent {
+                            deck,
+                            frame: telemetry.playhead_frames(deck),
+                            playing: telemetry.is_playing(deck),
+                        },
+                    );
+                }
+            }
+            thread::sleep(period);
+        }
+    });
+}
+
+/// Application entry point.
 pub fn run() {
     let _ = tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .try_init();
 
     let engine = spawn_engine();
+    let telemetry = engine.telemetry.clone();
 
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(engine)
+        .setup(move |app| {
+            spawn_telemetry(app.handle().clone(), telemetry.clone());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
-            app_info,
+            engine_status,
+            load_track,
+            deck_play,
+            deck_pause,
+            deck_seek,
+            deck_unload,
+            set_deck_tempo,
+            set_deck_gain,
+            set_deck_eq,
+            set_deck_filter,
             set_crossfader,
-            set_master_gain,
-            set_deck_gain
+            set_master_gain
         ])
         .run(tauri::generate_context!());
 
