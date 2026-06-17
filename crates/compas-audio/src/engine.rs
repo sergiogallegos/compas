@@ -53,8 +53,7 @@ impl AudioEngine {
         let stream_config: cpal::StreamConfig = supported.into();
 
         let (cmd_tx, cmd_rx) = RingBuffer::<AudioCommand>::new(config.command_capacity);
-        let (reclaim_tx, reclaim_rx) =
-            RingBuffer::<Arc<DeckBuffer>>::new(config.reclaim_capacity);
+        let (reclaim_tx, reclaim_rx) = RingBuffer::<Arc<DeckBuffer>>::new(config.reclaim_capacity);
         let mixer = Mixer::new(sample_rate as f32, cmd_rx, reclaim_tx, telemetry.clone());
 
         let stream = match sample_format {

@@ -27,17 +27,44 @@ pub enum FilterMode {
 pub enum AudioCommand {
     SetCrossfader(f32),
     SetMasterGain(f32),
-    SetDeckGain { deck: usize, gain: f32 },
-    SetDeckEq { deck: usize, low_db: f32, mid_db: f32, high_db: f32 },
-    SetDeckFilter { deck: usize, mode: FilterMode, cutoff_hz: f32, resonance: f32 },
-    SetDeckPlaying { deck: usize, playing: bool },
+    SetDeckGain {
+        deck: usize,
+        gain: f32,
+    },
+    SetDeckEq {
+        deck: usize,
+        low_db: f32,
+        mid_db: f32,
+        high_db: f32,
+    },
+    SetDeckFilter {
+        deck: usize,
+        mode: FilterMode,
+        cutoff_hz: f32,
+        resonance: f32,
+    },
+    SetDeckPlaying {
+        deck: usize,
+        playing: bool,
+    },
     /// Varispeed ratio: 1.0 = original tempo & pitch; 1.06 = +6% (faster, higher).
-    SetDeckTempo { deck: usize, ratio: f64 },
+    SetDeckTempo {
+        deck: usize,
+        ratio: f64,
+    },
     /// Seek to an absolute position in source frames.
-    SeekDeck { deck: usize, frame: f64 },
+    SeekDeck {
+        deck: usize,
+        frame: f64,
+    },
     /// Install a decoded track on a deck (does not auto-play; resets play-head to 0).
-    LoadDeck { deck: usize, buffer: Arc<DeckBuffer> },
-    UnloadDeck { deck: usize },
+    LoadDeck {
+        deck: usize,
+        buffer: Arc<DeckBuffer>,
+    },
+    UnloadDeck {
+        deck: usize,
+    },
 }
 
 /// Shared, lock-free telemetry the control thread samples to drive the UI (position,

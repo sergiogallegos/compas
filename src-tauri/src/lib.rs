@@ -31,14 +31,41 @@ const TELEMETRY_HZ: u64 = 30;
 enum EngineMsg {
     SetCrossfader(f32),
     SetMasterGain(f32),
-    DeckGain { deck: usize, gain: f32 },
-    DeckEq { deck: usize, low: f32, mid: f32, high: f32 },
-    DeckFilter { deck: usize, mode: FilterMode, cutoff: f32, resonance: f32 },
-    DeckPlaying { deck: usize, playing: bool },
-    DeckTempo { deck: usize, ratio: f64 },
-    DeckSeek { deck: usize, frame: f64 },
-    Load { deck: usize, buffer: Arc<DeckBuffer> },
-    Unload { deck: usize },
+    DeckGain {
+        deck: usize,
+        gain: f32,
+    },
+    DeckEq {
+        deck: usize,
+        low: f32,
+        mid: f32,
+        high: f32,
+    },
+    DeckFilter {
+        deck: usize,
+        mode: FilterMode,
+        cutoff: f32,
+        resonance: f32,
+    },
+    DeckPlaying {
+        deck: usize,
+        playing: bool,
+    },
+    DeckTempo {
+        deck: usize,
+        ratio: f64,
+    },
+    DeckSeek {
+        deck: usize,
+        frame: f64,
+    },
+    Load {
+        deck: usize,
+        buffer: Arc<DeckBuffer>,
+    },
+    Unload {
+        deck: usize,
+    },
 }
 
 /// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
@@ -271,7 +298,10 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
 /// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate beatgrid + key.
 fn analyze_track(
     buffer: &DeckBuffer,
-) -> (compas_dsp::analysis::BeatGrid, compas_dsp::analysis::KeyEstimate) {
+) -> (
+    compas_dsp::analysis::BeatGrid,
+    compas_dsp::analysis::KeyEstimate,
+) {
     let max_frames = ANALYSIS_MAX_SECS * buffer.source_rate as usize;
     let frames = buffer.frames().min(max_frames);
     let mut mono = Vec::with_capacity(frames);
@@ -394,7 +424,9 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
 /// Application entry point.
 pub fn run() {
     let _ = tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .try_init();
 
     let engine = spawn_engine();

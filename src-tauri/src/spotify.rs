@@ -28,9 +28,7 @@ struct CodeEvent {
 pub fn spotify_listen(app: AppHandle) -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", REDIRECT_PORT))
         .map_err(|e| format!("could not bind 127.0.0.1:{REDIRECT_PORT}: {e}"))?;
-    listener
-        .set_nonblocking(true)
-        .map_err(|e| e.to_string())?;
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
 
     std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(LISTEN_TIMEOUT_SECS);

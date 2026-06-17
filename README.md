@@ -32,7 +32,11 @@ crates/compas-audio     cpal engine, lock-free rings, mixer
 crates/compas-sources   AudioSource abstraction: local-file decode + streaming control
 src-tauri               Tauri 2 app (commands, engine thread)
 frontend                React + Vite + TypeScript UI
+website                 static landing page (downloads + repo link; deploy to Pages/Netlify)
 ```
+
+Contributing & orientation: see `CONTRIBUTING.md` and `AGENTS.md`. Changes are tracked in
+`CHANGELOG.md`. CI (fmt + clippy + tests + frontend build + audit) runs on every push/PR.
 
 ## Prerequisites
 

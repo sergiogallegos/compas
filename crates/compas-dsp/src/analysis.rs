@@ -244,9 +244,15 @@ pub fn estimate_key(samples: &[f32], sample_rate: u32) -> KeyEstimate {
     }
 
     let (camelot, name) = if best_major {
-        (CAMELOT_MAJOR[best_tonic], PITCH_NAMES[best_tonic].to_string())
+        (
+            CAMELOT_MAJOR[best_tonic],
+            PITCH_NAMES[best_tonic].to_string(),
+        )
     } else {
-        (CAMELOT_MINOR[best_tonic], format!("{}m", PITCH_NAMES[best_tonic]))
+        (
+            CAMELOT_MINOR[best_tonic],
+            format!("{}m", PITCH_NAMES[best_tonic]),
+        )
     };
     KeyEstimate {
         camelot: camelot.to_string(),
@@ -423,7 +429,11 @@ mod tests {
             t += period;
         }
         let grid = estimate_beatgrid(&samples, sr);
-        assert!((grid.beat_interval_sec - 0.5).abs() < 0.02, "interval {}", grid.beat_interval_sec);
+        assert!(
+            (grid.beat_interval_sec - 0.5).abs() < 0.02,
+            "interval {}",
+            grid.beat_interval_sec
+        );
         // clicks start at t=0, so the first beat phase should be near 0 (mod a beat).
         assert!(
             grid.first_beat_sec < 0.06 || (0.5 - grid.first_beat_sec) < 0.06,
@@ -447,7 +457,11 @@ mod tests {
         let mut s = vec![0.0f32; n];
         for (i, sample) in s.iter_mut().enumerate() {
             let t = i as f32 / sr as f32;
-            *sample = freqs.iter().map(|f| (2.0 * std::f32::consts::PI * f * t).sin()).sum::<f32>() / 3.0;
+            *sample = freqs
+                .iter()
+                .map(|f| (2.0 * std::f32::consts::PI * f * t).sin())
+                .sum::<f32>()
+                / 3.0;
         }
         let est = estimate_key(&s, sr);
         assert_ne!(est.camelot, "—");
