@@ -42,21 +42,25 @@ Concrete tasks:
    → master, all live. **PCM-ring reclaim RT hazard fixed** via a reclaim ring (retired
    `Arc<DeckBuffer>`s are dropped on the control thread).
 4. ✅ **Filter knob.** Per-deck bipolar HPF/LPF DJ filter (`set_deck_filter`).
-5. 🔨 **Waveform rendering.** Peaks computed in Rust on load (`compute_peaks`) and drawn on a
-   **WebGL canvas** (Canvas-2D fallback) with playhead + click-to-seek. *Remaining: zoom + a
-   scrolling/beat-aligned detail view.*
-6. 🔨 **BPM + beatgrid.** ✅ Tempo estimation (spectral-flux onset → autocorrelation → parabolic
-   refine → octave fold), tested on a synthetic click track. *Remaining: downbeat/phase → an
-   actual beatgrid overlay, and manual grid-anchor editing.*
-7. 🔨 **Manual beatmatch.** ✅ Varispeed (tempo+pitch coupled) per deck via the play-head rate, with
-   a tempo fader + momentary nudge in the UI. *Remaining: end-to-end verification against a click
-   and two real tracks; key-lock toggle (signalsmith-stretch).*
-8. ✅ **Engine telemetry.** `engine_status` (sample rate, per-deck loaded/playing/position).
+5. ✅ **Waveform rendering.** Peaks computed in Rust on load; SVG lanes with a **scrolling
+   zoom detail view** (fixed NOW playhead at 38%, 4/8/16/32 s zoom, beat-aligned grid,
+   click-to-seek within the window).
+6. ✅ **BPM + beatgrid + key.** Tempo (spectral-flux onset → autocorrelation → parabolic refine
+   → octave fold) + **beat phase** (comb over the envelope) → grid overlay with emphasized
+   downbeats. **Musical key** via chromagram → Krumhansl–Schmuckler (Camelot). *Remaining: manual
+   grid-anchor editing.*
+7. ✅ **Manual beatmatch + tempo SYNC.** Varispeed (tempo+pitch coupled) + tempo fader + nudge;
+   one-shot **SYNC** matches a deck's effective BPM to the other. *Remaining: end-to-end verify
+   against real tracks; key-lock toggle (signalsmith-stretch); continuous/phase sync (→ P4).*
+8. ✅ **Engine telemetry.** `engine_status` + per-deck position/level + master meter.
    *Remaining: buffer size + underrun counters surfaced to the UI.*
-9. 🔨 **Tests.** ✅ Tempo on synthetic click; ✅ interpolation/crossfade/EQ/peaks units.
+9. 🔨 **Tests.** ✅ Tempo/beatgrid/key on synthetic signals; ✅ interpolation/crossfade/EQ/peaks.
    *Remaining: integration test that decodes a fixture file and renders N frames.*
 
-Out of scope for P1: key-lock time-stretch, sync engine, cue/loops, streaming, FX, MIDI.
+**Phase 1 is functionally complete** (MVP proven end-to-end). Small remainders above are polish;
+next major work is P2 (streaming) or pulling the P4 sync engine forward.
+
+Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, streaming, FX, MIDI.
 
 ## Phase 2 — Streaming integration ⬜
 
