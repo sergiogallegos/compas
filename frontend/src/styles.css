@@ -5,7 +5,6 @@
   --fg: #e8e8f0;
   --muted: #8a8aa0;
   --accent: #d946a0;
-  --locked: #4a3a44;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -22,50 +21,67 @@ body, html, #root {
 
 .topbar {
   display: flex; align-items: baseline; gap: 1rem;
-  padding: 0.75rem 1.25rem; background: var(--panel-2);
-  border-bottom: 1px solid #000;
+  padding: 0.7rem 1.25rem; background: var(--panel-2); border-bottom: 1px solid #000;
 }
-.topbar h1 { margin: 0; font-size: 1.25rem; letter-spacing: 0.08em; }
-.phase { color: var(--muted); font-size: 0.85rem; }
+.topbar h1 { margin: 0; font-size: 1.2rem; letter-spacing: 0.08em; }
+.phase { color: var(--muted); font-size: 0.82rem; }
 
 .decks {
-  flex: 1; display: grid; grid-template-columns: 1fr auto 1fr;
-  gap: 1rem; padding: 1rem; min-height: 0;
+  flex: 1; display: grid; grid-template-columns: 1fr 150px 1fr;
+  gap: 0.9rem; padding: 0.9rem; min-height: 0;
 }
 
 .deck {
-  background: var(--panel); border-radius: 12px; padding: 1rem;
-  display: flex; flex-direction: column; gap: 0.75rem;
+  background: var(--panel); border-radius: 12px; padding: 0.9rem;
+  display: flex; flex-direction: column; gap: 0.7rem; min-width: 0;
 }
-.deck h2 { margin: 0; font-size: 1rem; color: var(--muted); }
-.deck--streaming { outline: 1px dashed var(--locked); }
+.deck-head { display: flex; align-items: center; gap: 0.5rem; }
+.deck-tag { color: var(--muted); font-size: 0.9rem; margin-right: auto; }
 
-.platter {
-  width: 180px; height: 180px; border-radius: 50%; align-self: center;
-  background: radial-gradient(circle at 50% 50%, #2c2c40 0%, #15151f 70%);
-  border: 2px solid #000;
-}
-.waveform-placeholder {
-  height: 72px; border-radius: 6px; background: var(--panel-2);
-  display: grid; place-items: center; color: var(--muted); font-size: 0.8rem;
-}
-
-.deck-controls { display: flex; gap: 0.5rem; }
-.deck-controls button {
+.btn {
   background: var(--panel-2); color: var(--fg); border: 1px solid #000;
-  border-radius: 6px; padding: 0.4rem 0.7rem; cursor: not-allowed; opacity: 0.7;
+  border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; font-size: 0.85rem;
+}
+.btn:hover { background: #2c2c44; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.play { flex: 1; }
+.btn.small { padding: 0.2rem 0.55rem; }
+
+.deck-meta { min-height: 2.4rem; }
+.deck-meta .title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deck-meta .artist { color: var(--muted); font-size: 0.85rem; }
+
+.waveform {
+  width: 100%; height: 96px; border-radius: 6px; background: #1a1a26;
+  display: block; cursor: pointer;
 }
 
-.cap-note { color: var(--accent); font-size: 0.78rem; margin: 0; }
+.deck-readout {
+  display: flex; gap: 0.5rem; align-items: baseline; font-variant-numeric: tabular-nums;
+  font-size: 0.85rem; color: var(--muted);
+}
+.deck-readout .bpm { margin-left: auto; color: var(--fg); }
+.deck-readout .bpm small { color: var(--muted); }
+
+.transport { display: flex; gap: 0.5rem; }
+
+.deck-grid { display: flex; flex-direction: column; gap: 0.6rem; }
+.eq { display: flex; gap: 0.6rem; }
+.eq .ctrl { flex: 1; }
+
+.ctrl { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: var(--muted); }
+.ctrl input[type="range"] { accent-color: var(--accent); width: 100%; }
+.ctrl.vertical input[type="range"] { writing-mode: vertical-lr; direction: rtl; height: 110px; width: auto; }
+
+.nudge-row { display: flex; gap: 0.4rem; justify-content: center; }
 
 .mixer {
-  display: flex; flex-direction: column; gap: 1.5rem; justify-content: center;
-  padding: 0 0.5rem;
+  display: flex; flex-direction: column; gap: 1.2rem; align-items: center;
+  justify-content: center; padding: 0 0.3rem;
 }
-.knob { display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.8rem; color: var(--muted); }
-.knob input[type="range"] { accent-color: var(--accent); }
+.xf-labels { display: flex; justify-content: space-between; font-size: 0.7rem; }
 
 .status {
-  padding: 0.6rem 1.25rem; background: var(--panel-2);
-  color: var(--muted); font-size: 0.78rem; border-top: 1px solid #000;
+  padding: 0.55rem 1.25rem; background: var(--panel-2);
+  color: var(--muted); font-size: 0.76rem; border-top: 1px solid #000;
 }

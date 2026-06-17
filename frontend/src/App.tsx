@@ -1,22 +1,25 @@
 import { useEffect, useState } from "react";
-import { appInfo, inTauri, setCrossfader, setMasterGain, type AppInfo } from "./lib/ipc";
+import { Deck } from "./components/Deck";
+import { engineStatus, inTauri, setCrossfader, setMasterGain } from "./lib/ipc";
 
 /**
- * P0 scaffold UI. Proves the IPC bridge (app_info, crossfader, master gain) and
- * sketches the dual-deck layout. No real decks/waveforms yet — that is Phase 1.
+ * Phase 1 shell: two local-file decks + a center mixer (crossfader + master).
+ * Streaming decks (Phase 2) will appear alongside these and disable the DSP they can't do.
  */
 export function App() {
-  const [info, setInfo] = useState<AppInfo | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [sampleRate, setSampleRate] = useState<number | null>(null);
+  const [browser, setBrowser] = useState(false);
   const [xfade, setXfade] = useState(0.5);
   const [master, setMaster] = useState(0.85);
 
   useEffect(() => {
     if (!inTauri()) {
-      setErr("Running outside Tauri (browser dev). Native commands are unavailable.");
+      setBrowser(true);
       return;
     }
-    appInfo().then(setInfo).catch((e) => setErr(String(e)));
+    engineStatus()
+      .then((s) => setSampleRate(s.sample_rate))
+      .catch(() => setSampleRate(0));
   }, []);
 
   return (
@@ -24,68 +27,63 @@ export function App() {
       <header className="topbar">
         <h1>compas</h1>
         <span className="phase">
-          {info ? `${info.name} v${info.version} · ${info.phase}` : err ?? "connecting…"}
+          {browser
+            ? "browser dev — native engine unavailable"
+            : sampleRate
+              ? `engine @ ${sampleRate} Hz · P1 local dual-deck`
+              : sampleRate === 0
+                ? "no audio device — UI only"
+                : "connecting…"}
         </span>
       </header>
 
       <main className="decks">
-        <DeckPanel label="Deck A" kind="local" />
+        <Deck deck={0} side="A" />
+
         <section className="mixer">
-          <label className="knob">
+          <label className="ctrl vertical">
             Master
             <input
-              type="range" min={0} max={1} step={0.01} value={master}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={master}
               onChange={(e) => {
                 const v = Number(e.target.value);
                 setMaster(v);
-                if (inTauri()) void setMasterGain(v).catch(() => {});
+                if (inTauri()) setMasterGain(v).catch(() => {});
               }}
             />
           </label>
-          <label className="knob">
+          <label className="ctrl">
             Crossfader
             <input
-              type="range" min={0} max={1} step={0.01} value={xfade}
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={xfade}
               onChange={(e) => {
                 const v = Number(e.target.value);
                 setXfade(v);
-                if (inTauri()) void setCrossfader(v).catch(() => {});
+                if (inTauri()) setCrossfader(v).catch(() => {});
               }}
             />
+            <span className="xf-labels">
+              <span>A</span>
+              <span>B</span>
+            </span>
           </label>
         </section>
-        <DeckPanel label="Deck B" kind="streaming" />
+
+        <Deck deck={1} side="B" />
       </main>
 
       <footer className="status">
-        Waveforms, BPM/key, beatmatch arrive in Phase 1. Streaming decks (Phase 2) are
-        control-only and will visibly disable DSP they can't perform.
+        Load two tracks, match BPMs with the tempo faders (nudge ± to align phase), and ride the
+        crossfader. Varispeed (vinyl-style) is the default; key-lock arrives later in P1.
       </footer>
     </div>
-  );
-}
-
-function DeckPanel({ label, kind }: { label: string; kind: "local" | "streaming" }) {
-  const streaming = kind === "streaming";
-  return (
-    <section className={`deck ${streaming ? "deck--streaming" : ""}`}>
-      <h2>{label}</h2>
-      <div className="platter" aria-hidden />
-      <div className="waveform-placeholder">waveform (P1)</div>
-      <div className="deck-controls">
-        <button disabled>▶ play</button>
-        <button disabled title={streaming ? "Not available for streaming sources" : undefined}>
-          EQ {streaming ? "🔒" : ""}
-        </button>
-        <button disabled title={streaming ? "Not available for streaming sources" : undefined}>
-          sync {streaming ? "🔒" : ""}
-        </button>
-      </div>
-      {streaming && (
-        <p className="cap-note">
-          Streaming source: playback control only — no EQ, filter, sync, or scratch.
-        </p>
-      )}
-    </section>
   );
 }
