@@ -97,6 +97,10 @@ export const deckPlay = (deck: number) => invoke("deck_play", { deck });
 export const deckPause = (deck: number) => invoke("deck_pause", { deck });
 export const deckSeek = (deck: number, frame: number) => invoke("deck_seek", { deck, frame });
 export const deckUnload = (deck: number) => invoke("deck_unload", { deck });
+export const setLoop = (deck: number, inFrame: number, outFrame: number, active: boolean) =>
+  invoke("set_loop", { deck, inFrame, outFrame, active });
+export const setLoopActive = (deck: number, active: boolean) =>
+  invoke("set_loop_active", { deck, active });
 export const setDeckTempo = (deck: number, ratio: number) =>
   invoke("set_deck_tempo", { deck, ratio });
 export const setDeckGain = (deck: number, gain: number) => invoke("set_deck_gain", { deck, gain });

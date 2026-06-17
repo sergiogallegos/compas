@@ -59,6 +59,16 @@ enum EngineMsg {
         deck: usize,
         frame: f64,
     },
+    Loop {
+        deck: usize,
+        in_frame: f64,
+        out_frame: f64,
+        active: bool,
+    },
+    LoopActive {
+        deck: usize,
+        active: bool,
+    },
     Load {
         deck: usize,
         buffer: Arc<DeckBuffer>,
@@ -145,6 +155,20 @@ fn spawn_engine() -> EngineHandle {
                         AudioCommand::SetDeckTempo { deck, ratio }
                     }
                     EngineMsg::DeckSeek { deck, frame } => AudioCommand::SeekDeck { deck, frame },
+                    EngineMsg::Loop {
+                        deck,
+                        in_frame,
+                        out_frame,
+                        active,
+                    } => AudioCommand::SetLoop {
+                        deck,
+                        in_frame,
+                        out_frame,
+                        active,
+                    },
+                    EngineMsg::LoopActive { deck, active } => {
+                        AudioCommand::SetLoopActive { deck, active }
+                    }
                     EngineMsg::Load { deck, buffer } => AudioCommand::LoadDeck { deck, buffer },
                     EngineMsg::Unload { deck } => AudioCommand::UnloadDeck { deck },
                 };
@@ -378,6 +402,27 @@ fn set_deck_tempo(state: State<'_, EngineHandle>, deck: usize, ratio: f64) -> Re
 }
 
 #[tauri::command]
+fn set_loop(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    in_frame: f64,
+    out_frame: f64,
+    active: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::Loop {
+        deck,
+        in_frame,
+        out_frame,
+        active,
+    })
+}
+
+#[tauri::command]
+fn set_loop_active(state: State<'_, EngineHandle>, deck: usize, active: bool) -> Result<(), String> {
+    state.send(EngineMsg::LoopActive { deck, active })
+}
+
+#[tauri::command]
 fn set_deck_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) -> Result<(), String> {
     state.send(EngineMsg::DeckGain { deck, gain })
 }
@@ -481,6 +526,8 @@ pub fn run() {
             deck_pause,
             deck_seek,
             deck_unload,
+            set_loop,
+            set_loop_active,
             set_deck_tempo,
             set_deck_gain,
             set_deck_eq,

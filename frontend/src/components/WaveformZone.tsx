@@ -105,6 +105,18 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
         </svg>
       )}
       <div className="wf-scrim" style={{ width: `${NOW_FRAC * 100}%` }} />
+      {state.loop.active &&
+        (() => {
+          const left = Math.max(0, (state.loop.inFrame / sr - t0) / view);
+          const right = Math.min(1, (state.loop.outFrame / sr - t0) / view);
+          if (right <= 0 || left >= 1 || right <= left) return null;
+          return (
+            <div
+              className="wf-loop"
+              style={{ left: `${left * 100}%`, width: `${(right - left) * 100}%`, background: `${color}22`, borderColor: color }}
+            />
+          );
+        })()}
       {streaming && <div className="wf-hatch" />}
       <div className="wf-label">
         <span className="wf-chip" style={{ color, background: `${color}1f`, borderColor: `${color}66` }}>{letter}</span>

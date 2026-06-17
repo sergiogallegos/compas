@@ -141,18 +141,29 @@ export function Deck({
           {dsp ? (
             <>
               <div className="chip-row">
-                <button className="chip" disabled title="Loops: Phase 4">IN</button>
-                <button className="chip" disabled title="Loops: Phase 4">OUT</button>
-                <button className="chip chip--on" disabled title="Loops: Phase 4">4</button>
-                <button className="chip" disabled title="Loops: Phase 4">8</button>
-                <button className="chip" disabled title="Loops: Phase 4">16</button>
+                <button className="chip" onClick={actions.loopIn} disabled={!meta} title="Set loop in">IN</button>
+                <button className="chip" onClick={actions.loopOut} disabled={!meta} title="Set loop out & enable">OUT</button>
+                {[4, 8, 16].map((n) => (
+                  <button
+                    key={n}
+                    className={`chip ${state.loop.active && state.loop.beats === n ? "chip--on" : ""}`}
+                    onClick={() => actions.beatLoop(n)}
+                    disabled={!meta || (meta.beat_interval_sec ?? 0) <= 0}
+                    title={`${n}-beat loop`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button className="chip" onClick={actions.clearLoop} disabled={!state.loop.active} title="Exit loop">
+                  ✕
+                </button>
               </div>
               <div className="chip-row">
                 <button className="chip" disabled title="FX rack: Phase 5">ECHO</button>
                 <button className="chip" disabled title="FX rack: Phase 5">REVERB</button>
                 <button className="chip" disabled title="FX rack: Phase 5">FILTER</button>
               </div>
-              <p className="soon-note">Loops &amp; FX land in P4–P5.</p>
+              <p className="soon-note">FX rack lands in P5.</p>
             </>
           ) : (
             <div className="stream-note">

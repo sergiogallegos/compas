@@ -16,9 +16,19 @@ import {
   setDeckFilter,
   setDeckGain,
   setDeckTempo,
+  setLoop as setLoopCmd,
+  setLoopActive as setLoopActiveCmd,
   type DeckLoaded,
   type FilterMode,
 } from "../lib/ipc";
+
+export interface LoopState {
+  active: boolean;
+  /** Beat length of the active beat-loop, or null for a manual in/out loop. */
+  beats: number | null;
+  inFrame: number;
+  outFrame: number;
+}
 
 const NUDGE = 1.03;
 
@@ -38,6 +48,7 @@ export interface DeckState {
   filter: number;
   gain: number;
   hotCues: (number | null)[];
+  loop: LoopState;
   error: string | null;
   /** True between clicking load and the track being decoded/analyzed. */
   loading: boolean;
@@ -61,9 +72,12 @@ export function useDeck(deck: number, dsp = true) {
   const [filter, setFilterState] = useState(0);
   const [gain, setGainState] = useState(1);
   const [hotCues, setHotCues] = useState<(number | null)[]>(Array(8).fill(null));
+  const [loop, setLoopState] = useState<LoopState>({ active: false, beats: null, inFrame: 0, outFrame: 0 });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -87,6 +101,7 @@ export function useDeck(deck: number, dsp = true) {
         setPlaying(false);
         setTempo(1);
         setHotCues(Array(8).fill(null));
+        setLoopState({ active: false, beats: null, inFrame: 0, outFrame: 0 });
         setError(null);
         setLoading(false);
       }),
@@ -172,10 +187,40 @@ export function useDeck(deck: number, dsp = true) {
           return next;
         });
       },
+      beatLoop: (beats: number) => {
+        if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return;
+        const sr = meta.source_rate;
+        const interval = meta.beat_interval_sec * sr;
+        const offset = meta.first_beat_sec * sr;
+        const k = Math.round((frameRef.current - offset) / interval);
+        const inFrame = Math.max(0, offset + k * interval);
+        const outFrame = inFrame + beats * interval;
+        const cur = loopRef.current;
+        if (cur.active && cur.beats === beats) {
+          setLoopActiveCmd(deck, false).catch(swallow);
+          setLoopState({ ...cur, active: false });
+        } else {
+          setLoopCmd(deck, inFrame, outFrame, true).catch(swallow);
+          setLoopState({ active: true, beats, inFrame, outFrame });
+        }
+      },
+      loopIn: () => setLoopState((l) => ({ ...l, inFrame: frameRef.current, beats: null })),
+      loopOut: () => {
+        const out = frameRef.current;
+        const l = loopRef.current;
+        if (out > l.inFrame) {
+          setLoopCmd(deck, l.inFrame, out, true).catch(swallow);
+          setLoopState({ active: true, beats: null, inFrame: l.inFrame, outFrame: out });
+        }
+      },
+      clearLoop: () => {
+        setLoopActiveCmd(deck, false).catch(swallow);
+        setLoopState((l) => ({ ...l, active: false }));
+      },
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, loop, error, loading, dsp };
   return { state, actions };
 }
 

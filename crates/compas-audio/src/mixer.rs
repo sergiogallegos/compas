@@ -57,6 +57,18 @@ pub enum AudioCommand {
         deck: usize,
         frame: f64,
     },
+    /// Set (and activate) a loop region in source frames.
+    SetLoop {
+        deck: usize,
+        in_frame: f64,
+        out_frame: f64,
+        active: bool,
+    },
+    /// Toggle an existing loop on/off without changing its region.
+    SetLoopActive {
+        deck: usize,
+        active: bool,
+    },
     /// Install a decoded track on a deck (does not auto-play; resets play-head to 0).
     LoadDeck {
         deck: usize,
@@ -152,6 +164,9 @@ struct DeckPlayer {
     filter_l: Biquad,
     filter_r: Biquad,
     filter_active: bool,
+    loop_active: bool,
+    loop_in: f64,
+    loop_out: f64,
     device_rate: f32,
 }
 
@@ -169,6 +184,9 @@ impl DeckPlayer {
             filter_l: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_active: false,
+            loop_active: false,
+            loop_in: 0.0,
+            loop_out: 0.0,
             device_rate,
         }
     }
@@ -192,6 +210,14 @@ impl DeckPlayer {
 
         let (mut l, mut r) = interp_stereo(&buf.samples, frames, self.playhead);
         self.playhead += self.base_ratio * self.tempo;
+
+        // Beat loop: wrap the play-head back to loop-in once it passes loop-out.
+        if self.loop_active && self.loop_out > self.loop_in {
+            let len = self.loop_out - self.loop_in;
+            while self.playhead >= self.loop_out {
+                self.playhead -= len;
+            }
+        }
 
         if self.filter_active {
             l = self.filter_l.process(l);
@@ -350,14 +376,33 @@ impl Mixer {
                         d.playhead = 0.0;
                         d.tempo = 1.0;
                         d.playing = false;
+                        d.loop_active = false;
                         let old = d.buffer.replace(buffer);
                         self.retire(old);
+                    }
+                }
+                AudioCommand::SetLoop {
+                    deck,
+                    in_frame,
+                    out_frame,
+                    active,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.loop_in = in_frame.max(0.0);
+                        d.loop_out = out_frame.max(0.0);
+                        d.loop_active = active && out_frame > in_frame;
+                    }
+                }
+                AudioCommand::SetLoopActive { deck, active } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.loop_active = active && d.loop_out > d.loop_in;
                     }
                 }
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
                         d.playhead = 0.0;
+                        d.loop_active = false;
                         let old = d.buffer.take();
                         self.retire(old);
                     }
