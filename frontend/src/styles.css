@@ -132,6 +132,8 @@
 .stream-note { flex: 1; border: 1px dashed rgba(40, 224, 255, 0.4); border-radius: var(--r-tile); padding: 12px; font-size: 11px; line-height: 1.5; color: var(--stream); background: rgba(40, 224, 255, 0.05); }
 
 .tempo-col { width: 54px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.sync-btn { background: transparent; border: 1px solid; border-radius: var(--r-pad); padding: 4px 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
+.sync-btn:disabled { opacity: 0.4; color: var(--text-tertiary) !important; border-color: var(--border-hairline-strong) !important; }
 .tempo-val { font-weight: 700; font-size: 13px; color: #fff; }
 .tempo-val small { font-size: 9px; color: var(--text-secondary); }
 .nudge { display: flex; gap: 4px; }

@@ -34,6 +34,19 @@ export function App() {
 
   const masterBpm = deckA.state.meta ? deckA.state.meta.bpm * deckA.state.tempo : null;
 
+  const bothReady =
+    !!deckA.state.meta && !!deckB.state.meta && deckA.state.meta.bpm > 0 && deckB.state.meta.bpm > 0;
+
+  // One-shot beat-TEMPO sync: match `target` deck's effective BPM to the other deck's.
+  // (Phase alignment + continuous follow is the P4 sync engine.)
+  const syncDeck = (target: "A" | "B") => {
+    const t = target === "A" ? deckA : deckB;
+    const s = target === "A" ? deckB : deckA;
+    if (!t.state.meta || !s.state.meta || t.state.meta.bpm <= 0 || s.state.meta.bpm <= 0) return;
+    const sourceEff = s.state.meta.bpm * s.state.tempo;
+    t.actions.setTempo(sourceEff / t.state.meta.bpm);
+  };
+
   const libRows: LibRow[] = [
     deckA.state.meta && { letter: "A", color: MAGENTA, meta: deckA.state.meta },
     deckB.state.meta && { letter: "B", color: CYAN, meta: deckB.state.meta },
@@ -41,7 +54,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} />
+      <TitleBar masterBpm={masterBpm} master={master} syncEnabled={bothReady} onSync={() => syncDeck("B")} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -52,7 +65,7 @@ export function App() {
             ]}
           />
           <div className="deck-row">
-            <Deck ctrl={deckA} color={MAGENTA} />
+            <Deck ctrl={deckA} color={MAGENTA} onSync={() => syncDeck("A")} syncEnabled={bothReady} />
             <Mixer
               channels={[
                 { ctrl: deckA, letter: "A", color: MAGENTA },
@@ -64,7 +77,7 @@ export function App() {
                 if (inTauri()) setCrossfader(v).catch(() => {});
               }}
             />
-            <Deck ctrl={deckB} color={CYAN} />
+            <Deck ctrl={deckB} color={CYAN} onSync={() => syncDeck("B")} syncEnabled={bothReady} />
           </div>
           <Library rows={libRows} />
         </div>

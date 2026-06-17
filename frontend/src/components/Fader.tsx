@@ -27,7 +27,8 @@ export function Fader({
 }) {
   const drag = useRef<{ pos: number; v: number } | null>(null);
   const vertical = orientation === "vertical";
-  const norm = (value - min) / (max - min); // 0..1
+  // clamp so a value driven beyond range (e.g. SYNC) doesn't push the handle off-track
+  const norm = Math.min(1, Math.max(0, (value - min) / (max - min)));
 
   const onDown = useCallback(
     (e: PointerEvent) => {

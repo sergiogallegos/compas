@@ -10,7 +10,17 @@ function fmt(frame: number, rate: number): string {
   return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
-export function Deck({ ctrl, color }: { ctrl: DeckController; color: string }) {
+export function Deck({
+  ctrl,
+  color,
+  onSync,
+  syncEnabled = false,
+}: {
+  ctrl: DeckController;
+  color: string;
+  onSync?: () => void;
+  syncEnabled?: boolean;
+}) {
   const { state, actions } = ctrl;
   const { meta, frame, playing, tempo, dsp } = state;
   const rate = meta?.source_rate ?? 1;
@@ -150,6 +160,15 @@ export function Deck({ ctrl, color }: { ctrl: DeckController; color: string }) {
 
         {/* tempo fader */}
         <div className="tempo-col">
+          <button
+            className="sync-btn"
+            style={{ color, borderColor: `${color}66` }}
+            onClick={onSync}
+            disabled={!dsp || !syncEnabled}
+            title="Match this deck's tempo to the other deck"
+          >
+            SYNC
+          </button>
           <span className="overline">TEMPO</span>
           <Fader
             value={dsp ? pct : 0}

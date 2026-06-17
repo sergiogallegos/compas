@@ -3,7 +3,17 @@ import { Logo } from "./Logo";
 import { Icon } from "./icons";
 import { inTauri, type MasterMeter } from "../lib/ipc";
 
-export function TitleBar({ masterBpm, master }: { masterBpm: number | null; master: MasterMeter }) {
+export function TitleBar({
+  masterBpm,
+  master,
+  syncEnabled = false,
+  onSync,
+}: {
+  masterBpm: number | null;
+  master: MasterMeter;
+  syncEnabled?: boolean;
+  onSync?: () => void;
+}) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
   return (
@@ -28,7 +38,12 @@ export function TitleBar({ masterBpm, master }: { masterBpm: number | null; mast
               <small>BPM</small>
             </span>
           </div>
-          <button className="sync-chip" disabled title="Sync engine: Phase 4">
+          <button
+            className="sync-chip"
+            onClick={onSync}
+            disabled={!syncEnabled}
+            title="Match Deck B's tempo to Deck A"
+          >
             <Icon name="link" size={12} /> SYNC
           </button>
           <div className="master-meter">
