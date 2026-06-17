@@ -13,6 +13,7 @@ export function inTauri(): boolean {
 
 export interface DeckLoaded {
   deck: number;
+  path: string;
   title: string;
   artist: string;
   duration_ms: number;
@@ -57,24 +58,39 @@ export async function engineStatus(): Promise<EngineStatus> {
   return invoke<EngineStatus>("engine_status");
 }
 
+const AUDIO_FILTERS = [
+  {
+    name: "Audio",
+    extensions: [
+      "mp3", "mpeg", "mpga", "mp2", "flac", "wav", "wave", "ogg", "oga", "opus",
+      "m4a", "mp4", "aac", "adts", "aif", "aiff", "aifc",
+    ],
+  },
+  { name: "All Files", extensions: ["*"] },
+];
+
 /** Open a native file picker; returns the chosen path or null. */
 export async function pickAudioFile(): Promise<string | null> {
-  const selected = await open({
-    multiple: false,
-    directory: false,
-    filters: [
-      {
-        name: "Audio",
-        extensions: [
-          "mp3", "mpeg", "mpga", "mp2", "flac", "wav", "wave", "ogg", "oga", "opus",
-          "m4a", "mp4", "aac", "adts", "aif", "aiff", "aifc",
-        ],
-      },
-      { name: "All Files", extensions: ["*"] },
-    ],
-  });
+  const selected = await open({ multiple: false, directory: false, filters: AUDIO_FILTERS });
   return typeof selected === "string" ? selected : null;
 }
+
+/** Open a multi-select picker for adding tracks to the library. */
+export async function pickAudioFiles(): Promise<string[]> {
+  const selected = await open({ multiple: true, directory: false, filters: AUDIO_FILTERS });
+  if (Array.isArray(selected)) return selected;
+  return typeof selected === "string" ? [selected] : [];
+}
+
+export interface ProbedTrack {
+  path: string;
+  title: string;
+  artist: string;
+  duration_ms: number;
+}
+
+/** Cheap header probe for adding a file to the library (no full decode). */
+export const probeTrack = (path: string) => invoke<ProbedTrack>("probe_track", { path });
 
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });
@@ -93,6 +109,12 @@ export const setMasterGain = (value: number) => invoke("set_master_gain", { valu
 
 // ---- Event subscriptions ----------------------------------------------------------
 
+export interface DeckLoading {
+  deck: number;
+  path: string;
+}
+export const onDeckLoading = (cb: (e: DeckLoading) => void): Promise<UnlistenFn> =>
+  listen<DeckLoading>("deck:loading", (e) => cb(e.payload));
 export const onDeckLoaded = (cb: (e: DeckLoaded) => void): Promise<UnlistenFn> =>
   listen<DeckLoaded>("deck:loaded", (e) => cb(e.payload));
 export const onDeckPosition = (cb: (e: DeckPosition) => void): Promise<UnlistenFn> =>

@@ -5,7 +5,7 @@ import { StatusBar } from "./components/StatusBar";
 import { WaveformZone } from "./components/WaveformZone";
 import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
-import { Library, type LibRow } from "./components/Library";
+import { Library } from "./components/Library";
 import { useDeck } from "./hooks/useDeck";
 import { engineStatus, inTauri, onMasterMeter, setCrossfader, type MasterMeter } from "./lib/ipc";
 
@@ -33,6 +33,7 @@ export function App() {
   }, []);
 
   const masterBpm = deckA.state.meta ? deckA.state.meta.bpm * deckA.state.tempo : null;
+  const loadedPaths = [deckA.state.meta?.path, deckB.state.meta?.path];
 
   const bothReady =
     !!deckA.state.meta && !!deckB.state.meta && deckA.state.meta.bpm > 0 && deckB.state.meta.bpm > 0;
@@ -46,11 +47,6 @@ export function App() {
     const sourceEff = s.state.meta.bpm * s.state.tempo;
     t.actions.setTempo(sourceEff / t.state.meta.bpm);
   };
-
-  const libRows: LibRow[] = [
-    deckA.state.meta && { letter: "A", color: MAGENTA, meta: deckA.state.meta },
-    deckB.state.meta && { letter: "B", color: CYAN, meta: deckB.state.meta },
-  ].filter(Boolean) as LibRow[];
 
   return (
     <div className="app">
@@ -79,7 +75,7 @@ export function App() {
             />
             <Deck ctrl={deckB} color={CYAN} onSync={() => syncDeck("B")} syncEnabled={bothReady} />
           </div>
-          <Library rows={libRows} />
+          <Library loadedPaths={loadedPaths} />
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} />

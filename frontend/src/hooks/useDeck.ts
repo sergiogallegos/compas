@@ -9,6 +9,7 @@ import {
   loadTrack,
   onDeckError,
   onDeckLoaded,
+  onDeckLoading,
   onDeckPosition,
   pickAudioFile,
   setDeckEq,
@@ -38,6 +39,8 @@ export interface DeckState {
   gain: number;
   hotCues: (number | null)[];
   error: string | null;
+  /** True between clicking load and the track being decoded/analyzed. */
+  loading: boolean;
   /** Whether this deck supports full DSP (local) vs control-only (streaming). */
   dsp: boolean;
 }
@@ -59,6 +62,7 @@ export function useDeck(deck: number, dsp = true) {
   const [gain, setGainState] = useState(1);
   const [hotCues, setHotCues] = useState<(number | null)[]>(Array(8).fill(null));
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
 
   useEffect(() => {
@@ -67,6 +71,13 @@ export function useDeck(deck: number, dsp = true) {
     let active = true;
     const track = (p: Promise<UnlistenFn>) => p.then((u) => (active ? unlistens.push(u) : u()));
 
+    track(
+      onDeckLoading((e) => {
+        if (e.deck !== deck) return;
+        setLoading(true);
+        setError(null);
+      }),
+    );
     track(
       onDeckLoaded((e) => {
         if (e.deck !== deck) return;
@@ -77,6 +88,7 @@ export function useDeck(deck: number, dsp = true) {
         setTempo(1);
         setHotCues(Array(8).fill(null));
         setError(null);
+        setLoading(false);
       }),
     );
     track(
@@ -88,7 +100,13 @@ export function useDeck(deck: number, dsp = true) {
         setLevel(e.level);
       }),
     );
-    track(onDeckError((e) => e.deck === deck && setError(e.message)));
+    track(
+      onDeckError((e) => {
+        if (e.deck !== deck) return;
+        setError(e.message);
+        setLoading(false);
+      }),
+    );
 
     return () => {
       active = false;
@@ -157,7 +175,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, error, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, error, loading, dsp };
   return { state, actions };
 }
 

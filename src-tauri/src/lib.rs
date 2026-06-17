@@ -174,6 +174,8 @@ fn spawn_engine() -> EngineHandle {
 #[derive(Serialize, Clone)]
 struct DeckLoadedEvent {
     deck: usize,
+    /// Absolute file path (provider id for local tracks) — lets the library mark A/B.
+    path: String,
     title: String,
     artist: String,
     duration_ms: u64,
@@ -204,6 +206,12 @@ struct DeckPositionEvent {
 struct MasterMeterEvent {
     l: f32,
     r: f32,
+}
+
+#[derive(Serialize, Clone)]
+struct DeckLoadingEvent {
+    deck: usize,
+    path: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -251,6 +259,8 @@ fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
 #[tauri::command]
 fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path: String) {
     let tx = state.tx.clone();
+    // Tell the UI immediately so it can show a loading state during decode + analysis.
+    let _ = app.emit("deck:loading", DeckLoadingEvent { deck, path: path.clone() });
     thread::spawn(move || {
         let (buffer, metadata) = match compas_sources::decode_full(&path) {
             Ok(v) => v,
@@ -273,6 +283,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
             "deck:loaded",
             DeckLoadedEvent {
                 deck,
+                path: metadata.provider_id.clone(),
                 title: metadata.title.clone(),
                 artist: metadata.artist.clone(),
                 duration_ms: buffer.duration_ms(),
@@ -311,6 +322,28 @@ fn analyze_track(
     let grid = compas_dsp::analysis::estimate_beatgrid(&mono, buffer.source_rate);
     let key = compas_dsp::analysis::estimate_key(&mono, buffer.source_rate);
     (grid, key)
+}
+
+#[derive(Serialize)]
+struct ProbedTrack {
+    path: String,
+    title: String,
+    artist: String,
+    duration_ms: u64,
+}
+
+/// Cheap header probe (no full decode) for adding a file to the library.
+#[tauri::command]
+fn probe_track(path: String) -> Result<ProbedTrack, String> {
+    use compas_sources::{AudioSource, LocalFileSource};
+    let src = LocalFileSource::open(&path).map_err(|e| e.to_string())?;
+    let m = src.metadata();
+    Ok(ProbedTrack {
+        title: m.title.clone(),
+        artist: m.artist.clone(),
+        duration_ms: m.duration_ms.unwrap_or(0),
+        path,
+    })
 }
 
 #[tauri::command]
@@ -442,6 +475,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             engine_status,
+            probe_track,
             load_track,
             deck_play,
             deck_pause,

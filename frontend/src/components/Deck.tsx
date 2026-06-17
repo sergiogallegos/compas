@@ -22,7 +22,7 @@ export function Deck({
   syncEnabled?: boolean;
 }) {
   const { state, actions } = ctrl;
-  const { meta, frame, playing, tempo, dsp } = state;
+  const { meta, frame, playing, tempo, dsp, loading } = state;
   const rate = meta?.source_rate ?? 1;
   const frames = meta?.frames ?? 0;
   const frac = frames > 0 ? Math.min(1, frame / frames) : 0;
@@ -45,11 +45,15 @@ export function Deck({
           <Icon name="music" size={20} />
         </button>
         <div className="deck-titles">
-          <div className="deck-title display">{meta ? meta.title : "—"}</div>
-          <div className="deck-sub">{meta ? meta.artist : "No track"}</div>
+          <div className="deck-title display">{loading ? "Loading…" : meta ? meta.title : "—"}</div>
+          <div className="deck-sub">
+            {loading ? "decoding & analyzing…" : meta ? meta.artist : "No track"}
+          </div>
         </div>
         <div className="deck-header-actions">
-          {meta ? (
+          {loading ? (
+            <button className="deck-load" disabled>Loading…</button>
+          ) : meta ? (
             <button className="deck-load" onClick={actions.eject}>Eject</button>
           ) : (
             <button className="deck-load deck-load--primary" onClick={actions.load} style={{ borderColor: `${color}66`, color }}>
