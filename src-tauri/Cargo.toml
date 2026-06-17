@@ -1,0 +1,30 @@
+[package]
+name = "compas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "compas — cross-platform real-time DJ application (Tauri 2 shell)."
+default-run = "compas"
+
+# Tauri 2 layout: a lib (so the same code can target desktop + mobile later) plus a thin bin.
+[lib]
+name = "compas_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+compas-core = { workspace = true }
+compas-audio = { workspace = true }
+compas-dsp = { workspace = true }
+compas-sources = { workspace = true }
