@@ -46,6 +46,10 @@ pub struct DeckTelemetry {
     playhead_bits: [AtomicU64; NUM_DECKS],
     playing: [AtomicBool; NUM_DECKS],
     loaded: [AtomicBool; NUM_DECKS],
+    /// Per-deck output peak (pre-crossfader), f32 bits in an AtomicU64-as-u32 slot.
+    level_bits: [AtomicU64; NUM_DECKS],
+    master_l_bits: AtomicU64,
+    master_r_bits: AtomicU64,
 }
 
 impl DeckTelemetry {
@@ -54,7 +58,26 @@ impl DeckTelemetry {
             playhead_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             playing: std::array::from_fn(|_| AtomicBool::new(false)),
             loaded: std::array::from_fn(|_| AtomicBool::new(false)),
+            level_bits: std::array::from_fn(|_| AtomicU64::new(0)),
+            master_l_bits: AtomicU64::new(0),
+            master_r_bits: AtomicU64::new(0),
         }
+    }
+
+    /// Per-deck output peak in 0..~1 (linear). For VU meters.
+    pub fn deck_level(&self, deck: usize) -> f32 {
+        self.level_bits
+            .get(deck)
+            .map(|a| f64::from_bits(a.load(Ordering::Relaxed)) as f32)
+            .unwrap_or(0.0)
+    }
+
+    /// Master output peak (left, right), linear 0..~1.
+    pub fn master_level(&self) -> (f32, f32) {
+        (
+            f64::from_bits(self.master_l_bits.load(Ordering::Relaxed)) as f32,
+            f64::from_bits(self.master_r_bits.load(Ordering::Relaxed)) as f32,
+        )
     }
 
     /// Current play-head for `deck`, in source frames.
@@ -209,6 +232,10 @@ pub struct Mixer {
     reclaim: Producer<Arc<DeckBuffer>>,
     telemetry: Arc<DeckTelemetry>,
     device_rate: f32,
+    // Per-block peak accumulators (reset on publish).
+    peak_deck: [f32; NUM_DECKS],
+    peak_l: f32,
+    peak_r: f32,
 }
 
 impl Mixer {
@@ -226,6 +253,9 @@ impl Mixer {
             reclaim,
             telemetry,
             device_rate,
+            peak_deck: [0.0; NUM_DECKS],
+            peak_l: 0.0,
+            peak_r: 0.0,
         }
     }
 
@@ -318,6 +348,10 @@ impl Mixer {
         let mut r = 0.0;
         for (i, deck) in self.decks.iter_mut().enumerate() {
             let (dl, dr) = deck.next_frame();
+            let deck_peak = dl.abs().max(dr.abs());
+            if deck_peak > self.peak_deck[i] {
+                self.peak_deck[i] = deck_peak;
+            }
             let xf = match i {
                 0 => ga,
                 1 => gb,
@@ -327,18 +361,33 @@ impl Mixer {
             r += dr * xf;
         }
         let m = self.master.next_gain();
-        (l * m, r * m)
+        let (ol, or) = (l * m, r * m);
+        self.peak_l = self.peak_l.max(ol.abs());
+        self.peak_r = self.peak_r.max(or.abs());
+        (ol, or)
     }
 
     /// Publish per-deck position/state to shared telemetry. Call once per audio block.
     /// RT-SAFE (relaxed atomic stores only).
     #[inline]
-    pub fn publish_telemetry(&self) {
+    pub fn publish_telemetry(&mut self) {
         for (i, d) in self.decks.iter().enumerate() {
             self.telemetry.playhead_bits[i].store(d.playhead.to_bits(), Ordering::Relaxed);
             self.telemetry.playing[i].store(d.playing, Ordering::Relaxed);
             self.telemetry.loaded[i].store(d.buffer.is_some(), Ordering::Relaxed);
+            self.telemetry.level_bits[i]
+                .store((self.peak_deck[i] as f64).to_bits(), Ordering::Relaxed);
         }
+        self.telemetry
+            .master_l_bits
+            .store((self.peak_l as f64).to_bits(), Ordering::Relaxed);
+        self.telemetry
+            .master_r_bits
+            .store((self.peak_r as f64).to_bits(), Ordering::Relaxed);
+        // Reset accumulators for the next block.
+        self.peak_deck = [0.0; NUM_DECKS];
+        self.peak_l = 0.0;
+        self.peak_r = 0.0;
     }
 }
 

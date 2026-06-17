@@ -161,6 +161,14 @@ struct DeckPositionEvent {
     deck: usize,
     frame: f64,
     playing: bool,
+    /// Output peak (linear 0..~1) for the deck's VU meter.
+    level: f32,
+}
+
+#[derive(Serialize, Clone)]
+struct MasterMeterEvent {
+    l: f32,
+    r: f32,
 }
 
 #[derive(Serialize, Clone)]
@@ -356,10 +364,13 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
                             deck,
                             frame: telemetry.playhead_frames(deck),
                             playing: telemetry.is_playing(deck),
+                            level: telemetry.deck_level(deck),
                         },
                     );
                 }
             }
+            let (l, r) = telemetry.master_level();
+            let _ = app.emit("master:level", MasterMeterEvent { l, r });
             thread::sleep(period);
         }
     });
