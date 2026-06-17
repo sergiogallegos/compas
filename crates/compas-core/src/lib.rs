@@ -5,10 +5,12 @@
 
 #![forbid(unsafe_code)]
 
+mod buffer;
 mod capabilities;
 mod error;
 mod track;
 
+pub use buffer::DeckBuffer;
 pub use capabilities::{SourceCapabilities, SourceKind};
 pub use error::{CompasError, Result};
 pub use track::{MusicProvider, TrackMetadata};

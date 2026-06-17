@@ -20,7 +20,28 @@ mod streaming;
 pub use local::LocalFileSource;
 pub use streaming::StreamingSource;
 
-use compas_core::{SourceCapabilities, TrackMetadata};
+use compas_core::{DeckBuffer, SourceCapabilities, TrackMetadata};
+use std::path::Path;
+
+/// Decode a local file fully into an in-memory [`DeckBuffer`] (interleaved stereo f32
+/// at the source rate), returning it alongside the track metadata.
+///
+/// Runs on a worker thread (allocates, blocks on I/O) — never on the audio callback.
+pub fn decode_full(path: impl AsRef<Path>) -> compas_core::Result<(DeckBuffer, TrackMetadata)> {
+    let mut source = LocalFileSource::open(path)?;
+    let metadata = source.metadata().clone();
+    let source_rate = source.sample_rate();
+
+    // Pre-size from the known frame count when available to avoid reallocation churn.
+    let mut samples: Vec<f32> = match metadata.duration_ms {
+        Some(ms) => Vec::with_capacity((ms as usize * source_rate as usize / 1000) * 2),
+        None => Vec::new(),
+    };
+    while let Some(chunk) = source.next_chunk()? {
+        samples.extend_from_slice(&chunk);
+    }
+    Ok((DeckBuffer::new(samples, source_rate), metadata))
+}
 
 /// Common to every source: it has metadata and a capability profile.
 pub trait AudioSource {

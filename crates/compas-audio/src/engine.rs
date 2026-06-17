@@ -1,70 +1,45 @@
+use std::sync::Arc;
+
+use compas_core::{CompasError, DeckBuffer, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{FromSample, Sample, SizedSample};
-use compas_core::{CompasError, Result};
-use rtrb::{Producer, RingBuffer};
+use cpal::{FromSample, SizedSample};
+use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::mixer::{AudioCommand, Mixer};
+use crate::mixer::{AudioCommand, DeckTelemetry, Mixer};
 
-/// Producer end of a deck's PCM ring. A decoder thread writes interleaved stereo
-/// f32 frames here; the audio callback consumes them. Single-producer/single-consumer.
-pub struct DeckPcmProducer {
-    pub deck: usize,
-    inner: Producer<f32>,
-}
-
-impl DeckPcmProducer {
-    /// Push as many interleaved samples as fit; returns the number actually written.
-    /// Non-blocking and safe to call from a decoder worker. (Not the RT thread, but
-    /// still allocation-free.)
-    pub fn push(&mut self, samples: &[f32]) -> usize {
-        let mut n = 0;
-        for &s in samples {
-            if self.inner.push(s).is_err() {
-                break;
-            }
-            n += 1;
-        }
-        n
-    }
-
-    /// Free space in samples.
-    pub fn slots(&self) -> usize {
-        self.inner.slots()
-    }
-}
-
-/// Engine configuration. Defaults aim at a safe first-run, not minimum latency.
+/// Engine configuration.
 #[derive(Debug, Clone, Copy)]
 pub struct EngineConfig {
-    /// Capacity (in stereo *frames*) of each per-deck PCM ring. Larger = more
-    /// resilient to decode jitter, but more latency between scratch/seek and sound.
-    pub deck_ring_frames: usize,
-    /// Capacity of the control-command ring.
+    /// Capacity of the control-command ring (commands per audio block are tiny).
     pub command_capacity: usize,
+    /// Capacity of the buffer-reclaim ring (retired decks awaiting drop on control thread).
+    pub reclaim_capacity: usize,
 }
 
 impl Default for EngineConfig {
     fn default() -> Self {
         EngineConfig {
-            deck_ring_frames: 1 << 15, // 32768 frames ≈ 0.68 s @ 48 kHz
             command_capacity: 256,
+            reclaim_capacity: 16,
         }
     }
 }
 
-/// Owns the cpal output stream and the control-side command producer.
-///
-/// Dropping the engine stops the stream.
+/// Owns the cpal output stream and the control-side command producer. Dropping the
+/// engine stops the stream. Created and owned on a dedicated audio thread because
+/// `cpal::Stream` is not `Send` on all platforms.
 pub struct AudioEngine {
     _stream: cpal::Stream,
     commands: Producer<AudioCommand>,
+    reclaim: Consumer<Arc<DeckBuffer>>,
+    telemetry: Arc<DeckTelemetry>,
     sample_rate: u32,
-    config: EngineConfig,
 }
 
 impl AudioEngine {
-    /// Open the default output device and start the audio stream.
-    pub fn new(config: EngineConfig) -> Result<Self> {
+    /// Open the default output device and start the audio stream. `telemetry` is shared
+    /// so other threads can read deck position/state without locking.
+    pub fn new(config: EngineConfig, telemetry: Arc<DeckTelemetry>) -> Result<Self> {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
@@ -78,7 +53,9 @@ impl AudioEngine {
         let stream_config: cpal::StreamConfig = supported.into();
 
         let (cmd_tx, cmd_rx) = RingBuffer::<AudioCommand>::new(config.command_capacity);
-        let mixer = Mixer::new(sample_rate as f32, cmd_rx);
+        let (reclaim_tx, reclaim_rx) =
+            RingBuffer::<Arc<DeckBuffer>>::new(config.reclaim_capacity);
+        let mixer = Mixer::new(sample_rate as f32, cmd_rx, reclaim_tx, telemetry.clone());
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => build_stream::<f32>(&device, &stream_config, mixer),
@@ -96,8 +73,9 @@ impl AudioEngine {
         Ok(AudioEngine {
             _stream: stream,
             commands: cmd_tx,
+            reclaim: reclaim_rx,
+            telemetry,
             sample_rate,
-            config,
         })
     }
 
@@ -105,22 +83,25 @@ impl AudioEngine {
         self.sample_rate
     }
 
-    /// Send a control command to the audio thread. Returns an error if the command
-    /// ring is full (the UI should coalesce rapid parameter changes).
-    pub fn send(&mut self, cmd: AudioCommand) -> Result<()> {
-        self.commands
-            .push(cmd)
-            .map_err(|_| CompasError::Other("audio command ring full".into()))
+    pub fn telemetry(&self) -> Arc<DeckTelemetry> {
+        self.telemetry.clone()
     }
 
-    /// Create a fresh PCM ring for `deck`, hand the consumer to the audio thread,
-    /// and return the producer for a decoder to fill.
-    pub fn attach_deck(&mut self, deck: usize) -> Result<DeckPcmProducer> {
-        // Stereo interleaved: 2 samples per frame.
-        let capacity = self.config.deck_ring_frames * 2;
-        let (tx, rx) = RingBuffer::<f32>::new(capacity);
-        self.send(AudioCommand::AttachDeck { deck, pcm: rx })?;
-        Ok(DeckPcmProducer { deck, inner: tx })
+    /// Drop any buffers the audio thread has retired (call periodically / after sends so
+    /// freeing never happens on the RT path).
+    pub fn drain_reclaimed(&mut self) {
+        while self.reclaim.pop().is_ok() {}
+    }
+
+    /// Send a control command to the audio thread. Errors if the ring is full (the UI
+    /// should coalesce rapid parameter changes).
+    pub fn send(&mut self, cmd: AudioCommand) -> Result<()> {
+        let r = self
+            .commands
+            .push(cmd)
+            .map_err(|_| CompasError::Other("audio command ring full".into()));
+        self.drain_reclaimed();
+        r
     }
 }
 
@@ -140,9 +121,7 @@ where
         .build_output_stream(
             config,
             move |out: &mut [T], _: &cpal::OutputCallbackInfo| {
-                // 1) apply pending control changes (lock-free)
                 mixer.drain_commands();
-                // 2) render frame by frame (allocation-free)
                 for frame in out.chunks_mut(channels) {
                     let (l, r) = mixer.next_frame();
                     match channels {
@@ -150,13 +129,13 @@ where
                         _ => {
                             frame[0] = T::from_sample(l);
                             frame[1] = T::from_sample(r);
-                            // Zero any extra channels (surround) for now.
                             for ch in frame.iter_mut().skip(2) {
                                 *ch = T::from_sample(0.0f32);
                             }
                         }
                     }
                 }
+                mixer.publish_telemetry();
             },
             err_fn,
             None,
@@ -164,8 +143,3 @@ where
         .map_err(|e| CompasError::Device(e.to_string()))?;
     Ok(stream)
 }
-
-// Keep an explicit reference so clippy doesn't flag the trait import as unused on
-// platforms where `Sample` is only needed transitively.
-#[allow(dead_code)]
-fn _assert_sample_bound<T: Sample>() {}

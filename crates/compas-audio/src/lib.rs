@@ -17,6 +17,11 @@
 
 mod engine;
 mod mixer;
+mod waveform;
 
-pub use engine::{AudioEngine, DeckPcmProducer, EngineConfig};
-pub use mixer::{AudioCommand, NUM_DECKS};
+pub use engine::{AudioEngine, EngineConfig};
+pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS};
+pub use waveform::compute_peaks;
+
+// Re-export so consumers building commands have the buffer type in one place.
+pub use compas_core::DeckBuffer;
