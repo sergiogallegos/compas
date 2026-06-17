@@ -1,15 +1,18 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Logo } from "./Logo";
 import { Icon } from "./icons";
-import type { MasterMeter } from "../lib/ipc";
+import { inTauri, type MasterMeter } from "../lib/ipc";
 
 export function TitleBar({ masterBpm, master }: { masterBpm: number | null; master: MasterMeter }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
+  const win = () => (inTauri() ? getCurrentWindow() : null);
   return (
-    <header className="titlebar">
+    <header className="titlebar" data-tauri-drag-region>
+      {/* macOS-style controls: close / minimize / zoom */}
       <div className="lights">
-        <span style={{ background: "#ff5f57" }} />
-        <span style={{ background: "#febc2e" }} />
-        <span style={{ background: "#28c840" }} />
+        <button className="light" style={{ background: "#ff5f57" }} title="Close" onClick={() => win()?.close()} />
+        <button className="light" style={{ background: "#febc2e" }} title="Minimize" onClick={() => win()?.minimize()} />
+        <button className="light" style={{ background: "#28c840" }} title="Maximize" onClick={() => win()?.toggleMaximize()} />
       </div>
       <div className="brand">
         <Logo size={22} />

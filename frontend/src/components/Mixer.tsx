@@ -1,6 +1,6 @@
-import { useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import { Knob } from "./Knob";
+import { Fader } from "./Fader";
 import { Meter } from "./Meter";
 import { Icon } from "./icons";
 
@@ -32,13 +32,15 @@ export function Mixer({
       </div>
       <div className="xfader">
         <span className="overline" style={{ color: "var(--accent)" }}>A</span>
-        <input
-          type="range"
+        <Fader
+          value={crossfader}
           min={0}
           max={1}
-          step={0.01}
-          value={crossfader}
-          onChange={(e) => onCrossfader(Number(e.target.value))}
+          onChange={onCrossfader}
+          orientation="horizontal"
+          fill
+          center
+          color="var(--text-primary)"
         />
         <span className="overline" style={{ color: "var(--stream)" }}>B</span>
       </div>
@@ -49,43 +51,31 @@ export function Mixer({
 function ChannelStrip({ ctrl, letter, color }: Channel) {
   const { state, actions } = ctrl;
   const dsp = state.dsp;
-  const [trim, setTrim] = useState(1);
-  const [fader, setFader] = useState(1);
-
-  const applyGain = (t: number, f: number) => {
-    setTrim(t);
-    setFader(f);
-    actions.setGain(t * f);
-  };
+  // GAIN trim × channel fader both scale the single engine gain.
+  const setVol = (trim: number, fader: number) => actions.setGain(trim * fader);
 
   return (
     <div className="strip">
       <span className="strip-letter display" style={{ color }}>{letter}</span>
 
       <div className={`knob-stack ${dsp ? "" : "knob-stack--locked"}`}>
-        <Knob label="GAIN" value={trim} min={0} max={1.5} color={color} disabled={!dsp}
-          onChange={(v) => applyGain(v, fader)} />
-        <Knob label="HI" value={state.eq.hi} min={-26} max={6} disabled={!dsp}
+        <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={28} color={color} disabled={!dsp}
+          onChange={(v) => actions.setGain(v)} />
+        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={28} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, hi: v })} />
-        <Knob label="MID" value={state.eq.mid} min={-26} max={6} disabled={!dsp}
+        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={28} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, mid: v })} />
-        <Knob label="LOW" value={state.eq.low} min={-26} max={6} disabled={!dsp}
+        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={28} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, low: v })} />
+        <Knob label="FILTER" value={state.filter} min={-1} max={1} size={28} color={color} disabled={!dsp}
+          onChange={(v) => actions.setFilter(v)} />
         {!dsp && <span className="eq-na">EQ N/A</span>}
       </div>
 
       <div className="strip-meterfader">
-        <Meter level={state.level} streaming={!dsp} height={150} />
-        <input
-          className="ch-fader"
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={fader}
-          onChange={(e) => applyGain(trim, Number(e.target.value))}
-          style={{ accentColor: color }}
-        />
+        <Meter level={state.level} streaming={!dsp} />
+        <Fader value={state.gain} min={0} max={1.5} fill color={color}
+          onChange={(v) => setVol(1, v)} />
       </div>
 
       <button className="cue-btn" disabled title="Headphone cue bus — a later phase">

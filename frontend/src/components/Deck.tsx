@@ -1,4 +1,5 @@
 import type { DeckController } from "../hooks/useDeck";
+import { Fader } from "./Fader";
 import { Icon } from "./icons";
 
 const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
@@ -148,16 +149,15 @@ export function Deck({ ctrl, color }: { ctrl: DeckController; color: string }) {
         {/* tempo fader */}
         <div className="tempo-col">
           <span className="overline">TEMPO</span>
-          <input
-            className="tempo-fader"
-            type="range"
+          <Fader
+            value={dsp ? pct : 0}
             min={-8}
             max={8}
-            step={0.05}
-            value={dsp ? pct : 0}
+            length={130}
+            center
+            color={color}
             disabled={!dsp || !meta}
-            onChange={(e) => actions.setTempo(1 + Number(e.target.value) / 100)}
-            style={{ accentColor: color }}
+            onChange={(v) => actions.setTempo(1 + v / 100)}
           />
           <span className="mono tempo-val" style={{ opacity: dsp ? 1 : 0.45 }}>
             {dsp ? `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}` : "0.0"}
