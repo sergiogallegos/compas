@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>compas — real-time DJ engine</title>
+    <meta
+      name="description"
+      content="compas is a cross-platform, real-time professional DJ application. Rust audio core, native feel, honest about what it can mix."
+    />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="#top">
+        <img src="assets/logo.png" alt="compas" width="32" height="32" />
+        <span>compas</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#download">Download</a>
+        <a class="gh" href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <p class="eyebrow">Real-time · cross-platform · Rust core</p>
+        <h1>The DJ engine that's <span class="accent">honest</span> about the mix.</h1>
+        <p class="sub">
+          Two decks, true DSP on your local files — beatgrid, key, EQ, filter, varispeed, sync.
+          Stream from Spotify for browsing &amp; control. compas never fakes DSP it can't perform.
+        </p>
+        <div class="cta" id="download">
+          <a class="btn btn-primary" href="https://github.com/sergiogallegos/compas/releases/latest" data-os="windows">
+            <span class="os">⊞</span> Download for Windows
+          </a>
+          <a class="btn btn-primary" href="https://github.com/sergiogallegos/compas/releases/latest" data-os="macos">
+            <span class="os"></span> Download for macOS
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">
+            View source
+          </a>
+        </div>
+        <p class="note mono">Open-source soon · MIT · Windows &amp; macOS installers via GitHub Releases</p>
+      </section>
+
+      <section class="shot">
+        <img src="assets/screenshot.png" alt="compas performance screen" />
+      </section>
+
+      <section id="features" class="features">
+        <article>
+          <h3>True DSP on local files</h3>
+          <p>In-RAM decoding with a cubic-interpolated play-head: instant seek, varispeed, 3-band EQ, and an HPF/LPF filter — all real-time-safe.</p>
+        </article>
+        <article>
+          <h3>Beatgrid · BPM · Key</h3>
+          <p>Spectral-flux tempo + beat-phase detection draws a real grid; Krumhansl–Schmuckler key detection in Camelot notation.</p>
+        </article>
+        <article>
+          <h3>Scrolling waveforms</h3>
+          <p>A fixed NOW playhead with the track scrolling under it, beat-aligned grid, and 4–32&nbsp;s zoom.</p>
+        </article>
+        <article>
+          <h3>Tempo sync</h3>
+          <p>Match decks with one click, or ride the tempo fader and nudge by ear — vinyl-style varispeed by default.</p>
+        </article>
+        <article>
+          <h3>Streaming, done honestly</h3>
+          <p>Connect Spotify to browse and play — but streaming decks show their DSP locked, because services don't expose decoded audio.</p>
+        </article>
+        <article>
+          <h3>Native &amp; fast</h3>
+          <p>A Rust audio engine in a Tauri shell. Lock-free, allocation-free audio thread; small, quick, cross-platform.</p>
+        </article>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-brand">
+        <img src="assets/logo.png" alt="" width="22" height="22" />
+        <span>compas</span>
+      </div>
+      <div class="foot-links">
+        <a href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/sergiogallegos/compas/releases" target="_blank" rel="noopener">Releases</a>
+        <span class="mono">For personal, non-commercial use</span>
+      </div>
+    </footer>
+
+    <script>
+      // Highlight the installer matching the visitor's OS.
+      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      document.querySelectorAll(".btn-primary").forEach((b) => {
+        const wanted = isMac ? "macos" : "windows";
+        if (b.dataset.os !== wanted) b.classList.add("btn-secondary");
+      });
+    </script>
+  </body>
+</html>
