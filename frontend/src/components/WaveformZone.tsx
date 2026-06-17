@@ -95,7 +95,9 @@ function WaveLane({ lane }: { lane: Lane }) {
         <span className="wf-chip" style={{ color, background: `${color}1f`, borderColor: `${color}66` }}>
           {letter}
         </span>
-        <span className="mono wf-bpm">{state.meta && effBpm > 0 ? `${effBpm.toFixed(1)} · —` : "— · —"}</span>
+        <span className="mono wf-bpm">
+          {state.meta && effBpm > 0 ? `${effBpm.toFixed(1)} · ${state.meta.key_camelot}` : "— · —"}
+        </span>
         <span className="wf-title">
           {state.meta ? `${state.meta.title} — ${state.meta.artist}` : "No track loaded"}
         </span>

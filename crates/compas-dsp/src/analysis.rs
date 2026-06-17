@@ -191,17 +191,132 @@ fn parabolic_peak(env: &[f32], lag: usize, energy: f32) -> Option<f32> {
     Some(lag as f32 + delta.clamp(-1.0, 1.0))
 }
 
-/// Estimate musical key from mono PCM.
-///
-/// SCAFFOLD: returns "unknown" until the chromagram + K-S correlation lands in P1.
+// Krumhansl–Kessler key profiles (major / minor), indexed from the tonic.
+const KS_MAJOR: [f32; 12] = [
+    6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+];
+const KS_MINOR: [f32; 12] = [
+    6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+];
+const PITCH_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
+// Camelot codes indexed by pitch class (C=0 .. B=11).
+const CAMELOT_MAJOR: [&str; 12] = [
+    "8B", "3B", "10B", "5B", "12B", "7B", "2B", "9B", "4B", "11B", "6B", "1B",
+];
+const CAMELOT_MINOR: [&str; 12] = [
+    "5A", "12A", "7A", "2A", "9A", "4A", "11A", "6A", "1A", "8A", "3A", "10A",
+];
+
+/// Estimate musical key by building a 12-bin chromagram and correlating it against the
+/// Krumhansl–Schmuckler major/minor profiles rotated to all 12 tonics (24 candidates).
 pub fn estimate_key(samples: &[f32], sample_rate: u32) -> KeyEstimate {
-    let _ = (samples, sample_rate);
-    // TODO(P1): 12-bin chromagram via constant-Q-ish mapping of FFT bins, then
-    // correlate against Krumhansl–Schmuckler major/minor profiles.
-    KeyEstimate {
+    let unknown = || KeyEstimate {
         camelot: "—".to_string(),
-        name: "unknown".to_string(),
+        name: "—".to_string(),
         confidence: 0.0,
+    };
+    if samples.is_empty() || sample_rate == 0 {
+        return unknown();
+    }
+    let chroma = chromagram(samples, sample_rate);
+    if chroma.iter().sum::<f32>() <= f32::EPSILON {
+        return unknown();
+    }
+
+    let mut best_tonic = 0usize;
+    let mut best_major = true;
+    let mut best_r = f32::MIN;
+    for t in 0..12 {
+        let rmaj = pearson_rotated(&chroma, &KS_MAJOR, t);
+        if rmaj > best_r {
+            best_r = rmaj;
+            best_tonic = t;
+            best_major = true;
+        }
+        let rmin = pearson_rotated(&chroma, &KS_MINOR, t);
+        if rmin > best_r {
+            best_r = rmin;
+            best_tonic = t;
+            best_major = false;
+        }
+    }
+
+    let (camelot, name) = if best_major {
+        (CAMELOT_MAJOR[best_tonic], PITCH_NAMES[best_tonic].to_string())
+    } else {
+        (CAMELOT_MINOR[best_tonic], format!("{}m", PITCH_NAMES[best_tonic]))
+    };
+    KeyEstimate {
+        camelot: camelot.to_string(),
+        name,
+        confidence: best_r.clamp(0.0, 1.0),
+    }
+}
+
+/// Accumulate a 12-bin chromagram (energy per pitch class) over the signal.
+fn chromagram(samples: &[f32], sample_rate: u32) -> [f32; 12] {
+    const FRAME: usize = 4096;
+    const HOP: usize = 2048;
+    let mut chroma = [0.0f32; 12];
+    if samples.len() < FRAME {
+        return chroma;
+    }
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(FRAME);
+    let window: Vec<f32> = (0..FRAME)
+        .map(|n| {
+            let x = (std::f32::consts::PI * n as f32 / (FRAME as f32 - 1.0)).sin();
+            x * x
+        })
+        .collect();
+    let mut buf = vec![Complex32::new(0.0, 0.0); FRAME];
+
+    let mut pos = 0;
+    while pos + FRAME <= samples.len() {
+        for i in 0..FRAME {
+            buf[i] = Complex32::new(samples[pos + i] * window[i], 0.0);
+        }
+        fft.process(&mut buf);
+        for (k, item) in buf.iter().enumerate().take(FRAME / 2).skip(1) {
+            let freq = k as f32 * sample_rate as f32 / FRAME as f32;
+            if !(55.0..=2000.0).contains(&freq) {
+                continue;
+            }
+            let midi = 69.0 + 12.0 * (freq / 440.0).log2();
+            let pc = (((midi.round() as i32) % 12) + 12) % 12;
+            chroma[pc as usize] += item.norm();
+        }
+        pos += HOP;
+    }
+    chroma
+}
+
+/// Pearson correlation between the chroma vector and a key profile rotated so its tonic
+/// sits at pitch class `t`.
+fn pearson_rotated(chroma: &[f32; 12], profile: &[f32; 12], t: usize) -> f32 {
+    let mut rp = [0.0f32; 12];
+    for i in 0..12 {
+        rp[i] = profile[(i + 12 - t) % 12];
+    }
+    let mc = chroma.iter().sum::<f32>() / 12.0;
+    let mp = rp.iter().sum::<f32>() / 12.0;
+    let mut cov = 0.0;
+    let mut vc = 0.0;
+    let mut vp = 0.0;
+    for i in 0..12 {
+        let dc = chroma[i] - mc;
+        let dp = rp[i] - mp;
+        cov += dc * dp;
+        vc += dc * dc;
+        vp += dp * dp;
+    }
+    let denom = (vc * vp).sqrt();
+    if denom < 1e-9 {
+        0.0
+    } else {
+        cov / denom
     }
 }
 
@@ -318,8 +433,24 @@ mod tests {
     }
 
     #[test]
-    fn key_scaffold_is_unknown() {
-        let est = estimate_key(&[0.0; 1024], 44_100);
-        assert_eq!(est.name, "unknown");
+    fn key_unknown_on_silence() {
+        assert_eq!(estimate_key(&[], 44_100).name, "—");
+        assert_eq!(estimate_key(&[0.0; 8192], 44_100).name, "—");
+    }
+
+    #[test]
+    fn key_detects_a_plausible_key_for_a_major_triad() {
+        // C-major triad (C4/E4/G4) sustained — expect a confident, valid key code.
+        let sr = 44_100u32;
+        let n = sr as usize * 3;
+        let freqs = [261.63, 329.63, 392.0];
+        let mut s = vec![0.0f32; n];
+        for (i, sample) in s.iter_mut().enumerate() {
+            let t = i as f32 / sr as f32;
+            *sample = freqs.iter().map(|f| (2.0 * std::f32::consts::PI * f * t).sin()).sum::<f32>() / 3.0;
+        }
+        let est = estimate_key(&s, sr);
+        assert_ne!(est.camelot, "—");
+        assert!(est.confidence > 0.3, "low confidence {}", est.confidence);
     }
 }

@@ -22,6 +22,8 @@ export interface DeckLoaded {
   bpm_confidence: number;
   first_beat_sec: number;
   beat_interval_sec: number;
+  key_camelot: string;
+  key_name: string;
   peaks: number[];
 }
 

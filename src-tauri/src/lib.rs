@@ -155,6 +155,9 @@ struct DeckLoadedEvent {
     /// Beatgrid phase: time of the first beat, and seconds per beat.
     first_beat_sec: f32,
     beat_interval_sec: f32,
+    /// Detected musical key (Camelot code + traditional name).
+    key_camelot: String,
+    key_name: String,
     /// Max-abs amplitude per `WAVEFORM_BIN_FRAMES` frames; used to draw the overview.
     peaks: Vec<f32>,
 }
@@ -235,7 +238,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
         };
 
         let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
-        let grid = analyze_beatgrid(&buffer);
+        let (grid, key) = analyze_track(&buffer);
 
         let _ = app.emit(
             "deck:loaded",
@@ -250,6 +253,8 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
                 bpm_confidence: grid.confidence,
                 first_beat_sec: grid.first_beat_sec,
                 beat_interval_sec: grid.beat_interval_sec,
+                key_camelot: key.camelot,
+                key_name: key.name,
                 peaks,
             },
         );
@@ -261,15 +266,19 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
     });
 }
 
-/// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate the beatgrid.
-fn analyze_beatgrid(buffer: &DeckBuffer) -> compas_dsp::analysis::BeatGrid {
+/// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate beatgrid + key.
+fn analyze_track(
+    buffer: &DeckBuffer,
+) -> (compas_dsp::analysis::BeatGrid, compas_dsp::analysis::KeyEstimate) {
     let max_frames = ANALYSIS_MAX_SECS * buffer.source_rate as usize;
     let frames = buffer.frames().min(max_frames);
     let mut mono = Vec::with_capacity(frames);
     for f in 0..frames {
         mono.push(0.5 * (buffer.samples[f * 2] + buffer.samples[f * 2 + 1]));
     }
-    compas_dsp::analysis::estimate_beatgrid(&mono, buffer.source_rate)
+    let grid = compas_dsp::analysis::estimate_beatgrid(&mono, buffer.source_rate);
+    let key = compas_dsp::analysis::estimate_key(&mono, buffer.source_rate);
+    (grid, key)
 }
 
 #[tauri::command]

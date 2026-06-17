@@ -69,7 +69,7 @@ export function Library({ rows }: { rows: LibRow[] }) {
                 <span className="tl-title">{r.meta.title}</span>
                 <span className="tl-artist">{r.meta.artist}</span>
                 <span className="mono">{r.meta.bpm > 0 ? r.meta.bpm.toFixed(1) : "—"}</span>
-                <span className="mono">—</span>
+                <span className="mono">{r.meta.key_camelot || "—"}</span>
                 <span className="mono">{fmtMs(r.meta.duration_ms)}</span>
                 <span className="tl-src">LOCAL</span>
               </div>

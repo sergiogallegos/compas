@@ -60,7 +60,9 @@ export function Deck({ ctrl, color }: { ctrl: DeckController; color: string }) {
         </div>
         <div className="tile">
           <span className="overline">KEY</span>
-          <span className="mono tile-val" style={{ color }}>—</span>
+          <span className="mono tile-val" style={{ color }} title={meta?.key_name}>
+            {meta?.key_camelot ?? "—"}
+          </span>
         </div>
         <div className="tile">
           <span className="overline">TIME</span>
