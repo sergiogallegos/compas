@@ -20,6 +20,8 @@ export interface DeckLoaded {
   frames: number;
   bpm: number;
   bpm_confidence: number;
+  first_beat_sec: number;
+  beat_interval_sec: number;
   peaks: number[];
 }
 

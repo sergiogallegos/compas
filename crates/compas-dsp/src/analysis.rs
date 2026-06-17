@@ -20,6 +20,17 @@ pub struct TempoEstimate {
     pub confidence: f32,
 }
 
+/// Tempo plus the phase of beat one — enough to draw a beatgrid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BeatGrid {
+    pub bpm: f32,
+    /// Time of the first beat, in seconds from the start of the track.
+    pub first_beat_sec: f32,
+    /// Seconds between beats (60 / bpm), cached for the UI.
+    pub beat_interval_sec: f32,
+    pub confidence: f32,
+}
+
 /// Result of key analysis (Camelot + traditional notation).
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyEstimate {
@@ -43,41 +54,29 @@ const HOP: usize = 256;
 /// This is intentionally a solid-but-simple estimator: no full beat tracking / dynamic
 /// programming yet (that, plus downbeat/phase for the beatgrid, is the rest of P1). It
 /// uses no GPL code (aubio is reference-only).
-pub fn estimate_tempo(samples: &[f32], sample_rate: u32) -> TempoEstimate {
+/// Shared core: onset envelope → autocorrelation tempo. Returns the (mean-subtracted)
+/// envelope, its sample rate, the period in env-samples, the BPM, and confidence.
+fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, f32, f32)> {
     if samples.is_empty() || sample_rate == 0 {
-        return TempoEstimate {
-            bpm: 0.0,
-            confidence: 0.0,
-        };
+        return None;
     }
-
     let mut env = spectral_flux_envelope(samples, FRAME, HOP);
     if env.len() < 16 {
-        return TempoEstimate {
-            bpm: 0.0,
-            confidence: 0.0,
-        };
+        return None;
     }
-
-    // Mean-subtract so the autocorrelation reflects periodicity, not DC energy.
     let mean = env.iter().sum::<f32>() / env.len() as f32;
     for v in env.iter_mut() {
         *v = (*v - mean).max(0.0);
     }
 
-    let env_rate = sample_rate as f32 / HOP as f32; // onset samples per second
-    // lag (in env samples) = 60 * env_rate / bpm.
+    let env_rate = sample_rate as f32 / HOP as f32;
     let lag_min = (60.0 * env_rate / MAX_BPM).floor().max(1.0) as usize;
     let lag_max = ((60.0 * env_rate / MIN_BPM).ceil() as usize).min(env.len() - 1);
     if lag_max <= lag_min {
-        return TempoEstimate {
-            bpm: 0.0,
-            confidence: 0.0,
-        };
+        return None;
     }
 
     let energy: f32 = env.iter().map(|x| x * x).sum::<f32>().max(1e-9);
-
     let mut best_lag = lag_min;
     let mut best_r = f32::MIN;
     let mut sum_r = 0.0f32;
@@ -96,19 +95,18 @@ pub fn estimate_tempo(samples: &[f32], sample_rate: u32) -> TempoEstimate {
         }
     }
 
-    // Parabolic interpolation around the integer peak for sub-bin lag precision.
     let refined_lag = parabolic_peak(&env, best_lag, energy).unwrap_or(best_lag as f32);
     let mut bpm = 60.0 * env_rate / refined_lag;
-
-    // Octave-fold into [MIN_BPM, MAX_BPM] (autocorr can lock onto a multiple).
+    let mut period = refined_lag;
     while bpm < MIN_BPM {
         bpm *= 2.0;
+        period *= 2.0;
     }
     while bpm > MAX_BPM {
         bpm /= 2.0;
+        period /= 2.0;
     }
 
-    // Confidence: how much the peak stands out above the mean autocorrelation.
     let mean_r = if count > 0 { sum_r / count as f32 } else { 0.0 };
     let confidence = if best_r > 0.0 {
         (1.0 - mean_r / best_r).clamp(0.0, 1.0)
@@ -116,7 +114,58 @@ pub fn estimate_tempo(samples: &[f32], sample_rate: u32) -> TempoEstimate {
         0.0
     };
 
-    TempoEstimate { bpm, confidence }
+    Some((env, env_rate, period, bpm, confidence))
+}
+
+/// Estimate tempo only (BPM + confidence).
+pub fn estimate_tempo(samples: &[f32], sample_rate: u32) -> TempoEstimate {
+    match tempo_core(samples, sample_rate) {
+        Some((_, _, _, bpm, confidence)) => TempoEstimate { bpm, confidence },
+        None => TempoEstimate {
+            bpm: 0.0,
+            confidence: 0.0,
+        },
+    }
+}
+
+/// Estimate a full beatgrid: tempo plus the phase (time) of the first beat, found by
+/// combing a beat-spaced pulse train across the onset envelope and taking the offset
+/// with the most onset energy.
+pub fn estimate_beatgrid(samples: &[f32], sample_rate: u32) -> BeatGrid {
+    let Some((env, _env_rate, period, bpm, confidence)) = tempo_core(samples, sample_rate) else {
+        return BeatGrid {
+            bpm: 0.0,
+            first_beat_sec: 0.0,
+            beat_interval_sec: 0.0,
+            confidence: 0.0,
+        };
+    };
+
+    // Comb over candidate phases [0, period) in env-samples; pick max accumulated energy.
+    let mut best_phi = 0usize;
+    let mut best_score = f32::MIN;
+    let phi_max = period.ceil() as usize;
+    for phi in 0..phi_max {
+        let mut score = 0.0f32;
+        let mut idx = phi as f32;
+        while (idx as usize) < env.len() {
+            score += env[idx as usize];
+            idx += period;
+        }
+        if score > best_score {
+            best_score = score;
+            best_phi = phi;
+        }
+    }
+
+    // env-sample → seconds: each env sample spans HOP/sample_rate seconds.
+    let sec_per_env = HOP as f32 / sample_rate as f32;
+    BeatGrid {
+        bpm,
+        first_beat_sec: best_phi as f32 * sec_per_env,
+        beat_interval_sec: if bpm > 0.0 { 60.0 / bpm } else { 0.0 },
+        confidence,
+    }
 }
 
 /// Sub-bin lag refinement: fit a parabola to the autocorrelation at `lag-1, lag, lag+1`.
@@ -241,6 +290,31 @@ mod tests {
         let env = spectral_flux_envelope(&samples, 1024, 512);
         // (4096 - 1024) / 512 + 1 = 7 frames.
         assert_eq!(env.len(), 7);
+    }
+
+    #[test]
+    fn beatgrid_on_synthetic_click_track() {
+        let sr = 44_100u32;
+        let period = (sr as f32 * 0.5) as usize; // 120 BPM
+        let total = sr as usize * 12;
+        let mut samples = vec![0.0f32; total];
+        let mut t = 0;
+        while t < total {
+            for k in 0..64 {
+                if t + k < total {
+                    samples[t + k] = (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                }
+            }
+            t += period;
+        }
+        let grid = estimate_beatgrid(&samples, sr);
+        assert!((grid.beat_interval_sec - 0.5).abs() < 0.02, "interval {}", grid.beat_interval_sec);
+        // clicks start at t=0, so the first beat phase should be near 0 (mod a beat).
+        assert!(
+            grid.first_beat_sec < 0.06 || (0.5 - grid.first_beat_sec) < 0.06,
+            "first beat {}",
+            grid.first_beat_sec
+        );
     }
 
     #[test]

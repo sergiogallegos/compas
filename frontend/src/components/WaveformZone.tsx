@@ -48,6 +48,17 @@ function WaveLane({ lane }: { lane: Lane }) {
   const peaks = state.meta?.peaks ?? [];
   const effBpm = state.meta ? state.meta.bpm * state.tempo : 0;
 
+  // Beatgrid: vertical lines at first_beat + k*interval, mapped to the overview width.
+  const durationSec = state.meta && state.meta.source_rate > 0 ? state.meta.frames / state.meta.source_rate : 0;
+  const interval = state.meta?.beat_interval_sec ?? 0;
+  const offset = state.meta?.first_beat_sec ?? 0;
+  const beats: { x: number; down: boolean }[] = [];
+  if (durationSec > 0 && interval > 0.05) {
+    for (let k = 0, t = offset; t <= durationSec && beats.length < 4096; k++, t = offset + k * interval) {
+      beats.push({ x: (t / durationSec) * VW, down: k % 4 === 0 });
+    }
+  }
+
   const handle = (e: PointerEvent<HTMLDivElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     onSeek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)));
@@ -55,9 +66,22 @@ function WaveLane({ lane }: { lane: Lane }) {
 
   return (
     <div className="wf-lane" onPointerDown={handle}>
-      <div className="wf-grid" />
       {peaks.length > 0 && (
         <svg className="wf-svg" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none">
+          <g>
+            {beats.map((b, i) => (
+              <line
+                key={i}
+                x1={b.x}
+                y1={0}
+                x2={b.x}
+                y2={VH}
+                stroke={b.down ? color : "rgba(255,255,255,.12)"}
+                strokeWidth={b.down ? 1.6 : 0.7}
+                opacity={b.down ? 0.55 : 1}
+              />
+            ))}
+          </g>
           <path d={buildPath(peaks, 1)} fill={color} opacity={0.3} />
           <path d={buildPath(peaks, 0.46)} fill={color} opacity={0.92} />
         </svg>

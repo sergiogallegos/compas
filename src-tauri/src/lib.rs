@@ -152,6 +152,9 @@ struct DeckLoadedEvent {
     frames: usize,
     bpm: f32,
     bpm_confidence: f32,
+    /// Beatgrid phase: time of the first beat, and seconds per beat.
+    first_beat_sec: f32,
+    beat_interval_sec: f32,
     /// Max-abs amplitude per `WAVEFORM_BIN_FRAMES` frames; used to draw the overview.
     peaks: Vec<f32>,
 }
@@ -232,7 +235,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
         };
 
         let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
-        let (bpm, bpm_confidence) = analyze_bpm(&buffer);
+        let grid = analyze_beatgrid(&buffer);
 
         let _ = app.emit(
             "deck:loaded",
@@ -243,8 +246,10 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
                 duration_ms: buffer.duration_ms(),
                 source_rate: buffer.source_rate,
                 frames: buffer.frames(),
-                bpm,
-                bpm_confidence,
+                bpm: grid.bpm,
+                bpm_confidence: grid.confidence,
+                first_beat_sec: grid.first_beat_sec,
+                beat_interval_sec: grid.beat_interval_sec,
                 peaks,
             },
         );
@@ -256,16 +261,15 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
     });
 }
 
-/// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate tempo.
-fn analyze_bpm(buffer: &DeckBuffer) -> (f32, f32) {
+/// Downmix to mono (capped to [`ANALYSIS_MAX_SECS`]) and estimate the beatgrid.
+fn analyze_beatgrid(buffer: &DeckBuffer) -> compas_dsp::analysis::BeatGrid {
     let max_frames = ANALYSIS_MAX_SECS * buffer.source_rate as usize;
     let frames = buffer.frames().min(max_frames);
     let mut mono = Vec::with_capacity(frames);
     for f in 0..frames {
         mono.push(0.5 * (buffer.samples[f * 2] + buffer.samples[f * 2 + 1]));
     }
-    let est = compas_dsp::analysis::estimate_tempo(&mono, buffer.source_rate);
-    (est.bpm, est.confidence)
+    compas_dsp::analysis::estimate_beatgrid(&mono, buffer.source_rate)
 }
 
 #[tauri::command]
