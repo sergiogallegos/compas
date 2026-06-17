@@ -1,276 +1,177 @@
-import { useCallback, useEffect, useState } from "react";
-import type { UnlistenFn } from "@tauri-apps/api/event";
-import {
-  deckPause,
-  deckPlay,
-  deckSeek,
-  deckUnload,
-  inTauri,
-  onDeckError,
-  onDeckLoaded,
-  onDeckPosition,
-  pickAudioFile,
-  loadTrack,
-  setDeckEq,
-  setDeckFilter,
-  setDeckGain,
-  setDeckTempo,
-  type DeckLoaded,
-  type FilterMode,
-} from "../lib/ipc";
-import { Waveform } from "./Waveform";
+import type { DeckController } from "../hooks/useDeck";
+import { Icon } from "./icons";
 
-const TEMPO_MIN = 0.92;
-const TEMPO_MAX = 1.08;
-const NUDGE = 1.03;
+const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 
-function formatTime(frame: number, rate: number): string {
+function fmt(frame: number, rate: number): string {
   if (rate <= 0) return "0:00";
-  const secs = Math.max(0, frame / rate);
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  const s = Math.max(0, frame / rate);
+  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, "0")}`;
 }
 
-/** Map a bipolar filter knob (-1..1) to engine params: center = off, left = LPF
- *  sweeping down, right = HPF sweeping up. */
-function filterParams(x: number): { mode: FilterMode; cutoff: number; resonance: number } {
-  if (Math.abs(x) < 0.02) return { mode: "off", cutoff: 1000, resonance: 0.9 };
-  if (x < 0) return { mode: "lowpass", cutoff: 20000 * Math.pow(200 / 20000, -x), resonance: 0.9 + -x };
-  return { mode: "highpass", cutoff: 20 * Math.pow(4000 / 20, x), resonance: 0.9 + x };
-}
-
-export function Deck({ deck, side }: { deck: number; side: "A" | "B" }) {
-  const [meta, setMeta] = useState<DeckLoaded | null>(null);
-  const [frame, setFrame] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [tempo, setTempo] = useState(1);
-  const [eq, setEq] = useState({ low: 0, mid: 0, high: 0 });
-  const [filter, setFilter] = useState(0);
-  const [gain, setGain] = useState(1);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!inTauri()) return;
-    const unlistens: UnlistenFn[] = [];
-    let active = true;
-    const track = (p: Promise<UnlistenFn>) =>
-      p.then((u) => (active ? unlistens.push(u) : u()));
-
-    track(
-      onDeckLoaded((e) => {
-        if (e.deck !== deck) return;
-        setMeta(e);
-        setFrame(0);
-        setPlaying(false);
-        setTempo(1);
-        setError(null);
-      }),
-    );
-    track(
-      onDeckPosition((e) => {
-        if (e.deck !== deck) return;
-        setFrame(e.frame);
-        setPlaying(e.playing);
-      }),
-    );
-    track(
-      onDeckError((e) => {
-        if (e.deck === deck) setError(e.message);
-      }),
-    );
-
-    return () => {
-      active = false;
-      unlistens.forEach((u) => u());
-    };
-  }, [deck]);
-
-  const handleLoad = useCallback(async () => {
-    try {
-      const path = await pickAudioFile();
-      if (path) await loadTrack(deck, path);
-    } catch (e) {
-      setError(String(e));
-    }
-  }, [deck]);
-
-  const applyTempo = useCallback(
-    (ratio: number) => {
-      setTempo(ratio);
-      setDeckTempo(deck, ratio).catch(() => {});
-    },
-    [deck],
-  );
-
-  const applyEq = useCallback(
-    (next: { low: number; mid: number; high: number }) => {
-      setEq(next);
-      setDeckEq(deck, next.low, next.mid, next.high).catch(() => {});
-    },
-    [deck],
-  );
-
-  const applyFilter = useCallback(
-    (x: number) => {
-      setFilter(x);
-      const p = filterParams(x);
-      setDeckFilter(deck, p.mode, p.cutoff, p.resonance).catch(() => {});
-    },
-    [deck],
-  );
-
-  const frames = meta?.frames ?? 0;
+export function Deck({ ctrl, color }: { ctrl: DeckController; color: string }) {
+  const { state, actions } = ctrl;
+  const { meta, frame, playing, tempo, dsp } = state;
   const rate = meta?.source_rate ?? 1;
-  const positionFrac = frames > 0 ? frame / frames : 0;
-  const effectiveBpm = meta ? meta.bpm * tempo : 0;
+  const frames = meta?.frames ?? 0;
+  const frac = frames > 0 ? Math.min(1, frame / frames) : 0;
+  const effBpm = meta ? meta.bpm * tempo : 0;
+  const spin = (((frame / rate) * 200) % 360 + 360) % 360;
+
+  // tempo fader works in percent for display; ratio for the engine.
+  const pct = (tempo - 1) * 100;
 
   return (
-    <section className="deck">
-      <header className="deck-head">
-        <span className="deck-tag">Deck {side}</span>
-        <button className="btn" onClick={handleLoad}>
-          Load…
-        </button>
-        {meta && (
-          <button
-            className="btn"
-            onClick={() => {
-              deckUnload(deck).catch(() => {});
-              setMeta(null);
-              setPlaying(false);
-            }}
-          >
-            Eject
-          </button>
-        )}
-      </header>
-
-      <div className="deck-meta">
-        {meta ? (
-          <>
-            <div className="title">{meta.title}</div>
-            <div className="artist">{meta.artist}</div>
-          </>
-        ) : (
-          <div className="artist">{error ?? "No track loaded"}</div>
-        )}
-      </div>
-
-      <Waveform
-        peaks={meta?.peaks ?? []}
-        positionFrac={positionFrac}
-        onSeek={(f) => deckSeek(deck, f * frames).catch(() => {})}
-      />
-
-      <div className="deck-readout">
-        <span>{formatTime(frame, rate)}</span>
-        <span>/ {meta ? formatTime(frames, rate) : "0:00"}</span>
-        <span className="bpm">
-          {meta && meta.bpm > 0 ? (
-            <>
-              {effectiveBpm.toFixed(1)} BPM
-              <small>
-                {" "}
-                (det. {meta.bpm.toFixed(1)}, conf {(meta.bpm_confidence * 100).toFixed(0)}%)
-              </small>
-            </>
-          ) : (
-            "— BPM"
-          )}
-        </span>
-      </div>
-
-      <div className="transport">
-        <button className="btn" onClick={() => deckSeek(deck, 0).catch(() => {})}>
-          ⟲ cue
-        </button>
+    <section className="deck" style={{ borderTopColor: color }}>
+      {/* header */}
+      <div className="deck-header">
         <button
-          className="btn play"
-          onClick={() =>
-            (playing ? deckPause(deck) : deckPlay(deck)).catch(() => {})
-          }
-          disabled={!meta}
+          className="art"
+          style={{ background: `linear-gradient(135deg, ${color}, var(--violet))` }}
+          onClick={actions.load}
+          title={meta ? "Load a different track" : "Load a track"}
         >
-          {playing ? "⏸ pause" : "▶ play"}
+          <Icon name="music" size={20} />
         </button>
+        <div className="deck-titles">
+          <div className="deck-title display">{meta ? meta.title : "—"}</div>
+          <div className="deck-sub">{meta ? meta.artist : "No track"}</div>
+        </div>
+        <div className="deck-header-actions">
+          {meta ? (
+            <button className="deck-load" onClick={actions.eject}>Eject</button>
+          ) : (
+            <button className="deck-load deck-load--primary" onClick={actions.load} style={{ borderColor: `${color}66`, color }}>
+              Load…
+            </button>
+          )}
+          <span className="src-badge" style={dsp ? { color: "var(--status-ok)", borderColor: "#3ddc9755", background: "#3ddc971a" } : { color: "var(--stream)", borderColor: "#28e0ff55", background: "#28e0ff1a" }}>
+            {dsp ? "LOCAL · DSP" : "CONTROL-ONLY"}
+          </span>
+        </div>
       </div>
 
-      <div className="deck-grid">
-        <label className="ctrl">
-          Tempo {((tempo - 1) * 100).toFixed(1)}%
-          <input
-            type="range"
-            min={TEMPO_MIN}
-            max={TEMPO_MAX}
-            step={0.0005}
-            value={tempo}
-            onChange={(e) => applyTempo(Number(e.target.value))}
-          />
-          <span className="nudge-row">
-            <button
-              className="btn small"
-              onPointerDown={() => setDeckTempo(deck, tempo / NUDGE).catch(() => {})}
-              onPointerUp={() => setDeckTempo(deck, tempo).catch(() => {})}
-              onPointerLeave={() => setDeckTempo(deck, tempo).catch(() => {})}
-            >
-              −
-            </button>
-            <button
-              className="btn small"
-              onPointerDown={() => setDeckTempo(deck, tempo * NUDGE).catch(() => {})}
-              onPointerUp={() => setDeckTempo(deck, tempo).catch(() => {})}
-              onPointerLeave={() => setDeckTempo(deck, tempo).catch(() => {})}
-            >
-              +
-            </button>
+      {/* readout tiles */}
+      <div className="readouts">
+        <div className="tile">
+          <span className="overline">BPM</span>
+          <span className="mono tile-val">{meta && effBpm > 0 ? effBpm.toFixed(1) : "—"}</span>
+        </div>
+        <div className="tile">
+          <span className="overline">KEY</span>
+          <span className="mono tile-val" style={{ color }}>—</span>
+        </div>
+        <div className="tile">
+          <span className="overline">TIME</span>
+          <span className="mono tile-val small">
+            {fmt(frame, rate)} <span className="muted">/ -{fmt(frames - frame, rate)}</span>
           </span>
-        </label>
+        </div>
+      </div>
 
-        <div className="eq">
-          {(["high", "mid", "low"] as const).map((band) => (
-            <label key={band} className="ctrl">
-              {band.toUpperCase()}
-              <input
-                type="range"
-                min={-26}
-                max={6}
-                step={0.5}
-                value={eq[band]}
-                onChange={(e) => applyEq({ ...eq, [band]: Number(e.target.value) })}
-              />
-            </label>
-          ))}
+      <div className="deck-body">
+        {/* platter */}
+        <div className="platter-col">
+          <div className="platter">
+            <div
+              className="platter-ring"
+              style={{ background: `conic-gradient(${color} ${frac * 360}deg, rgba(255,255,255,.07) 0)` }}
+            />
+            <div className="platter-marker" style={{ transform: `rotate(${spin}deg)`, background: color, boxShadow: `0 0 8px ${color}` }} />
+            <div className="platter-center">
+              <span className="mono platter-bpm">{meta && effBpm > 0 ? effBpm.toFixed(1) : "—"}</span>
+              <span className="overline" style={{ color: playing ? color : "var(--text-tertiary)" }}>
+                {playing ? "PLAYING" : "CUED"}
+              </span>
+            </div>
+          </div>
+          <div className="platter-btns">
+            <button className="btn-cue" onClick={actions.cue} disabled={!meta}>CUE</button>
+            <button
+              className="btn-play"
+              onClick={actions.togglePlay}
+              disabled={!meta}
+              style={{ background: `linear-gradient(180deg, ${color}, ${color}cc)`, boxShadow: playing ? `0 0 16px ${color}73` : "none" }}
+            >
+              <Icon name={playing ? "pause" : "play"} size={16} />
+            </button>
+          </div>
         </div>
 
-        <label className="ctrl">
-          Filter {filter < -0.02 ? "LPF" : filter > 0.02 ? "HPF" : "off"}
-          <input
-            type="range"
-            min={-1}
-            max={1}
-            step={0.01}
-            value={filter}
-            onChange={(e) => applyFilter(Number(e.target.value))}
-          />
-        </label>
+        {/* controls */}
+        <div className="controls-col">
+          <div className="pads">
+            {Array.from({ length: 8 }, (_, i) => {
+              const set = state.hotCues[i] != null;
+              const navOnly = !dsp && i >= 2; // streaming: only nav cues 1-2
+              const c = CUE_COLORS[i % CUE_COLORS.length];
+              return (
+                <button
+                  key={i}
+                  className={`pad ${set ? "pad--set" : ""}`}
+                  disabled={navOnly || !meta}
+                  onClick={() => actions.setHotCue(i)}
+                  onContextMenu={(e) => { e.preventDefault(); actions.clearHotCue(i); }}
+                  style={set ? { color: c, borderColor: `${c}80`, background: `${c}26` } : undefined}
+                  title={set ? "Jump (right-click clears)" : "Set hot cue"}
+                >
+                  {i + 1}
+                </button>
+              );
+            })}
+          </div>
 
-        <label className="ctrl">
-          Gain
+          {dsp ? (
+            <>
+              <div className="chip-row">
+                <button className="chip" disabled title="Loops: Phase 4">IN</button>
+                <button className="chip" disabled title="Loops: Phase 4">OUT</button>
+                <button className="chip chip--on" disabled title="Loops: Phase 4">4</button>
+                <button className="chip" disabled title="Loops: Phase 4">8</button>
+                <button className="chip" disabled title="Loops: Phase 4">16</button>
+              </div>
+              <div className="chip-row">
+                <button className="chip" disabled title="FX rack: Phase 5">ECHO</button>
+                <button className="chip" disabled title="FX rack: Phase 5">REVERB</button>
+                <button className="chip" disabled title="FX rack: Phase 5">FILTER</button>
+              </div>
+              <p className="soon-note">Loops &amp; FX land in P4–P5.</p>
+            </>
+          ) : (
+            <div className="stream-note">
+              Loops &amp; FX disabled on stream decks — the service returns playback control, not
+              decoded audio; compas won't fake DSP it can't perform.
+            </div>
+          )}
+        </div>
+
+        {/* tempo fader */}
+        <div className="tempo-col">
+          <span className="overline">TEMPO</span>
           <input
+            className="tempo-fader"
             type="range"
-            min={0}
-            max={1.5}
-            step={0.01}
-            value={gain}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              setGain(v);
-              setDeckGain(deck, v).catch(() => {});
-            }}
+            min={-8}
+            max={8}
+            step={0.05}
+            value={dsp ? pct : 0}
+            disabled={!dsp || !meta}
+            onChange={(e) => actions.setTempo(1 + Number(e.target.value) / 100)}
+            style={{ accentColor: color }}
           />
-        </label>
+          <span className="mono tempo-val" style={{ opacity: dsp ? 1 : 0.45 }}>
+            {dsp ? `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}` : "0.0"}
+            <small>%</small>
+          </span>
+          {dsp && (
+            <div className="nudge">
+              <button onPointerDown={() => actions.nudge(-1, true)} onPointerUp={() => actions.nudge(-1, false)} onPointerLeave={() => actions.nudge(-1, false)}>−</button>
+              <button onPointerDown={() => actions.nudge(1, true)} onPointerUp={() => actions.nudge(1, false)} onPointerLeave={() => actions.nudge(1, false)}>+</button>
+            </div>
+          )}
+        </div>
       </div>
+      {/* EQ/gain knobs live in the mixer channel strip per the design. */}
     </section>
   );
 }

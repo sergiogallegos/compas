@@ -27,6 +27,12 @@ export interface DeckPosition {
   deck: number;
   frame: number;
   playing: boolean;
+  level: number;
+}
+
+export interface MasterMeter {
+  l: number;
+  r: number;
 }
 
 export interface DeckError {
@@ -80,3 +86,5 @@ export const onDeckPosition = (cb: (e: DeckPosition) => void): Promise<UnlistenF
   listen<DeckPosition>("deck:position", (e) => cb(e.payload));
 export const onDeckError = (cb: (e: DeckError) => void): Promise<UnlistenFn> =>
   listen<DeckError>("deck:error", (e) => cb(e.payload));
+export const onMasterMeter = (cb: (e: MasterMeter) => void): Promise<UnlistenFn> =>
+  listen<MasterMeter>("master:level", (e) => cb(e.payload));

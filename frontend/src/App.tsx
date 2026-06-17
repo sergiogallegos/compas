@@ -1,89 +1,75 @@
 import { useEffect, useState } from "react";
+import { TitleBar } from "./components/TitleBar";
+import { NavRail } from "./components/NavRail";
+import { StatusBar } from "./components/StatusBar";
+import { WaveformZone } from "./components/WaveformZone";
 import { Deck } from "./components/Deck";
-import { engineStatus, inTauri, setCrossfader, setMasterGain } from "./lib/ipc";
+import { Mixer } from "./components/Mixer";
+import { Library, type LibRow } from "./components/Library";
+import { useDeck } from "./hooks/useDeck";
+import { engineStatus, inTauri, onMasterMeter, setCrossfader, type MasterMeter } from "./lib/ipc";
 
-/**
- * Phase 1 shell: two local-file decks + a center mixer (crossfader + master).
- * Streaming decks (Phase 2) will appear alongside these and disable the DSP they can't do.
- */
+const MAGENTA = "var(--accent)";
+const CYAN = "var(--stream)";
+
 export function App() {
+  // Both decks are local/full-DSP for now (the engine supports two local decks). The
+  // `dsp` flag drives the capability-locked treatment; flip a deck to dsp:false in
+  // Phase 2 to render it as a streaming control-only deck.
+  const deckA = useDeck(0, true);
+  const deckB = useDeck(1, true);
+
   const [sampleRate, setSampleRate] = useState<number | null>(null);
-  const [browser, setBrowser] = useState(false);
+  const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [xfade, setXfade] = useState(0.5);
-  const [master, setMaster] = useState(0.85);
 
   useEffect(() => {
-    if (!inTauri()) {
-      setBrowser(true);
-      return;
-    }
-    engineStatus()
-      .then((s) => setSampleRate(s.sample_rate))
-      .catch(() => setSampleRate(0));
+    if (!inTauri()) return;
+    engineStatus().then((s) => setSampleRate(s.sample_rate)).catch(() => setSampleRate(0));
+    const un = onMasterMeter(setMaster);
+    return () => {
+      un.then((u) => u());
+    };
   }, []);
+
+  const masterBpm = deckA.state.meta ? deckA.state.meta.bpm * deckA.state.tempo : null;
+
+  const libRows: LibRow[] = [
+    deckA.state.meta && { letter: "A", color: MAGENTA, meta: deckA.state.meta },
+    deckB.state.meta && { letter: "B", color: CYAN, meta: deckB.state.meta },
+  ].filter(Boolean) as LibRow[];
 
   return (
     <div className="app">
-      <header className="topbar">
-        <h1>compas</h1>
-        <span className="phase">
-          {browser
-            ? "browser dev — native engine unavailable"
-            : sampleRate
-              ? `engine @ ${sampleRate} Hz · P1 local dual-deck`
-              : sampleRate === 0
-                ? "no audio device — UI only"
-                : "connecting…"}
-        </span>
-      </header>
-
-      <main className="decks">
-        <Deck deck={0} side="A" />
-
-        <section className="mixer">
-          <label className="ctrl vertical">
-            Master
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={master}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                setMaster(v);
-                if (inTauri()) setMasterGain(v).catch(() => {});
-              }}
-            />
-          </label>
-          <label className="ctrl">
-            Crossfader
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={xfade}
-              onChange={(e) => {
-                const v = Number(e.target.value);
+      <TitleBar masterBpm={masterBpm} master={master} />
+      <div className="body">
+        <NavRail />
+        <div className="content">
+          <WaveformZone
+            lanes={[
+              { state: deckA.state, letter: "A", color: MAGENTA, onSeek: deckA.actions.seekFrac },
+              { state: deckB.state, letter: "B", color: CYAN, onSeek: deckB.actions.seekFrac },
+            ]}
+          />
+          <div className="deck-row">
+            <Deck ctrl={deckA} color={MAGENTA} />
+            <Mixer
+              channels={[
+                { ctrl: deckA, letter: "A", color: MAGENTA },
+                { ctrl: deckB, letter: "B", color: CYAN },
+              ]}
+              crossfader={xfade}
+              onCrossfader={(v) => {
                 setXfade(v);
                 if (inTauri()) setCrossfader(v).catch(() => {});
               }}
             />
-            <span className="xf-labels">
-              <span>A</span>
-              <span>B</span>
-            </span>
-          </label>
-        </section>
-
-        <Deck deck={1} side="B" />
-      </main>
-
-      <footer className="status">
-        Load two tracks, match BPMs with the tempo faders (nudge ± to align phase), and ride the
-        crossfader. Varispeed (vinyl-style) is the default; key-lock arrives later in P1.
-      </footer>
+            <Deck ctrl={deckB} color={CYAN} />
+          </div>
+          <Library rows={libRows} />
+        </div>
+      </div>
+      <StatusBar sampleRate={sampleRate} />
     </div>
   );
 }

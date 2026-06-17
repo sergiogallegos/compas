@@ -1,0 +1,110 @@
+/* compas design tokens — derived from the design handoff (docs/design). The single
+   interactive/brand color is magenta; cyan marks all streaming/control-only affordances. */
+:root {
+  /* surfaces & text — matte charcoal (lifted off pure black for friendlier contrast) */
+  --bg-window: #16161d;
+  --bg-rail: #1b1b23;
+  --surface-1-top: #24242f;
+  --surface-1-bot: #1d1d26;
+  --surface-sunken: #15151c;
+  --surface-control: #2a2a35;
+  --border-hairline: rgba(255, 255, 255, 0.09);
+  --border-hairline-strong: rgba(255, 255, 255, 0.14);
+  --text-primary: #ededf2;
+  --text-secondary: #9a9aa5;
+  --text-tertiary: #6b6b76;
+  --text-disabled: #45454f;
+
+  /* brand & semantic */
+  --accent: #ff2e7e;
+  --accent-glow: #ff5c9b;
+  --accent-deep: #e01464;
+  --stream: #28e0ff;
+  --stream-dim: #1d8fa8;
+  --violet: #7a1fff;
+  --status-ok: #3ddc97;
+  --status-warn: #ffb020;
+  --status-alarm: #ff3b5c;
+  --status-alarm-2: #ff6b84;
+
+  /* type */
+  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-ui: "Hanken Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* radius */
+  --r-pad: 6px;
+  --r-tile: 8px;
+  --r-panel: 12px;
+  --r-window: 14px;
+  --r-pill: 7px;
+
+  /* elevation */
+  --shadow-panel: 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-window: 0 40px 120px rgba(0, 0, 0, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg-window);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* shared atoms */
+.overline {
+  font-family: var(--font-ui);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 9px;
+  color: var(--text-tertiary);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+button {
+  font-family: var(--font-ui);
+  color: inherit;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+@keyframes compasPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
