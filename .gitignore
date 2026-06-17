@@ -16,6 +16,9 @@ frontend/node_modules/
 .env
 .env.local
 
+# Generated test audio (regenerate via scripts/make-test-audio.mjs)
+/samples
+
 # OS / editor
 .DS_Store
 Thumbs.db
