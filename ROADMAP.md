@@ -24,31 +24,39 @@ Status legend: ✅ done · 🔨 in progress · ⬜ not started
 transport, mix through a crossfader + per-deck gain + 3-band EQ, render scrubbable waveforms,
 detect BPM with a beatgrid, and demonstrate **manual beatmatch end to end**.
 
+> **Playback model (decided during P1):** decks hold the **fully-decoded track in RAM**
+> (`Arc<DeckBuffer>`) and the audio thread reads with a **cubic-Hermite fractional play-head**
+> advancing by `(source_rate/device_rate) × tempo` per output sample. This replaced the
+> streaming PCM-ring model — it makes seek/varispeed/scratch/loops instant and is the standard
+> pro approach for local DJ tracks.
+
 Concrete tasks:
 
-1. **Decode→ring pipeline.** Decoder worker per deck: `LocalFileSource::next_chunk` → `rubato`
-   resample to device rate → push to PCM ring with half-full throttling. Bounded latency; clean
-   EOF; pause/seek drain semantics.
-2. **Transport + seek.** `deck_transport(play/pause/cue)` and `seek(deck, ms)` IPC commands;
-   sample-accurate position tracking surfaced to the UI via a 30–60 Hz event.
-3. **Mixer wiring (real-time path).** Hook the existing `Mixer` (gain, 3-band EQ, equal-power
-   crossfader, master) to live deck rings; fix the **PCM-ring reclaim** RT hazard
-   (`TODO(P1)` in `mixer.rs`) with a return ring.
-4. **Filter knob.** Add the per-deck HPF/LPF DJ filter (coeffs already in `compas-dsp::rt`).
-5. **Waveform rendering (WebGL).** Compute multi-resolution peak/RMS data on load (Rust),
-   stream to the frontend; render overview + zoomed scrubbable waveform on a **WebGL canvas**
-   (not DOM). Playhead + scrub interaction.
-6. **BPM + beatgrid.** Implement tempo estimation in `compas-dsp::analysis` (spectral-flux onset
-   → autocorrelation/comb-filter → octave correction), produce a beatgrid (downbeat + phase);
-   manual tempo nudge and grid-anchor editing.
-7. **Manual beatmatch.** Varispeed (pitch+tempo together via `rubato`) on each deck so the user
-   can match BPMs and nudge phase; verify against a metronome/click and two real tracks.
-8. **Engine telemetry.** `engine_status` (sample rate, buffer size, per-deck underruns, position)
-   for diagnostics and the latency story.
-9. **Tests.** Unit tests for tempo estimation on synthetic click tracks; ring-buffer
-   underrun/overrun behavior; EQ/filter frequency-response sanity.
+1. ✅ **Decode→buffer pipeline.** `compas_sources::decode_full` decodes to an in-RAM stereo
+   buffer on a worker thread; installed on a deck via `AudioCommand::LoadDeck`. (rubato resampling
+   is deferred — the play-head's interpolation handles device-rate mismatch; high-quality offline
+   resample is a later quality pass.)
+2. ✅ **Transport + seek.** `deck_play`/`deck_pause`/`deck_seek` IPC commands; lock-free play-head
+   telemetry published per audio block and emitted to the UI at 30 Hz (`deck:position`).
+3. ✅ **Mixer wiring (real-time path).** Decks → 3-band EQ → filter → gain → equal-power crossfader
+   → master, all live. **PCM-ring reclaim RT hazard fixed** via a reclaim ring (retired
+   `Arc<DeckBuffer>`s are dropped on the control thread).
+4. ✅ **Filter knob.** Per-deck bipolar HPF/LPF DJ filter (`set_deck_filter`).
+5. 🔨 **Waveform rendering.** Peaks computed in Rust on load (`compute_peaks`) and drawn on a
+   **WebGL canvas** (Canvas-2D fallback) with playhead + click-to-seek. *Remaining: zoom + a
+   scrolling/beat-aligned detail view.*
+6. 🔨 **BPM + beatgrid.** ✅ Tempo estimation (spectral-flux onset → autocorrelation → parabolic
+   refine → octave fold), tested on a synthetic click track. *Remaining: downbeat/phase → an
+   actual beatgrid overlay, and manual grid-anchor editing.*
+7. 🔨 **Manual beatmatch.** ✅ Varispeed (tempo+pitch coupled) per deck via the play-head rate, with
+   a tempo fader + momentary nudge in the UI. *Remaining: end-to-end verification against a click
+   and two real tracks; key-lock toggle (signalsmith-stretch).*
+8. ✅ **Engine telemetry.** `engine_status` (sample rate, per-deck loaded/playing/position).
+   *Remaining: buffer size + underrun counters surfaced to the UI.*
+9. 🔨 **Tests.** ✅ Tempo on synthetic click; ✅ interpolation/crossfade/EQ/peaks units.
+   *Remaining: integration test that decodes a fixture file and renders N frames.*
 
-Out of scope for P1: time-stretch with key-lock, sync engine, cue/loops, streaming, FX, MIDI.
+Out of scope for P1: key-lock time-stretch, sync engine, cue/loops, streaming, FX, MIDI.
 
 ## Phase 2 — Streaming integration ⬜
 
