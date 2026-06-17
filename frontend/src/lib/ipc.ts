@@ -62,7 +62,16 @@ export async function pickAudioFile(): Promise<string | null> {
   const selected = await open({
     multiple: false,
     directory: false,
-    filters: [{ name: "Audio", extensions: ["mp3", "flac", "wav", "ogg", "m4a", "aac", "aiff"] }],
+    filters: [
+      {
+        name: "Audio",
+        extensions: [
+          "mp3", "mpeg", "mpga", "mp2", "flac", "wav", "wave", "ogg", "oga", "opus",
+          "m4a", "mp4", "aac", "adts", "aif", "aiff", "aifc",
+        ],
+      },
+      { name: "All Files", extensions: ["*"] },
+    ],
   });
   return typeof selected === "string" ? selected : null;
 }
