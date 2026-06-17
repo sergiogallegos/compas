@@ -24,12 +24,12 @@ export function TitleBar({
         <button className="light" style={{ background: "#febc2e" }} title="Minimize" onClick={() => win()?.minimize()} />
         <button className="light" style={{ background: "#28c840" }} title="Maximize" onClick={() => win()?.toggleMaximize()} />
       </div>
-      <div className="brand">
+      <div className="brand" data-tauri-drag-region>
         <Logo size={22} />
         <span className="brand-word display">compas</span>
       </div>
 
-      <div className="master-cluster">
+      <div className="master-cluster" data-tauri-drag-region>
         <div className="master-pill">
           <div className="master-bpm">
             <span className="overline">MASTER</span>
