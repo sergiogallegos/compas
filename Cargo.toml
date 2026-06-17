@@ -1,0 +1,59 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/compas-core",
+    "crates/compas-dsp",
+    "crates/compas-audio",
+    "crates/compas-sources",
+    "src-tauri",
+]
+# `cargo check` / `cargo test` operate on the pure-Rust engine crates by default.
+# The Tauri app crate (`src-tauri`) is built explicitly via the Tauri CLI / `cargo build -p compas`,
+# because it requires WebView2 (Windows) / WebKitGTK (Linux) system libraries and a built frontend.
+default-members = [
+    "crates/compas-core",
+    "crates/compas-dsp",
+    "crates/compas-audio",
+    "crates/compas-sources",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sergiogallegos/compas"
+authors = ["Sergio Gallegos"]
+
+[workspace.dependencies]
+# Internal crates
+compas-core = { path = "crates/compas-core" }
+compas-dsp = { path = "crates/compas-dsp" }
+compas-audio = { path = "crates/compas-audio" }
+compas-sources = { path = "crates/compas-sources" }
+
+# Shared third-party deps (single source of truth for versions)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+
+# Audio I/O + DSP
+cpal = "0.15"          # MIT/Apache-2.0 — cross-platform audio I/O (WASAPI / CoreAudio / ALSA)
+rtrb = "0.3"           # MIT/Apache-2.0 — real-time-safe lock-free SPSC ring buffer
+rubato = "0.16"        # MIT — asynchronous & synchronous resampling
+rustfft = "6"          # MIT/Apache-2.0 — FFT for offline analysis (BPM / key)
+
+# Decoding (pure Rust, MPL-2.0 — permissive, file-level copyleft only)
+symphonia = { version = "0.5", default-features = false }
+
+# Release profile: optimize the audio/DSP path aggressively.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+# Even in dev builds, optimize dependencies so the audio thread can keep up while debugging app code.
+[profile.dev.package."*"]
+opt-level = 2
