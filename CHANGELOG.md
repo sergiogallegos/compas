@@ -17,6 +17,10 @@ All notable changes to compas are documented here. Format follows
 - **Jog-wheel scratch:** the platter is a draggable, spinning disc — dragging drives the
   audio-thread read-rate from angular velocity (forward + reverse scrub, hold), independent of
   transport. Engine `SetScratch` command + `deck_scratch` IPC; the disc tracks the hand 1:1.
+- **FX rack — echo/delay:** RT-safe stereo `Delay` (pre-allocated ring buffer, fractional
+  read with one-pole time-glide for tape-style pitch bend, feedback + wet/dry). Per-deck insert
+  (post-EQ) via `SetDeckEcho` / `set_deck_echo`; UI is a beat-synced toggle (¼/½/1/2 beats) with
+  a single DEPTH knob. Criterion bench added.
 - **Local library:** add files (persisted), search, load to deck A/B (double-click / buttons),
   with load-progress feedback.
 - **Performance UI:** dual decks, center mixer, scrolling zoom waveforms with beat grid, VU

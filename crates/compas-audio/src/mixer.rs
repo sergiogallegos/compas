@@ -4,12 +4,16 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use compas_core::DeckBuffer;
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, GainSmoother, ThreeBandEq};
+use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, ThreeBandEq};
 use rtrb::Producer;
 
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
+
+/// Max echo time the pre-allocated delay line can hold (2 s = 1 beat at 30 BPM / 2 beats
+/// at 60 BPM — well past any musical echo).
+const MAX_DELAY_SECS: f32 = 2.0;
 
 /// Per-deck DJ filter mode (the single HPF/LPF "filter knob").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +46,15 @@ pub enum AudioCommand {
         mode: FilterMode,
         cutoff_hz: f32,
         resonance: f32,
+    },
+    /// Configure the per-deck echo/delay insert. Engaging it (false→true) clears the
+    /// delay line so audio from a previous on-period doesn't burst back.
+    SetDeckEcho {
+        deck: usize,
+        active: bool,
+        time_sec: f32,
+        feedback: f32,
+        mix: f32,
     },
     SetDeckPlaying {
         deck: usize,
@@ -176,6 +189,10 @@ struct DeckPlayer {
     filter_l: Biquad,
     filter_r: Biquad,
     filter_active: bool,
+    /// Echo/delay insert (post-EQ). The delay line is pre-allocated; toggling only flips
+    /// `echo_active` and clears the line on engage.
+    echo: Delay,
+    echo_active: bool,
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
@@ -198,6 +215,8 @@ impl DeckPlayer {
             filter_l: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_active: false,
+            echo: Delay::new(device_rate, MAX_DELAY_SECS),
+            echo_active: false,
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -253,6 +272,11 @@ impl DeckPlayer {
         }
         l = self.eq_l.process(l);
         r = self.eq_r.process(r);
+        if self.echo_active {
+            let (el, er) = self.echo.process(l, r);
+            l = el;
+            r = er;
+        }
         (l * g, r * g)
     }
 
@@ -383,6 +407,23 @@ impl Mixer {
                         d.set_filter(mode, cutoff_hz, resonance);
                     }
                 }
+                AudioCommand::SetDeckEcho {
+                    deck,
+                    active,
+                    time_sec,
+                    feedback,
+                    mix,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.echo.set_time_sec(time_sec);
+                        d.echo.set_feedback(feedback);
+                        d.echo.set_mix(mix);
+                        if active && !d.echo_active {
+                            d.echo.clear(); // fresh line on engage
+                        }
+                        d.echo_active = active;
+                    }
+                }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = playing;
@@ -406,6 +447,8 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
+                        d.echo_active = false;
+                        d.echo.clear();
                         d.loop_active = false;
                         let old = d.buffer.replace(buffer);
                         self.retire(old);
@@ -443,6 +486,8 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
+                        d.echo_active = false;
+                        d.echo.clear();
                         d.playhead = 0.0;
                         d.loop_active = false;
                         let old = d.buffer.take();

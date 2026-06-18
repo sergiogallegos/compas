@@ -47,6 +47,13 @@ enum EngineMsg {
         cutoff: f32,
         resonance: f32,
     },
+    DeckEcho {
+        deck: usize,
+        active: bool,
+        time_sec: f32,
+        feedback: f32,
+        mix: f32,
+    },
     DeckPlaying {
         deck: usize,
         playing: bool,
@@ -152,6 +159,19 @@ fn spawn_engine() -> EngineHandle {
                         mode,
                         cutoff_hz: cutoff,
                         resonance,
+                    },
+                    EngineMsg::DeckEcho {
+                        deck,
+                        active,
+                        time_sec,
+                        feedback,
+                        mix,
+                    } => AudioCommand::SetDeckEcho {
+                        deck,
+                        active,
+                        time_sec,
+                        feedback,
+                        mix,
                     },
                     EngineMsg::DeckPlaying { deck, playing } => {
                         AudioCommand::SetDeckPlaying { deck, playing }
@@ -494,6 +514,26 @@ fn set_deck_filter(
     })
 }
 
+/// Configure the per-deck echo/delay insert. The UI computes `time_sec` (often
+/// beat-synced from the analyzed BPM) and the wet/feedback amounts.
+#[tauri::command]
+fn set_deck_echo(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+    time_sec: f32,
+    feedback: f32,
+    mix: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckEcho {
+        deck,
+        active,
+        time_sec,
+        feedback,
+        mix,
+    })
+}
+
 #[tauri::command]
 fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetCrossfader(value))
@@ -563,6 +603,7 @@ pub fn run() {
             set_deck_gain,
             set_deck_eq,
             set_deck_filter,
+            set_deck_echo,
             set_crossfader,
             set_master_gain,
             spotify::spotify_listen

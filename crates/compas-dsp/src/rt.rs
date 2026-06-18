@@ -271,6 +271,107 @@ impl Crossfader {
     }
 }
 
+/// Stereo delay line with feedback — the core of an echo/delay FX.
+///
+/// The ring buffer is allocated **once at construction** (control/setup thread, e.g.
+/// inside the mixer's `new`), never the audio callback. [`Delay::process`] is
+/// allocation-free, branch-bounded, and RT-SAFE. The read position is fractional and the
+/// delay length is one-pole smoothed, so changing the time glides like tape instead of
+/// clicking — the classic echo "pitch bend" when you sweep the time.
+pub struct Delay {
+    left: Vec<f32>,
+    right: Vec<f32>,
+    capacity: usize,
+    write: usize,
+    sample_rate: f32,
+    target_samples: f32,
+    cur_samples: f32,
+    glide_coeff: f32,
+    feedback: f32,
+    mix: f32,
+}
+
+impl Delay {
+    /// Allocate a delay able to hold up to `max_seconds` of stereo audio. Allocation
+    /// happens here (setup), so [`process`](Self::process) stays RT-safe.
+    pub fn new(sample_rate: f32, max_seconds: f32) -> Self {
+        let capacity = ((sample_rate * max_seconds).ceil() as usize).max(16);
+        let glide_coeff = (-1.0 / (0.06 * sample_rate)).exp(); // ~60 ms tape glide
+        let default = sample_rate * 0.375;
+        Delay {
+            left: vec![0.0; capacity],
+            right: vec![0.0; capacity],
+            capacity,
+            write: 0,
+            sample_rate,
+            target_samples: default.min((capacity - 4) as f32),
+            cur_samples: default.min((capacity - 4) as f32),
+            glide_coeff,
+            feedback: 0.4,
+            mix: 0.0,
+        }
+    }
+
+    /// Set the delay time in seconds (control thread). Clamped to the allocated range.
+    /// RT-SAFE.
+    #[inline]
+    pub fn set_time_sec(&mut self, secs: f32) {
+        let max = (self.capacity - 4) as f32;
+        self.target_samples = (secs * self.sample_rate).clamp(4.0, max);
+    }
+
+    /// Feedback amount, 0..~0.95 (higher = more, longer-lasting repeats). RT-SAFE.
+    #[inline]
+    pub fn set_feedback(&mut self, fb: f32) {
+        self.feedback = fb.clamp(0.0, 0.95);
+    }
+
+    /// Wet mix: 0 = dry (transparent), 1 = fully wet. RT-SAFE.
+    #[inline]
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix.clamp(0.0, 1.0);
+    }
+
+    /// Zero the delay line — call when (re)engaging the effect so audio from a previous
+    /// on-period doesn't burst back. A bounded memset; intended for occasional control
+    /// events, not per-sample use.
+    pub fn clear(&mut self) {
+        self.left.iter_mut().for_each(|s| *s = 0.0);
+        self.right.iter_mut().for_each(|s| *s = 0.0);
+        self.cur_samples = self.target_samples;
+        self.write = 0;
+    }
+
+    /// Process one stereo frame, returning the wet/dry mix. RT-SAFE.
+    #[inline]
+    pub fn process(&mut self, in_l: f32, in_r: f32) -> (f32, f32) {
+        // Glide the read distance toward the target for a click-free time change.
+        self.cur_samples =
+            self.target_samples + self.glide_coeff * (self.cur_samples - self.target_samples);
+        let d = self.cur_samples;
+
+        // Fractional read position `d` samples behind the write head.
+        let mut read = self.write as f32 - d;
+        if read < 0.0 {
+            read += self.capacity as f32;
+        }
+        let i0 = (read.floor() as usize) % self.capacity;
+        let frac = read - read.floor();
+        let i1 = if i0 + 1 == self.capacity { 0 } else { i0 + 1 };
+
+        let wet_l = self.left[i0] + (self.left[i1] - self.left[i0]) * frac;
+        let wet_r = self.right[i0] + (self.right[i1] - self.right[i0]) * frac;
+
+        // Feed input + feedback back into the line at the write head.
+        self.left[self.write] = in_l + wet_l * self.feedback;
+        self.right[self.write] = in_r + wet_r * self.feedback;
+        self.write = if self.write + 1 == self.capacity { 0 } else { self.write + 1 };
+
+        let dry = 1.0 - self.mix;
+        (in_l * dry + wet_l * self.mix, in_r * dry + wet_r * self.mix)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +419,55 @@ mod tests {
             last = b.process(x);
         }
         assert!(last.abs() < 0.5, "near-Nyquist not attenuated: {last}");
+    }
+
+    #[test]
+    fn delay_is_transparent_when_dry() {
+        let mut d = Delay::new(48_000.0, 1.0);
+        d.set_mix(0.0);
+        for x in [0.3, -0.7, 0.1, 0.9] {
+            let (l, r) = d.process(x, x);
+            assert!((l - x).abs() < 1e-6 && (r - x).abs() < 1e-6, "not transparent: {l}");
+        }
+    }
+
+    #[test]
+    fn delay_reproduces_impulse_after_delay_time() {
+        let sr = 48_000.0;
+        let mut d = Delay::new(sr, 1.0);
+        d.set_time_sec(480.0 / sr); // exactly 480 samples
+        d.set_feedback(0.0);
+        d.set_mix(1.0);
+        d.clear(); // snap the time-glide to target (and zero the line)
+        d.process(1.0, 1.0); // single impulse
+        let (mut peak, mut peak_idx) = (0.0f32, 0usize);
+        for i in 0..1_000 {
+            let l = d.process(0.0, 0.0).0.abs();
+            if l > peak {
+                peak = l;
+                peak_idx = i;
+            }
+        }
+        assert!(peak > 0.5, "echo not reproduced (peak {peak})");
+        assert!((peak_idx as i32 - 479).abs() < 4, "echo at {peak_idx}, expected ~479");
+    }
+
+    #[test]
+    fn delay_feedback_decays() {
+        let sr = 48_000.0;
+        let mut d = Delay::new(sr, 1.0);
+        d.set_time_sec(240.0 / sr);
+        d.set_feedback(0.5);
+        d.set_mix(1.0);
+        d.clear();
+        d.process(1.0, 1.0);
+        let out: Vec<f32> = (0..600).map(|_| d.process(0.0, 0.0).0.abs()).collect();
+        let first = out[180..300].iter().cloned().fold(0.0f32, f32::max);
+        let second = out[420..540].iter().cloned().fold(0.0f32, f32::max);
+        assert!(first > 0.4, "first echo weak: {first}");
+        assert!(
+            second > 0.1 && second < first,
+            "second echo {second} should be a decayed {first}"
+        );
     }
 }

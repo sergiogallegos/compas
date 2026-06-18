@@ -137,6 +137,8 @@
 .chip--on { color: var(--accent); border-color: rgba(255, 46, 126, 0.45); background: rgba(255, 46, 126, 0.12); }
 .chip:disabled { opacity: 0.5; }
 .soon-note { margin: 2px 0 0; font-size: 9.5px; color: var(--text-tertiary); }
+.fx-detail { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 6px; border-radius: var(--r-pad); background: rgba(255,255,255,.025); border: 1px solid var(--border-hairline); }
+.fx-beats { display: flex; gap: 4px; flex: 1; }
 .stream-note { flex: 1; border: 1px dashed rgba(40, 224, 255, 0.4); border-radius: var(--r-tile); padding: 12px; font-size: 11px; line-height: 1.5; color: var(--stream); background: rgba(40, 224, 255, 0.05); }
 
 .tempo-col { width: 54px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }

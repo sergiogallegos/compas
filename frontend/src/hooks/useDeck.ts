@@ -13,6 +13,7 @@ import {
   onDeckLoading,
   onDeckPosition,
   pickAudioFile,
+  setDeckEcho,
   setDeckEq,
   setDeckFilter,
   setDeckGain,
@@ -39,6 +40,17 @@ export interface Eq {
   low: number;
 }
 
+export interface EchoState {
+  active: boolean;
+  /** Delay time as a fraction/multiple of a beat (¼, ½, 1, 2). */
+  beats: number;
+  /** Single 0..1 "amount" knob driving both feedback and wet mix. */
+  depth: number;
+}
+
+/** Fallback echo time (seconds) for one beat when a track has no beatgrid. */
+const NO_GRID_BEAT_SEC = 0.5;
+
 export interface DeckState {
   meta: DeckLoaded | null;
   frame: number;
@@ -50,6 +62,7 @@ export interface DeckState {
   gain: number;
   hotCues: (number | null)[];
   loop: LoopState;
+  echo: EchoState;
   error: string | null;
   /** True between clicking load and the track being decoded/analyzed. */
   loading: boolean;
@@ -74,11 +87,14 @@ export function useDeck(deck: number, dsp = true) {
   const [gain, setGainState] = useState(1);
   const [hotCues, setHotCues] = useState<(number | null)[]>(Array(8).fill(null));
   const [loop, setLoopState] = useState<LoopState>({ active: false, beats: null, inFrame: 0, outFrame: 0 });
+  const [echo, setEchoState] = useState<EchoState>({ active: false, beats: 0.5, depth: 0.5 });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
   const loopRef = useRef(loop);
   loopRef.current = loop;
+  const echoRef = useRef(echo);
+  echoRef.current = echo;
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -103,6 +119,8 @@ export function useDeck(deck: number, dsp = true) {
         setTempo(1);
         setHotCues(Array(8).fill(null));
         setLoopState({ active: false, beats: null, inFrame: 0, outFrame: 0 });
+        // Engine resets the echo on load; mirror that (keep the user's beats/depth).
+        setEchoState((e) => ({ ...e, active: false }));
         setError(null);
         setLoading(false);
       }),
@@ -132,6 +150,14 @@ export function useDeck(deck: number, dsp = true) {
 
   const actions = useMemo(() => {
     const swallow = () => {};
+    // Translate the UI echo (beat-synced time + single "depth") to engine params.
+    const pushEcho = (e: EchoState) => {
+      const beatSec = (meta?.beat_interval_sec ?? 0) > 0 ? meta!.beat_interval_sec : NO_GRID_BEAT_SEC;
+      const timeSec = beatSec * e.beats;
+      const feedback = 0.15 + e.depth * 0.7; // 0.15..0.85
+      const mix = e.active ? e.depth * 0.5 : 0; // up to half-wet
+      setDeckEcho(deck, e.active, timeSec, feedback, mix).catch(swallow);
+    };
     return {
       load: async () => {
         try {
@@ -220,10 +246,25 @@ export function useDeck(deck: number, dsp = true) {
         setLoopActiveCmd(deck, false).catch(swallow);
         setLoopState((l) => ({ ...l, active: false }));
       },
+      toggleEcho: () => {
+        const next = { ...echoRef.current, active: !echoRef.current.active };
+        setEchoState(next);
+        pushEcho(next);
+      },
+      setEchoBeats: (beats: number) => {
+        const next = { ...echoRef.current, beats };
+        setEchoState(next);
+        if (next.active) pushEcho(next);
+      },
+      setEchoDepth: (depth: number) => {
+        const next = { ...echoRef.current, depth };
+        setEchoState(next);
+        if (next.active) pushEcho(next);
+      },
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, loop, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, loop, echo, error, loading, dsp };
   return { state, actions };
 }
 

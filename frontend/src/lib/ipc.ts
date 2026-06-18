@@ -111,6 +111,14 @@ export const setDeckEq = (deck: number, low: number, mid: number, high: number) 
   invoke("set_deck_eq", { deck, low, mid, high });
 export const setDeckFilter = (deck: number, mode: FilterMode, cutoff: number, resonance: number) =>
   invoke("set_deck_filter", { deck, mode, cutoff, resonance });
+/** Echo/delay insert. `timeSec` is the delay time (UI beat-syncs it); feedback 0..0.95, mix 0..1. */
+export const setDeckEcho = (
+  deck: number,
+  active: boolean,
+  timeSec: number,
+  feedback: number,
+  mix: number,
+) => invoke("set_deck_echo", { deck, active, timeSec, feedback, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 

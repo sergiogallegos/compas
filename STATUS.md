@@ -4,8 +4,9 @@
 > full plan, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-1. **FX rack** — echo/delay first (pre-allocated delay line, RT-safe), then reverb; enable the
-   deck FX row (ECHO/REVERB). Filter already exists.
+1. **FX rack — reverb** (echo/delay done). Add an RT-safe reverb (Schroeder/Freeverb comb+allpass
+   bank) to `compas-dsp`, a `SetDeckReverb` command, and enable the deck **REVERB** chip (mirror
+   the echo UI: toggle + size/mix). The echo insert + `Delay` primitive are the template.
 2. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
    keypair (`npm run tauri signer generate`), put pubkey in `tauri.conf.json`, privkey + password
    as CI secrets, uncomment the signing env in `release.yml`, add a "Check for updates" UI.
@@ -29,6 +30,9 @@
 - **Jog-wheel scratch** — draggable spinning platter drives the audio-thread read-rate from drag
   velocity (forward/reverse scrub + hold), engine `SetScratch`/`deck_scratch`, disc tracks the
   hand 1:1 (DSP/local decks only).
+- **FX rack — echo/delay** — RT-safe `Delay` primitive (pre-allocated ring, fractional read +
+  time-glide, feedback/mix), per-deck post-EQ insert (`SetDeckEcho`/`set_deck_echo`), beat-synced
+  UI (¼/½/1/2 + DEPTH knob). Reverb still pending (see Resume #1).
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.
 - **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
   progress feedback.

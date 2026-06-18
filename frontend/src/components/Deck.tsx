@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import { Fader } from "./Fader";
+import { Knob } from "./Knob";
 import { Icon } from "./icons";
+
+/// Beat-synced echo time choices, with compact labels.
+const ECHO_BEATS: { v: number; label: string }[] = [
+  { v: 0.25, label: "¼" },
+  { v: 0.5, label: "½" },
+  { v: 1, label: "1" },
+  { v: 2, label: "2" },
+];
 
 const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 
@@ -272,11 +281,35 @@ export function Deck({
                 </button>
               </div>
               <div className="chip-row">
-                <button className="chip" disabled title="FX rack: Phase 5">ECHO</button>
-                <button className="chip" disabled title="FX rack: Phase 5">REVERB</button>
-                <button className="chip" disabled title="FX rack: Phase 5">FILTER</button>
+                <button
+                  className={`chip ${state.echo.active ? "chip--on" : ""}`}
+                  onClick={actions.toggleEcho}
+                  disabled={!meta}
+                  title="Echo / delay"
+                >
+                  ECHO
+                </button>
+                <button className="chip" disabled title="Reverb: next up">REVERB</button>
+                <button className="chip" disabled title="The filter is the mixer's HPF/LPF knob">FILTER</button>
               </div>
-              <p className="soon-note">FX rack lands in P5.</p>
+              {state.echo.active && (
+                <div className="fx-detail">
+                  <div className="fx-beats">
+                    {ECHO_BEATS.map((b) => (
+                      <button
+                        key={b.v}
+                        className={`chip ${state.echo.beats === b.v ? "chip--on" : ""}`}
+                        onClick={() => actions.setEchoBeats(b.v)}
+                        title={`${b.label} beat`}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Knob value={state.echo.depth} min={0} max={1} onChange={actions.setEchoDepth} label="DEPTH" color={color} size={34} />
+                </div>
+              )}
+              <p className="soon-note">Reverb is next.</p>
             </>
           ) : (
             <div className="stream-note">
