@@ -1,8 +1,13 @@
+import { useEffect, useRef, useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import { Fader } from "./Fader";
 import { Icon } from "./icons";
 
 const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
+
+/// Degrees of platter rotation per second of audio (≈33⅓ RPM). Matches the play-head
+/// `spin` mapping so a scratch gesture converts cleanly to a read-rate: speed = ω / this.
+const DEG_PER_SEC = 200;
 
 function fmt(frame: number, rate: number): string {
   if (rate <= 0) return "0:00";
@@ -31,6 +36,104 @@ export function Deck({
 
   // tempo fader works in percent for display; ratio for the engine.
   const pct = (tempo - 1) * 100;
+
+  // --- Jog-wheel scratch ---------------------------------------------------------
+  // Dragging the platter streams a read-rate to the engine derived from angular
+  // velocity, and rotates the disc 1:1 with the hand. A rAF loop samples the pointer
+  // so a held-but-still finger decays to a clean "held" (speed 0) instead of coasting.
+  const platterRef = useRef<HTMLDivElement>(null);
+  const [scratching, setScratching] = useState(false);
+  const [dragAngle, setDragAngle] = useState(0);
+  const jog = useRef({
+    active: false,
+    rafId: 0,
+    prevAngle: 0,
+    curAngle: 0,
+    lastTick: 0,
+    smooth: 0,
+    lastSent: 0,
+    angle: 0,
+  });
+
+  const angleOf = (clientX: number, clientY: number): number => {
+    const el = platterRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    return (Math.atan2(clientY - (r.top + r.height / 2), clientX - (r.left + r.width / 2)) * 180) / Math.PI;
+  };
+
+  const tick = (now: number) => {
+    const j = jog.current;
+    if (!j.active) return;
+    let dt = (now - j.lastTick) / 1000;
+    dt = dt <= 0 ? 1 / 60 : Math.min(dt, 0.05);
+    let dTheta = j.curAngle - j.prevAngle;
+    if (dTheta > 180) dTheta -= 360;
+    else if (dTheta < -180) dTheta += 360;
+    const raw = dTheta / dt / DEG_PER_SEC; // ω → read-rate (1.0 = natural play speed)
+    j.smooth += (raw - j.smooth) * 0.5;
+    if (Math.abs(j.smooth) < 0.01) j.smooth = 0; // snap a near-still finger to a clean hold
+    if (Math.abs(j.smooth - j.lastSent) > 0.01 || (j.smooth === 0 && j.lastSent !== 0)) {
+      actions.scratch(true, j.smooth);
+      j.lastSent = j.smooth;
+    }
+    j.angle += dTheta; // disc follows the hand exactly
+    setDragAngle(j.angle);
+    j.prevAngle = j.curAngle;
+    j.lastTick = now;
+    j.rafId = requestAnimationFrame(tick);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (!meta || !dsp) return;
+    e.preventDefault();
+    platterRef.current?.setPointerCapture(e.pointerId);
+    const a = angleOf(e.clientX, e.clientY);
+    const j = jog.current;
+    j.active = true;
+    j.prevAngle = a;
+    j.curAngle = a;
+    j.lastTick = performance.now();
+    j.smooth = 0;
+    j.lastSent = 0;
+    j.angle = spin; // start from the current visual position to avoid a jump
+    setScratching(true);
+    actions.scratch(true, 0);
+    j.rafId = requestAnimationFrame(tick);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (jog.current.active) jog.current.curAngle = angleOf(e.clientX, e.clientY);
+  };
+
+  const endScratch = (e: React.PointerEvent) => {
+    const j = jog.current;
+    if (!j.active) return;
+    j.active = false;
+    if (j.rafId) cancelAnimationFrame(j.rafId);
+    j.rafId = 0;
+    try {
+      platterRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      /* pointer already released */
+    }
+    setScratching(false);
+    actions.scratch(false, 0);
+  };
+
+  // Stop the loop and release scratch if the deck unmounts mid-gesture.
+  useEffect(() => {
+    return () => {
+      const j = jog.current;
+      if (j.active) {
+        j.active = false;
+        if (j.rafId) cancelAnimationFrame(j.rafId);
+        actions.scratch(false, 0);
+      }
+    };
+    // actions is stable for the lifetime of the deck; run cleanup only on unmount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="deck" style={{ borderTopColor: color }}>
@@ -89,16 +192,26 @@ export function Deck({
       <div className="deck-body">
         {/* platter */}
         <div className="platter-col">
-          <div className="platter">
+          <div
+            className={`platter${scratching ? " platter--scratch" : ""}`}
+            ref={platterRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endScratch}
+            onPointerCancel={endScratch}
+            title={dsp ? "Drag to scratch / nudge" : undefined}
+          >
             <div
               className="platter-ring"
               style={{ background: `conic-gradient(${color} ${frac * 360}deg, rgba(255,255,255,.07) 0)` }}
             />
-            <div className="platter-marker" style={{ transform: `rotate(${spin}deg)`, background: color, boxShadow: `0 0 8px ${color}` }} />
+            <div className="platter-disc" style={{ transform: `rotate(${scratching ? dragAngle : spin}deg)` }}>
+              <div className="platter-marker" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+            </div>
             <div className="platter-center">
               <span className="mono platter-bpm">{meta && effBpm > 0 ? effBpm.toFixed(1) : "—"}</span>
-              <span className="overline" style={{ color: playing ? color : "var(--text-tertiary)" }}>
-                {playing ? "PLAYING" : "CUED"}
+              <span className="overline" style={{ color: scratching || playing ? color : "var(--text-tertiary)" }}>
+                {scratching ? "SCRATCH" : playing ? "PLAYING" : "CUED"}
               </span>
             </div>
           </div>

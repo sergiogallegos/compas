@@ -14,6 +14,9 @@ All notable changes to compas are documented here. Format follows
 - **Tempo SYNC:** one-shot beat-tempo match (per-deck + title-bar).
 - **Beat loops:** manual IN/OUT + 4/8/16-beat grid-snapped loops (RT-safe play-head wrap), with a
   loop region drawn on the waveform; **hot cues** (set/jump/clear).
+- **Jog-wheel scratch:** the platter is a draggable, spinning disc — dragging drives the
+  audio-thread read-rate from angular velocity (forward + reverse scrub, hold), independent of
+  transport. Engine `SetScratch` command + `deck_scratch` IPC; the disc tracks the hand 1:1.
 - **Local library:** add files (persisted), search, load to deck A/B (double-click / buttons),
   with load-progress feedback.
 - **Performance UI:** dual decks, center mixer, scrolling zoom waveforms with beat grid, VU

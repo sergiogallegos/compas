@@ -69,6 +69,11 @@ enum EngineMsg {
         deck: usize,
         active: bool,
     },
+    Scratch {
+        deck: usize,
+        active: bool,
+        speed: f64,
+    },
     Load {
         deck: usize,
         buffer: Arc<DeckBuffer>,
@@ -169,6 +174,15 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::LoopActive { deck, active } => {
                         AudioCommand::SetLoopActive { deck, active }
                     }
+                    EngineMsg::Scratch {
+                        deck,
+                        active,
+                        speed,
+                    } => AudioCommand::SetScratch {
+                        deck,
+                        active,
+                        speed,
+                    },
                     EngineMsg::Load { deck, buffer } => AudioCommand::LoadDeck { deck, buffer },
                     EngineMsg::Unload { deck } => AudioCommand::UnloadDeck { deck },
                 };
@@ -422,6 +436,22 @@ fn set_loop_active(state: State<'_, EngineHandle>, deck: usize, active: bool) ->
     state.send(EngineMsg::LoopActive { deck, active })
 }
 
+/// Jog-wheel scratch: `active` engages the gesture; `speed` is the read rate (1.0 =
+/// natural play speed, negative = reverse). The UI streams `speed` from drag velocity.
+#[tauri::command]
+fn deck_scratch(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+    speed: f64,
+) -> Result<(), String> {
+    state.send(EngineMsg::Scratch {
+        deck,
+        active,
+        speed,
+    })
+}
+
 #[tauri::command]
 fn set_deck_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) -> Result<(), String> {
     state.send(EngineMsg::DeckGain { deck, gain })
@@ -528,6 +558,7 @@ pub fn run() {
             deck_unload,
             set_loop,
             set_loop_active,
+            deck_scratch,
             set_deck_tempo,
             set_deck_gain,
             set_deck_eq,

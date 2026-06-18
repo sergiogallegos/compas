@@ -69,6 +69,14 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
     },
+    /// Drive the play-head from a jog-wheel/scratch gesture. While `active`, the deck
+    /// reads at `speed` (1.0 = natural play rate; negative = reverse) regardless of the
+    /// transport state, and the play-head clamps to the track instead of auto-stopping.
+    SetScratch {
+        deck: usize,
+        active: bool,
+        speed: f64,
+    },
     /// Install a decoded track on a deck (does not auto-play; resets play-head to 0).
     LoadDeck {
         deck: usize,
@@ -158,6 +166,10 @@ struct DeckPlayer {
     /// Varispeed ratio (1.0 = original). Combined advance = base_ratio * tempo.
     tempo: f64,
     playing: bool,
+    /// Jog-wheel scratch: when active, `scratch_speed` drives the play-head instead of
+    /// `tempo`, and audio plays regardless of the transport state.
+    scratching: bool,
+    scratch_speed: f64,
     gain: GainSmoother,
     eq_l: ThreeBandEq,
     eq_r: ThreeBandEq,
@@ -178,6 +190,8 @@ impl DeckPlayer {
             base_ratio: 1.0,
             tempo: 1.0,
             playing: false,
+            scratching: false,
+            scratch_speed: 0.0,
             gain: GainSmoother::new(1.0, device_rate, 8.0),
             eq_l: ThreeBandEq::new(device_rate),
             eq_r: ThreeBandEq::new(device_rate),
@@ -196,26 +210,40 @@ impl DeckPlayer {
     fn next_frame(&mut self) -> (f32, f32) {
         let g = self.gain.next_gain(); // advance smoother even when paused (click-free unpause)
 
-        if !self.playing {
-            return (0.0, 0.0);
-        }
         let Some(buf) = self.buffer.as_ref() else {
             return (0.0, 0.0);
         };
         let frames = buf.frames();
-        if frames == 0 || self.playhead >= frames as f64 {
+        if frames == 0 {
+            return (0.0, 0.0);
+        }
+
+        // Scratching overrides the transport: a jog gesture drives the play-head and
+        // produces audio whether or not the deck is "playing".
+        if !self.playing && !self.scratching {
+            return (0.0, 0.0);
+        }
+        // End-of-track auto-stops normal playback, but never scratching (so you can
+        // scrub back from the end).
+        if !self.scratching && self.playhead >= frames as f64 {
             self.playing = false;
             return (0.0, 0.0);
         }
 
-        let (mut l, mut r) = interp_stereo(&buf.samples, frames, self.playhead);
-        self.playhead += self.base_ratio * self.tempo;
+        let max = frames as f64 - 1.0;
+        let (mut l, mut r) = interp_stereo(&buf.samples, frames, self.playhead.clamp(0.0, max));
 
-        // Beat loop: wrap the play-head back to loop-in once it passes loop-out.
-        if self.loop_active && self.loop_out > self.loop_in {
-            let len = self.loop_out - self.loop_in;
-            while self.playhead >= self.loop_out {
-                self.playhead -= len;
+        if self.scratching {
+            // Hand-driven read rate (can be negative); clamp to the track bounds.
+            self.playhead = (self.playhead + self.base_ratio * self.scratch_speed).clamp(0.0, max);
+        } else {
+            self.playhead += self.base_ratio * self.tempo;
+            // Beat loop: wrap the play-head back to loop-in once it passes loop-out.
+            if self.loop_active && self.loop_out > self.loop_in {
+                let len = self.loop_out - self.loop_in;
+                while self.playhead >= self.loop_out {
+                    self.playhead -= len;
+                }
             }
         }
 
@@ -376,6 +404,8 @@ impl Mixer {
                         d.playhead = 0.0;
                         d.tempo = 1.0;
                         d.playing = false;
+                        d.scratching = false;
+                        d.scratch_speed = 0.0;
                         d.loop_active = false;
                         let old = d.buffer.replace(buffer);
                         self.retire(old);
@@ -398,9 +428,21 @@ impl Mixer {
                         d.loop_active = active && d.loop_out > d.loop_in;
                     }
                 }
+                AudioCommand::SetScratch {
+                    deck,
+                    active,
+                    speed,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.scratching = active;
+                        d.scratch_speed = speed.clamp(-16.0, 16.0);
+                    }
+                }
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
+                        d.scratching = false;
+                        d.scratch_speed = 0.0;
                         d.playhead = 0.0;
                         d.loop_active = false;
                         let old = d.buffer.take();
@@ -487,5 +529,57 @@ mod tests {
         let s = [0.0, 0.0, 2.0, 2.0, 4.0, 4.0, 6.0, 6.0];
         let (l, _r) = interp_stereo(&s, 4, 1.5);
         assert!(l > 2.0 && l < 4.0, "midpoint {l} not between 2 and 4");
+    }
+
+    fn ramp_deck() -> DeckPlayer {
+        // A 100-frame ramp so the play-head's audio reflects its position.
+        let mut samples = Vec::with_capacity(200);
+        for i in 0..100 {
+            samples.push(i as f32);
+            samples.push(i as f32);
+        }
+        let mut d = DeckPlayer::new(48_000.0);
+        d.buffer = Some(Arc::new(DeckBuffer::new(samples, 48_000)));
+        d.base_ratio = 1.0;
+        d
+    }
+
+    #[test]
+    fn scratch_plays_while_paused_and_moves_playhead() {
+        let mut d = ramp_deck();
+        d.playhead = 40.0;
+        d.playing = false; // paused — but a scratch still sounds
+        d.scratching = true;
+        d.scratch_speed = 1.0;
+        let (l, _r) = d.next_frame();
+        assert!(l != 0.0, "scratch should produce audio while paused");
+        assert!(d.playhead > 40.0, "forward scratch should advance the play-head");
+    }
+
+    #[test]
+    fn reverse_scratch_runs_backward_and_clamps_at_zero() {
+        let mut d = ramp_deck();
+        d.playhead = 1.0;
+        d.scratching = true;
+        d.scratch_speed = -4.0;
+        for _ in 0..10 {
+            d.next_frame();
+        }
+        assert!(d.playhead >= 0.0, "reverse scratch must not run past frame 0");
+        assert!(d.playhead < 1.0, "reverse scratch should have moved backward");
+    }
+
+    #[test]
+    fn scratch_does_not_auto_stop_at_end() {
+        let mut d = ramp_deck();
+        d.playhead = 99.0;
+        d.playing = true;
+        d.scratching = true;
+        d.scratch_speed = 4.0;
+        for _ in 0..5 {
+            d.next_frame();
+        }
+        assert!(d.scratching, "scratch stays engaged at the end of the track");
+        assert!(d.playhead <= 99.0, "play-head clamps to the last frame");
     }
 }

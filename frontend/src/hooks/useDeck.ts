@@ -3,6 +3,7 @@ import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   deckPause,
   deckPlay,
+  deckScratch,
   deckSeek,
   deckUnload,
   inTauri,
@@ -151,6 +152,8 @@ export function useDeck(deck: number, dsp = true) {
         const frames = meta?.frames ?? 0;
         deckSeek(deck, f * frames).catch(swallow);
       },
+      // Jog-wheel scratch: the platter streams a read-rate from drag velocity.
+      scratch: (active: boolean, speed: number) => deckScratch(deck, active, speed).catch(swallow),
       setTempo: (ratio: number) => {
         setTempo(ratio);
         setDeckTempo(deck, ratio).catch(swallow);

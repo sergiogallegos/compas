@@ -1,23 +1,21 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-17. See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-18. See `ROADMAP.md` for the
 > full plan, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-1. **Jog-wheel scratch + rotating platter** ← agreed next feature. Make the platter a draggable,
-   spinning disc; dragging drives the play-head (scratch, forward + reverse) and a nudge. Our
-   in-RAM fractional play-head is the right substrate; for smooth scratch, drive the audio-thread
-   read-rate from drag velocity (not just coarse seeks).
-2. **FX rack** — echo/delay first (pre-allocated delay line, RT-safe), then reverb; enable the
+1. **FX rack** — echo/delay first (pre-allocated delay line, RT-safe), then reverb; enable the
    deck FX row (ECHO/REVERB). Filter already exists.
-3. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
+2. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
    keypair (`npm run tauri signer generate`), put pubkey in `tauri.conf.json`, privkey + password
    as CI secrets, uncomment the signing env in `release.yml`, add a "Check for updates" UI.
-4. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
-5. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
+3. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
+4. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
    only if a real format gap shows up.
-6. **P1 remainders:** key-lock toggle (signalsmith-stretch), manual beatgrid-anchor edit, underrun
+5. **P1 remainders:** key-lock toggle (signalsmith-stretch), manual beatgrid-anchor edit, underrun
    counters in the UI, a decode-a-fixture integration test, 4-deck layout.
+6. **Scratch polish (optional):** release-throw inertia/spin-down, and a configurable
+   platter→audio mapping (currently fixed at 360° = 1.8 s, ≈33⅓ RPM).
 
 ## ✅ Done
 **P0 scaffold** · Tauri 2 workspace, 4 engine crates, CI-green.
@@ -28,6 +26,9 @@
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.
 - **Beat loops** (IN/OUT manual + 4/8/16 grid-snapped; waveform loop band).
 - **Hot cues** (set/jump/clear).
+- **Jog-wheel scratch** — draggable spinning platter drives the audio-thread read-rate from drag
+  velocity (forward/reverse scrub + hold), engine `SetScratch`/`deck_scratch`, disc tracks the
+  hand 1:1 (DSP/local decks only).
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.
 - **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
   progress feedback.
