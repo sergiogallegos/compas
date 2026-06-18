@@ -360,8 +360,8 @@ export function Deck({
           </span>
           {dsp && (
             <div className="nudge">
-              <button onPointerDown={() => actions.nudge(-1, true)} onPointerUp={() => actions.nudge(-1, false)} onPointerLeave={() => actions.nudge(-1, false)}>−</button>
-              <button onPointerDown={() => actions.nudge(1, true)} onPointerUp={() => actions.nudge(1, false)} onPointerLeave={() => actions.nudge(1, false)}>+</button>
+              <button onClick={() => actions.trimTempo(-1)} disabled={!meta} title="Nudge tempo −0.1%">−</button>
+              <button onClick={() => actions.trimTempo(1)} disabled={!meta} title="Nudge tempo +0.1%">+</button>
             </div>
           )}
         </div>

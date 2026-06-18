@@ -33,7 +33,11 @@ export interface LoopState {
   outFrame: number;
 }
 
-const NUDGE = 1.03;
+/** Tempo step per −/+ trim click (0.1%). */
+const TEMPO_TRIM = 0.001;
+/** Tempo trim range (±10%), keeping the pitch fader meaningful. */
+const TEMPO_TRIM_MIN = 0.9;
+const TEMPO_TRIM_MAX = 1.1;
 
 export interface Eq {
   hi: number;
@@ -102,6 +106,8 @@ export function useDeck(deck: number, dsp = true) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
+  const tempoRef = useRef(tempo);
+  tempoRef.current = tempo;
   const loopRef = useRef(loop);
   loopRef.current = loop;
   const echoRef = useRef(echo);
@@ -201,8 +207,13 @@ export function useDeck(deck: number, dsp = true) {
         setTempo(ratio);
         setDeckTempo(deck, ratio).catch(swallow);
       },
-      nudge: (dir: 1 | -1, on: boolean) => {
-        setDeckTempo(deck, on ? tempo * (dir === 1 ? NUDGE : 1 / NUDGE) : tempo).catch(swallow);
+      // Persistent fine tempo trim (the jog wheel handles momentary pitch bend). Reads
+      // the ref so rapid clicks accumulate instead of all seeing the same render's tempo.
+      trimTempo: (dir: 1 | -1) => {
+        const next = Math.min(TEMPO_TRIM_MAX, Math.max(TEMPO_TRIM_MIN, tempoRef.current + dir * TEMPO_TRIM));
+        tempoRef.current = next;
+        setTempo(next);
+        setDeckTempo(deck, next).catch(swallow);
       },
       setEq: (next: Eq) => {
         setEqState(next);

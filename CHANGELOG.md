@@ -32,6 +32,11 @@ All notable changes to compas are documented here. Format follows
 - **Spotify (Phase 2a):** Authorization Code + PKCE auth and live catalog search (control-only).
 - Brand mark + app icons; landing-page website; CI, contributor docs.
 
+### Changed
+- **Tempo −/+ buttons** are now a **persistent fine trim** (±0.1% per click, moves the pitch
+  fader) instead of a momentary 3% pitch-bend that gave no visual feedback — momentary bend now
+  lives on the jog wheel.
+
 ### Notes
 - Streaming decks are **control-only** by design — services don't expose decoded audio, so DSP
   is locked on them. True mixing is local-files-only.
