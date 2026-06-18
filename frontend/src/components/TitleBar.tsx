@@ -9,12 +9,14 @@ export function TitleBar({
   master,
   load,
   syncEnabled = false,
+  syncActive = false,
   onSync,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
   load?: EngineLoad;
   syncEnabled?: boolean;
+  syncActive?: boolean;
   onSync?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
@@ -66,10 +68,10 @@ export function TitleBar({
             </span>
           </div>
           <button
-            className="sync-chip"
+            className={`sync-chip ${syncActive ? "sync-chip--on" : ""}`}
             onClick={onSync}
-            disabled={!syncEnabled}
-            title="Match Deck B's tempo to Deck A"
+            disabled={!syncEnabled && !syncActive}
+            title="Continuous beat-sync: Deck B follows Deck A (tempo + phase)"
           >
             <Icon name="link" size={12} /> SYNC
           </button>

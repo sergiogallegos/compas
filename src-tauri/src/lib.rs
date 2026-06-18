@@ -98,9 +98,20 @@ enum EngineMsg {
     Load {
         deck: usize,
         buffer: Arc<DeckBuffer>,
+        beat_offset: f64,
+        beat_interval: f64,
     },
     Unload {
         deck: usize,
+    },
+    Beatgrid {
+        deck: usize,
+        offset: f64,
+        interval: f64,
+    },
+    DeckSync {
+        deck: usize,
+        master: Option<usize>,
     },
     StartRecording {
         sink: Producer<f32>,
@@ -237,8 +248,30 @@ fn spawn_engine() -> EngineHandle {
                         active,
                         speed,
                     },
-                    EngineMsg::Load { deck, buffer } => AudioCommand::LoadDeck { deck, buffer },
+                    EngineMsg::Load {
+                        deck,
+                        buffer,
+                        beat_offset,
+                        beat_interval,
+                    } => AudioCommand::LoadDeck {
+                        deck,
+                        buffer,
+                        beat_offset,
+                        beat_interval,
+                    },
                     EngineMsg::Unload { deck } => AudioCommand::UnloadDeck { deck },
+                    EngineMsg::Beatgrid {
+                        deck,
+                        offset,
+                        interval,
+                    } => AudioCommand::SetBeatgrid {
+                        deck,
+                        offset,
+                        interval,
+                    },
+                    EngineMsg::DeckSync { deck, master } => {
+                        AudioCommand::SetDeckSync { deck, master }
+                    }
                     EngineMsg::StartRecording { sink } => AudioCommand::StartRecording { sink },
                     EngineMsg::StopRecording => AudioCommand::StopRecording,
                 };
@@ -402,9 +435,15 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
             },
         );
 
+        // Beatgrid → source frames for the engine's sync PLL.
+        let sr = buffer.source_rate as f64;
+        let beat_offset = grid.first_beat_sec as f64 * sr;
+        let beat_interval = grid.beat_interval_sec as f64 * sr;
         let _ = tx.send(EngineMsg::Load {
             deck,
             buffer: Arc::new(buffer),
+            beat_offset,
+            beat_interval,
         });
     });
 }
@@ -478,6 +517,32 @@ fn deck_unload(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String
 #[tauri::command]
 fn set_deck_tempo(state: State<'_, EngineHandle>, deck: usize, ratio: f64) -> Result<(), String> {
     state.send(EngineMsg::DeckTempo { deck, ratio })
+}
+
+/// Update a deck's beatgrid (seconds → engine frames) after a manual grid-anchor nudge, so
+/// the sync PLL aligns to the grid the user sees.
+#[tauri::command]
+fn set_beatgrid(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    offset_frames: f64,
+    interval_frames: f64,
+) -> Result<(), String> {
+    state.send(EngineMsg::Beatgrid {
+        deck,
+        offset: offset_frames,
+        interval: interval_frames,
+    })
+}
+
+/// Engage/disengage continuous beat-sync: `master` is the deck to follow, or `null` for off.
+#[tauri::command]
+fn set_deck_sync(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    master: Option<usize>,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckSync { deck, master })
 }
 
 /// Toggle key-lock (master tempo) on a deck: tempo changes preserve the original pitch.
@@ -795,6 +860,8 @@ pub fn run() {
             deck_scratch,
             set_deck_tempo,
             set_deck_keylock,
+            set_beatgrid,
+            set_deck_sync,
             set_deck_gain,
             set_deck_eq,
             set_deck_filter,

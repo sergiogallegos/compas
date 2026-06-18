@@ -116,6 +116,12 @@ export const setDeckTempo = (deck: number, ratio: number) =>
 /** Key-lock (master tempo): tempo changes preserve pitch. */
 export const setDeckKeylock = (deck: number, active: boolean) =>
   invoke("set_deck_keylock", { deck, active });
+/** Update a deck's beatgrid (in source frames) for the sync engine after a manual nudge. */
+export const setBeatgrid = (deck: number, offsetFrames: number, intervalFrames: number) =>
+  invoke("set_beatgrid", { deck, offsetFrames, intervalFrames });
+/** Continuous beat-sync: `master` is the deck index to follow, or null to disengage. */
+export const setDeckSync = (deck: number, master: number | null) =>
+  invoke("set_deck_sync", { deck, master });
 export const setDeckGain = (deck: number, gain: number) => invoke("set_deck_gain", { deck, gain });
 export const setDeckEq = (deck: number, low: number, mid: number, high: number) =>
   invoke("set_deck_eq", { deck, low, mid, high });

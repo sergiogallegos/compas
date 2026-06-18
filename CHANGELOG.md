@@ -11,7 +11,10 @@ All notable changes to compas are documented here. Format follows
   equal-power crossfader, master, lock-free audio thread with reclaim ring.
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
-- **Tempo SYNC:** one-shot beat-tempo match (per-deck + title-bar).
+- **Continuous beat-sync (tempo + phase):** SYNC is now a toggle that holds a follower deck
+  locked to a master in the audio thread — a phase-locked loop rate-matches the beat rate and
+  nudges the read rate (±8%, click-free) to null the beat-phase error continuously. Composes with
+  key-lock/loops; respects manual grid nudges. `SetDeckSync`/`SetBeatgrid` + engine PLL.
 - **Key-lock (master tempo):** change tempo without changing pitch, via a hand-rolled,
   RT-safe WSOLA time-stretcher in `compas-dsp` (overlapping Hann grains + waveform-similarity
   search, reads grains straight from the in-RAM buffer, no allocation on the audio thread —

@@ -49,9 +49,8 @@ Concrete tasks:
    → octave fold) + **beat phase** (comb over the envelope) → grid overlay with emphasized
    downbeats. **Musical key** via chromagram → Krumhansl–Schmuckler (Camelot). ✅ Manual
    grid-anchor nudge (waveform).
-7. ✅ **Manual beatmatch + tempo SYNC.** Varispeed (tempo+pitch coupled) + tempo fader + nudge;
-   one-shot **SYNC** matches a deck's effective BPM to the other. *Remaining: end-to-end verify
-   against real tracks; continuous/phase sync (→ P4).* Key-lock (in-house WSOLA) is now done.
+7. ✅ **Manual beatmatch + SYNC.** Varispeed (tempo+pitch coupled) + tempo fader + fine trim;
+   **continuous tempo + phase SYNC** (audio-thread PLL). Key-lock (in-house WSOLA) is done.
 8. ✅ **Engine telemetry.** `engine_status` + per-deck position/level + master meter + ✅
    audio-thread load / xrun counter surfaced in the title bar.
 9. 🔨 **Tests.** ✅ Tempo/beatgrid/key on synthetic signals; ✅ interpolation/crossfade/EQ/peaks.
@@ -82,8 +81,8 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 ## Phase 4 — Cue/loops/hot cues + sync engine hardening 🔨
 
 - ✅ Cue points, **beat loops** (manual in/out + 4/8/16-beat, beatgrid-snapped), **hot cues**.
-- ⬜ Master-clock **sync engine** (continuous tempo **+ phase** lock; today SYNC is one-shot
-  tempo), and the 2→4 deck fader/assign matrix (engine already mixes 4 decks).
+- ✅ Master-clock **sync engine** — continuous tempo **+ phase** lock (audio-thread PLL).
+- ⬜ The 2→4 deck fader/assign matrix (engine already mixes 4 decks).
 
 ## Phase 5 — Stems / FX / recording 🔨
 

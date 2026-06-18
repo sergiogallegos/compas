@@ -22,7 +22,9 @@
 
 **P1 — local dual-deck engine (functionally complete):**
 - Decode (symphonia, in-RAM `DeckBuffer`), 2 decks, transport (play/pause/cue/seek), crossfader,
-  per-deck gain, 3-band EQ, HPF/LPF filter, varispeed + fine tempo trim, one-shot tempo **SYNC**.
+  per-deck gain, 3-band EQ, HPF/LPF filter, varispeed + fine tempo trim.
+- **Continuous beat-sync** — SYNC toggle holds a follower locked to a master (audio-thread PLL:
+  tempo rate-match + ±8% phase-lock), composes with key-lock/loops.
 - **Key-lock (master tempo)** — hand-rolled RT-safe WSOLA stretcher in `compas-dsp` (Hann grains
   + similarity search, reads from the in-RAM buffer, ~4%/core/deck); per-deck `KEY` toggle.
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.

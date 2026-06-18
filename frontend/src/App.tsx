@@ -41,19 +41,25 @@ export function App() {
   const bothReady =
     !!deckA.state.meta && !!deckB.state.meta && deckA.state.meta.bpm > 0 && deckB.state.meta.bpm > 0;
 
-  // One-shot beat-TEMPO sync: match `target` deck's effective BPM to the other deck's.
-  // (Phase alignment + continuous follow is the P4 sync engine.)
-  const syncDeck = (target: "A" | "B") => {
+  // Continuous beat-sync toggle: `target` follows the other deck (tempo + phase, held by the
+  // engine PLL), or disengages. On engage we also match the displayed tempo; the engine refines
+  // phase on top.
+  const toggleSync = (target: "A" | "B") => {
     const t = target === "A" ? deckA : deckB;
     const s = target === "A" ? deckB : deckA;
+    const masterIdx = target === "A" ? 1 : 0; // follow the other deck
+    if (t.state.synced) {
+      t.actions.sync(null);
+      return;
+    }
     if (!t.state.meta || !s.state.meta || t.state.meta.bpm <= 0 || s.state.meta.bpm <= 0) return;
-    const sourceEff = s.state.meta.bpm * s.state.tempo;
-    t.actions.setTempo(sourceEff / t.state.meta.bpm);
+    t.actions.setTempo((s.state.meta.bpm * s.state.tempo) / t.state.meta.bpm);
+    t.actions.sync(masterIdx);
   };
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} onSync={() => syncDeck("B")} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} syncActive={deckB.state.synced} onSync={() => toggleSync("B")} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -64,7 +70,7 @@ export function App() {
             ]}
           />
           <div className="deck-row">
-            <Deck ctrl={deckA} color={MAGENTA} onSync={() => syncDeck("A")} syncEnabled={bothReady} />
+            <Deck ctrl={deckA} color={MAGENTA} onSync={() => toggleSync("A")} syncEnabled={bothReady} syncActive={deckA.state.synced} />
             <Mixer
               channels={[
                 { ctrl: deckA, letter: "A", color: MAGENTA },
@@ -76,7 +82,7 @@ export function App() {
                 if (inTauri()) setCrossfader(v).catch(() => {});
               }}
             />
-            <Deck ctrl={deckB} color={CYAN} onSync={() => syncDeck("B")} syncEnabled={bothReady} />
+            <Deck ctrl={deckB} color={CYAN} onSync={() => toggleSync("B")} syncEnabled={bothReady} syncActive={deckB.state.synced} />
           </div>
           <Library loadedPaths={loadedPaths} />
         </div>

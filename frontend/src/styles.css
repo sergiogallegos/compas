@@ -43,6 +43,7 @@
   padding: 6px 9px; border-radius: 7px;
 }
 .sync-chip:disabled { opacity: 0.8; }
+.sync-chip--on { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 10px rgba(255, 46, 126, 0.5); }
 .master-meter { display: flex; gap: 3px; align-items: flex-end; height: 30px; }
 .mm-bar { width: 5px; height: 30px; border-radius: 2px; background: var(--surface-control); overflow: hidden; position: relative; display: flex; align-items: flex-end; }
 .mm-fill { width: 100%; background: linear-gradient(to top, #3ddc97 0 55%, #ffb020 55% 82%, #ff3b5c 82% 100%); transition: height 80ms linear; }

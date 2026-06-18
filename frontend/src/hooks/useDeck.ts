@@ -14,6 +14,8 @@ import {
   onDeckLoading,
   onDeckPosition,
   pickAudioFile,
+  setBeatgrid,
+  setDeckSync,
   setDeckEcho,
   setDeckReverb,
   setDeckEq,
@@ -75,6 +77,8 @@ export interface DeckState {
   keylock: boolean;
   /** Manual beatgrid nudge (seconds) added to the analyzed first-beat anchor. */
   gridOffset: number;
+  /** True while this deck is a continuous sync follower. */
+  synced: boolean;
   eq: Eq;
   filter: number;
   gain: number;
@@ -103,6 +107,7 @@ export function useDeck(deck: number, dsp = true) {
   const [tempo, setTempo] = useState(1);
   const [keylock, setKeylockState] = useState(false);
   const [gridOffset, setGridOffset] = useState(0);
+  const [synced, setSyncedState] = useState(false);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
   const [filter, setFilterState] = useState(0);
   const [gain, setGainState] = useState(1);
@@ -149,6 +154,7 @@ export function useDeck(deck: number, dsp = true) {
         setTempo(1);
         setKeylockState(false); // engine resets key-lock on load
         setGridOffset(0);
+        setSyncedState(false); // engine resets sync on load
         setHotCues(Array(8).fill(null));
         setLoopState({ active: false, beats: null, inFrame: 0, outFrame: 0 });
         // Engine resets FX on load; mirror that (keep the user's param settings).
@@ -194,6 +200,12 @@ export function useDeck(deck: number, dsp = true) {
     const pushReverb = (r: ReverbState) => {
       setDeckReverb(deck, r.active, r.size, r.active ? r.mix : 0).catch(swallow);
     };
+    // Push the (possibly nudged) beatgrid to the engine in source frames, for the sync PLL.
+    const pushBeatgrid = (gridOff: number) => {
+      if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return;
+      const sr = meta.source_rate;
+      setBeatgrid(deck, (meta.first_beat_sec + gridOff) * sr, meta.beat_interval_sec * sr).catch(swallow);
+    };
     return {
       load: async () => {
         try {
@@ -225,10 +237,22 @@ export function useDeck(deck: number, dsp = true) {
         setKeylockState(next);
         setDeckKeylock(deck, next).catch(swallow);
       },
-      // Manual beatgrid anchor: shift the grid to line it up with the audio (UI-only;
-      // feeds waveform rendering + beat-loop math).
-      nudgeGrid: (deltaSec: number) => setGridOffset((g) => g + deltaSec),
-      resetGrid: () => setGridOffset(0),
+      // Manual beatgrid anchor: shift the grid to line it up with the audio. Feeds waveform
+      // rendering + beat-loop math (frontend) and the engine sync PLL (pushBeatgrid).
+      nudgeGrid: (deltaSec: number) => {
+        const next = gridOffsetRef.current + deltaSec;
+        setGridOffset(next);
+        pushBeatgrid(next);
+      },
+      resetGrid: () => {
+        setGridOffset(0);
+        pushBeatgrid(0);
+      },
+      // Continuous beat-sync: follow `master` (deck index), or null to disengage.
+      sync: (master: number | null) => {
+        setSyncedState(master !== null);
+        setDeckSync(deck, master).catch(swallow);
+      },
       // Persistent fine tempo trim (the jog wheel handles momentary pitch bend). Reads
       // the ref so rapid clicks accumulate instead of all seeing the same render's tempo.
       trimTempo: (dir: 1 | -1) => {
@@ -329,7 +353,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
   return { state, actions };
 }
 

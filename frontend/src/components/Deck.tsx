@@ -29,11 +29,13 @@ export function Deck({
   color,
   onSync,
   syncEnabled = false,
+  syncActive = false,
 }: {
   ctrl: DeckController;
   color: string;
   onSync?: () => void;
   syncEnabled?: boolean;
+  syncActive?: boolean;
 }) {
   const { state, actions } = ctrl;
   const { meta, frame, playing, tempo, dsp, loading } = state;
@@ -335,11 +337,11 @@ export function Deck({
         {/* tempo fader */}
         <div className="tempo-col">
           <button
-            className="sync-btn"
-            style={{ color, borderColor: `${color}66` }}
+            className={`sync-btn ${syncActive ? "sync-btn--on" : ""}`}
+            style={syncActive ? { color: "#fff", borderColor: color, background: `${color}cc` } : { color, borderColor: `${color}66` }}
             onClick={onSync}
-            disabled={!dsp || !syncEnabled}
-            title="Match this deck's tempo to the other deck"
+            disabled={!dsp || (!syncEnabled && !syncActive)}
+            title="Continuous beat-sync to the other deck (tempo + phase)"
           >
             SYNC
           </button>

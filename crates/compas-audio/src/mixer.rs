@@ -17,6 +17,21 @@ pub const NUM_DECKS: usize = 4;
 /// at 60 BPM — well past any musical echo).
 const MAX_DELAY_SECS: f32 = 2.0;
 
+/// Sync PLL: how hard the beat-phase error pulls the follower's read rate. The pull is
+/// capped to ±8% (a musical pitch-bend range) so locking in is a smooth glide, not a click.
+const SYNC_PHASE_GAIN: f64 = 1.0;
+const SYNC_MAX_BEND: f64 = 0.08;
+
+/// Beat phase in `[0, 1)`: fractional position of `playhead` within its current beat.
+#[inline]
+fn beat_phase(playhead: f64, offset: f64, interval: f64) -> f64 {
+    if interval <= 0.0 {
+        return 0.0;
+    }
+    let p = (playhead - offset) / interval;
+    p - p.floor()
+}
+
 /// Per-deck DJ filter mode (the single HPF/LPF "filter knob").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FilterMode {
@@ -105,12 +120,26 @@ pub enum AudioCommand {
         speed: f64,
     },
     /// Install a decoded track on a deck (does not auto-play; resets play-head to 0).
+    /// `beat_offset`/`beat_interval` are the analyzed beatgrid in source frames (for sync).
     LoadDeck {
         deck: usize,
         buffer: Arc<DeckBuffer>,
+        beat_offset: f64,
+        beat_interval: f64,
     },
     UnloadDeck {
         deck: usize,
+    },
+    /// Update a deck's beatgrid (source frames) — e.g. after a manual grid-anchor nudge.
+    SetBeatgrid {
+        deck: usize,
+        offset: f64,
+        interval: f64,
+    },
+    /// Make `deck` a continuous sync follower of `master` (None = sync off).
+    SetDeckSync {
+        deck: usize,
+        master: Option<usize>,
     },
     /// Begin tapping the master output into `sink` (interleaved stereo f32 at device rate).
     /// The control thread owns the matching consumer and writes it to a file.
@@ -243,6 +272,14 @@ struct DeckPlayer {
     loop_in: f64,
     loop_out: f64,
     device_rate: f32,
+    /// Beatgrid in source frames: phase of the first beat, and frames per beat. Used by the
+    /// continuous sync PLL; 0 interval means "no grid" (sync disabled for this deck).
+    beat_offset: f64,
+    beat_interval: f64,
+    /// When this deck is a sync follower, the index of the deck it tracks.
+    sync_master: Option<usize>,
+    /// Sync-controlled read rate (overrides `tempo` while engaged); set each block by the PLL.
+    sync_tempo: Option<f64>,
 }
 
 impl DeckPlayer {
@@ -272,6 +309,10 @@ impl DeckPlayer {
             loop_in: 0.0,
             loop_out: 0.0,
             device_rate,
+            beat_offset: 0.0,
+            beat_interval: 0.0,
+            sync_master: None,
+            sync_tempo: None,
         }
     }
 
@@ -323,7 +364,9 @@ impl DeckPlayer {
             // Hand-driven read rate (can be negative); clamp to the track bounds.
             self.playhead = (self.playhead + self.base_ratio * self.scratch_speed).clamp(0.0, max);
         } else {
-            self.playhead += self.base_ratio * self.tempo;
+            // Sync (when engaged) overrides the user tempo with the PLL's read rate.
+            let rate = self.sync_tempo.unwrap_or(self.tempo);
+            self.playhead += self.base_ratio * rate;
             // Beat loop: wrap the play-head back to loop-in once it passes loop-out.
             if self.loop_active && self.loop_out > self.loop_in {
                 let len = self.loop_out - self.loop_in;
@@ -474,6 +517,39 @@ impl Mixer {
         }
     }
 
+    /// Continuous beat-sync PLL. For each follower deck, rate-match its beat rate to its
+    /// master's and nudge its read rate (±[`SYNC_MAX_BEND`]) to null the beat-phase error.
+    /// Sets `sync_tempo` per follower; clears it when sync is off or unusable. RT-SAFE.
+    #[inline]
+    fn update_sync(&mut self) {
+        // Snapshot what the PLL needs (avoids aliasing master/follower borrows).
+        let mut snap = [(0.0f64, 0.0f64, 0.0f64, 0.0f64, false); NUM_DECKS];
+        for (i, d) in self.decks.iter().enumerate() {
+            // A master plays at its own user rate.
+            let adv = d.base_ratio * d.tempo;
+            snap[i] = (d.playhead, d.beat_offset, d.beat_interval, adv, d.playing);
+        }
+        for (i, d) in self.decks.iter_mut().enumerate() {
+            let Some(m) = d.sync_master else {
+                d.sync_tempo = None;
+                continue;
+            };
+            let (m_ph, m_off, m_int, m_adv, m_playing) = snap.get(m).copied().unwrap_or_default();
+            if m == i || m_int <= 0.0 || d.beat_interval <= 0.0 || !m_playing || d.base_ratio <= 0.0 {
+                d.sync_tempo = None;
+                continue;
+            }
+            // Rate-match: follower advances so its beats tick at the master's beat rate.
+            let master_beat_rate = m_adv / m_int; // beats per output sample
+            let base_adv = master_beat_rate * d.beat_interval; // follower frames per sample
+            // Phase error (master − follower), wrapped to the nearest beat [−0.5, 0.5].
+            let mut err = beat_phase(m_ph, m_off, m_int) - beat_phase(d.playhead, d.beat_offset, d.beat_interval);
+            err -= err.round();
+            let bend = (SYNC_PHASE_GAIN * err).clamp(-SYNC_MAX_BEND, SYNC_MAX_BEND);
+            d.sync_tempo = Some((base_adv * (1.0 + bend)) / d.base_ratio);
+        }
+    }
+
     /// Apply all pending control commands. RT-SAFE (bounded by ring capacity).
     #[inline]
     pub fn drain_commands(&mut self) {
@@ -564,7 +640,12 @@ impl Mixer {
                         d.stretch_engaged = false;
                     }
                 }
-                AudioCommand::LoadDeck { deck, buffer } => {
+                AudioCommand::LoadDeck {
+                    deck,
+                    buffer,
+                    beat_offset,
+                    beat_interval,
+                } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.base_ratio = buffer.source_rate as f64 / self.device_rate as f64;
                         d.playhead = 0.0;
@@ -579,8 +660,39 @@ impl Mixer {
                         d.reverb_active = false;
                         d.reverb.clear();
                         d.loop_active = false;
+                        d.beat_offset = beat_offset;
+                        d.beat_interval = beat_interval;
+                        d.sync_master = None;
+                        d.sync_tempo = None;
                         let old = d.buffer.replace(buffer);
                         self.retire(old);
+                    }
+                }
+                AudioCommand::SetBeatgrid {
+                    deck,
+                    offset,
+                    interval,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.beat_offset = offset;
+                        d.beat_interval = interval;
+                    }
+                }
+                AudioCommand::SetDeckSync { deck, master } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.sync_master = master;
+                        d.sync_tempo = None;
+                    }
+                    // Break any A↔B cycle: if the new master was following this deck, stop it.
+                    if let Some(m) = master {
+                        if m != deck {
+                            if let Some(md) = self.decks.get_mut(m) {
+                                if md.sync_master == Some(deck) {
+                                    md.sync_master = None;
+                                    md.sync_tempo = None;
+                                }
+                            }
+                        }
                     }
                 }
                 AudioCommand::SetLoop {
@@ -632,6 +744,9 @@ impl Mixer {
                         d.reverb.clear();
                         d.playhead = 0.0;
                         d.loop_active = false;
+                        d.sync_master = None;
+                        d.sync_tempo = None;
+                        d.beat_interval = 0.0;
                         let old = d.buffer.take();
                         self.retire(old);
                     }
@@ -644,6 +759,7 @@ impl Mixer {
     /// sum through at unity (4-deck fader matrix is a P4 concern).
     #[inline]
     pub fn next_frame(&mut self) -> (f32, f32) {
+        self.update_sync();
         let (ga, gb) = self.crossfader.next_gains();
         let mut l = 0.0;
         let mut r = 0.0;
@@ -762,6 +878,33 @@ mod tests {
         }
         assert!(d.playhead >= 0.0, "reverse scratch must not run past frame 0");
         assert!(d.playhead < 1.0, "reverse scratch should have moved backward");
+    }
+
+    #[test]
+    fn sync_locks_follower_phase_to_master() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        let buf = Arc::new(DeckBuffer::new(vec![0.0; 2 * 480_000], 48_000));
+        let interval = 24_000.0; // 0.5 s/beat = 120 BPM @ 48 kHz
+        for d in mixer.decks.iter_mut() {
+            d.buffer = Some(buf.clone());
+            d.base_ratio = 1.0;
+            d.playing = true;
+            d.beat_offset = 0.0;
+            d.beat_interval = interval;
+        }
+        // Follower (deck 1) starts a quarter-beat out of phase and tracks the master (deck 0).
+        mixer.decks[1].playhead = 6_000.0;
+        mixer.decks[1].sync_master = Some(0);
+        for _ in 0..192_000 {
+            mixer.next_frame(); // ~4 s
+        }
+        let mp = beat_phase(mixer.decks[0].playhead, 0.0, interval);
+        let fp = beat_phase(mixer.decks[1].playhead, 0.0, interval);
+        let mut err = mp - fp;
+        err -= err.round();
+        assert!(err.abs() < 0.02, "follower not phase-locked: err={err}");
     }
 
     #[test]
