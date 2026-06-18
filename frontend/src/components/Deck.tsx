@@ -289,7 +289,14 @@ export function Deck({
                 >
                   ECHO
                 </button>
-                <button className="chip" disabled title="Reverb: next up">REVERB</button>
+                <button
+                  className={`chip ${state.reverb.active ? "chip--on" : ""}`}
+                  onClick={actions.toggleReverb}
+                  disabled={!meta}
+                  title="Reverb"
+                >
+                  REVERB
+                </button>
                 <button className="chip" disabled title="The filter is the mixer's HPF/LPF knob">FILTER</button>
               </div>
               {state.echo.active && (
@@ -309,7 +316,13 @@ export function Deck({
                   <Knob value={state.echo.depth} min={0} max={1} onChange={actions.setEchoDepth} label="DEPTH" color={color} size={34} />
                 </div>
               )}
-              <p className="soon-note">Reverb is next.</p>
+              {state.reverb.active && (
+                <div className="fx-detail">
+                  <span className="overline fx-label">REVERB</span>
+                  <Knob value={state.reverb.size} min={0} max={1} onChange={actions.setReverbSize} label="SIZE" color={color} size={34} />
+                  <Knob value={state.reverb.mix} min={0} max={1} onChange={actions.setReverbMix} label="MIX" color={color} size={34} />
+                </div>
+              )}
             </>
           ) : (
             <div className="stream-note">

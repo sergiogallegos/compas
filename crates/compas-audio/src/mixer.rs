@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use compas_core::DeckBuffer;
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, ThreeBandEq};
+use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq};
 use rtrb::Producer;
 
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
@@ -54,6 +54,13 @@ pub enum AudioCommand {
         active: bool,
         time_sec: f32,
         feedback: f32,
+        mix: f32,
+    },
+    /// Configure the per-deck reverb insert. Engaging it (false→true) clears the tail.
+    SetDeckReverb {
+        deck: usize,
+        active: bool,
+        room_size: f32,
         mix: f32,
     },
     SetDeckPlaying {
@@ -193,6 +200,9 @@ struct DeckPlayer {
     /// `echo_active` and clears the line on engage.
     echo: Delay,
     echo_active: bool,
+    /// Reverb insert (post-echo). Buffers pre-allocated; toggling flips `reverb_active`.
+    reverb: Reverb,
+    reverb_active: bool,
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
@@ -217,6 +227,8 @@ impl DeckPlayer {
             filter_active: false,
             echo: Delay::new(device_rate, MAX_DELAY_SECS),
             echo_active: false,
+            reverb: Reverb::new(device_rate),
+            reverb_active: false,
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -276,6 +288,11 @@ impl DeckPlayer {
             let (el, er) = self.echo.process(l, r);
             l = el;
             r = er;
+        }
+        if self.reverb_active {
+            let (rl, rr) = self.reverb.process(l, r);
+            l = rl;
+            r = rr;
         }
         (l * g, r * g)
     }
@@ -424,6 +441,21 @@ impl Mixer {
                         d.echo_active = active;
                     }
                 }
+                AudioCommand::SetDeckReverb {
+                    deck,
+                    active,
+                    room_size,
+                    mix,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.reverb.set_room_size(room_size);
+                        d.reverb.set_mix(mix);
+                        if active && !d.reverb_active {
+                            d.reverb.clear(); // fresh tail on engage
+                        }
+                        d.reverb_active = active;
+                    }
+                }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = playing;
@@ -449,6 +481,8 @@ impl Mixer {
                         d.scratch_speed = 0.0;
                         d.echo_active = false;
                         d.echo.clear();
+                        d.reverb_active = false;
+                        d.reverb.clear();
                         d.loop_active = false;
                         let old = d.buffer.replace(buffer);
                         self.retire(old);
@@ -488,6 +522,8 @@ impl Mixer {
                         d.scratch_speed = 0.0;
                         d.echo_active = false;
                         d.echo.clear();
+                        d.reverb_active = false;
+                        d.reverb.clear();
                         d.playhead = 0.0;
                         d.loop_active = false;
                         let old = d.buffer.take();

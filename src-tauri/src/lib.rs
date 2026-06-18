@@ -54,6 +54,12 @@ enum EngineMsg {
         feedback: f32,
         mix: f32,
     },
+    DeckReverb {
+        deck: usize,
+        active: bool,
+        room_size: f32,
+        mix: f32,
+    },
     DeckPlaying {
         deck: usize,
         playing: bool,
@@ -171,6 +177,17 @@ fn spawn_engine() -> EngineHandle {
                         active,
                         time_sec,
                         feedback,
+                        mix,
+                    },
+                    EngineMsg::DeckReverb {
+                        deck,
+                        active,
+                        room_size,
+                        mix,
+                    } => AudioCommand::SetDeckReverb {
+                        deck,
+                        active,
+                        room_size,
                         mix,
                     },
                     EngineMsg::DeckPlaying { deck, playing } => {
@@ -534,6 +551,24 @@ fn set_deck_echo(
     })
 }
 
+/// Configure the per-deck reverb insert. `room_size` (0..1) sets the tail length, `mix`
+/// the wet/dry balance.
+#[tauri::command]
+fn set_deck_reverb(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+    room_size: f32,
+    mix: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckReverb {
+        deck,
+        active,
+        room_size,
+        mix,
+    })
+}
+
 #[tauri::command]
 fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetCrossfader(value))
@@ -604,6 +639,7 @@ pub fn run() {
             set_deck_eq,
             set_deck_filter,
             set_deck_echo,
+            set_deck_reverb,
             set_crossfader,
             set_master_gain,
             spotify::spotify_listen

@@ -4,19 +4,16 @@
 > full plan, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-1. **FX rack — reverb** (echo/delay done). Add an RT-safe reverb (Schroeder/Freeverb comb+allpass
-   bank) to `compas-dsp`, a `SetDeckReverb` command, and enable the deck **REVERB** chip (mirror
-   the echo UI: toggle + size/mix). The echo insert + `Delay` primitive are the template.
-2. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
+1. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
    keypair (`npm run tauri signer generate`), put pubkey in `tauri.conf.json`, privkey + password
    as CI secrets, uncomment the signing env in `release.yml`, add a "Check for updates" UI.
-3. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
-4. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
+2. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
+3. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
    only if a real format gap shows up.
-5. **P1 remainders:** key-lock toggle (signalsmith-stretch), manual beatgrid-anchor edit, underrun
+4. **P1 remainders:** key-lock toggle (signalsmith-stretch), manual beatgrid-anchor edit, underrun
    counters in the UI, a decode-a-fixture integration test, 4-deck layout.
-6. **Scratch polish (optional):** release-throw inertia/spin-down, and a configurable
-   platter→audio mapping (currently fixed at 360° = 1.8 s, ≈33⅓ RPM).
+5. **FX/scratch polish (optional):** scratch release-throw inertia + configurable platter mapping
+   (fixed at 360° = 1.8 s); FX param tuning by ear (echo glide/depth curve, reverb `WET_SCALE`).
 
 ## ✅ Done
 **P0 scaffold** · Tauri 2 workspace, 4 engine crates, CI-green.
@@ -30,9 +27,10 @@
 - **Jog-wheel scratch** — draggable spinning platter drives the audio-thread read-rate from drag
   velocity (forward/reverse scrub + hold), engine `SetScratch`/`deck_scratch`, disc tracks the
   hand 1:1 (DSP/local decks only).
-- **FX rack — echo/delay** — RT-safe `Delay` primitive (pre-allocated ring, fractional read +
-  time-glide, feedback/mix), per-deck post-EQ insert (`SetDeckEcho`/`set_deck_echo`), beat-synced
-  UI (¼/½/1/2 + DEPTH knob). Reverb still pending (see Resume #1).
+- **FX rack — echo/delay + reverb** — RT-safe `Delay` (pre-allocated ring, fractional read +
+  time-glide, feedback/mix) and Freeverb-style `Reverb` (8 combs → 4 allpass per channel,
+  pre-allocated). Per-deck inserts post-EQ (`SetDeckEcho`/`SetDeckReverb`); UI: echo toggle +
+  beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.
 - **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
   progress feedback.

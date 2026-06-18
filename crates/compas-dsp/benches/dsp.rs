@@ -3,7 +3,7 @@
 //! estimator, so regressions in either show up as wall-clock changes.
 
 use compas_dsp::analysis::estimate_tempo;
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, ThreeBandEq};
+use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, Reverb, ThreeBandEq};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const BLOCK: usize = 1024;
@@ -67,6 +67,22 @@ fn bench_delay(c: &mut Criterion) {
     });
 }
 
+fn bench_reverb(c: &mut Criterion) {
+    let mut r = Reverb::new(48_000.0);
+    r.set_room_size(0.7);
+    r.set_mix(0.3);
+    c.bench_function("reverb_process_block", |bn| {
+        bn.iter(|| {
+            let mut acc = 0.0f32;
+            for i in 0..BLOCK {
+                let (l, rr) = r.process(black_box(if i % 2 == 0 { 0.5 } else { -0.5 }), 0.25);
+                acc += l + rr;
+            }
+            acc
+        })
+    });
+}
+
 fn bench_tempo(c: &mut Criterion) {
     // 8 s of a 128 BPM click — representative analysis input.
     let sr = 44_100u32;
@@ -93,6 +109,7 @@ criterion_group!(
     bench_three_band_eq,
     bench_crossfader,
     bench_delay,
+    bench_reverb,
     bench_tempo
 );
 criterion_main!(benches);

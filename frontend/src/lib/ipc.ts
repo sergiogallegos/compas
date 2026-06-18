@@ -119,6 +119,9 @@ export const setDeckEcho = (
   feedback: number,
   mix: number,
 ) => invoke("set_deck_echo", { deck, active, timeSec, feedback, mix });
+/** Reverb insert. `roomSize` 0..1 sets the tail length; `mix` 0..1 the wet/dry balance. */
+export const setDeckReverb = (deck: number, active: boolean, roomSize: number, mix: number) =>
+  invoke("set_deck_reverb", { deck, active, roomSize, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 

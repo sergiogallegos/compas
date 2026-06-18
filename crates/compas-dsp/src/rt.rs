@@ -372,6 +372,179 @@ impl Delay {
     }
 }
 
+// ---------------------------------------------------------------------------------
+// Reverb (Freeverb-style: parallel damped combs → series allpass diffusers)
+// ---------------------------------------------------------------------------------
+
+/// A feedback comb with a one-pole low-pass in the loop (the "damp"). RT-SAFE process.
+struct Comb {
+    buf: Vec<f32>,
+    idx: usize,
+    store: f32, // damping low-pass state
+    feedback: f32,
+    damp1: f32,
+    damp2: f32,
+}
+
+impl Comb {
+    fn new(size: usize) -> Self {
+        Comb {
+            buf: vec![0.0; size.max(1)],
+            idx: 0,
+            store: 0.0,
+            feedback: 0.5,
+            damp1: 0.5,
+            damp2: 0.5,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, input: f32) -> f32 {
+        let output = self.buf[self.idx];
+        self.store = output * self.damp2 + self.store * self.damp1;
+        self.buf[self.idx] = input + self.store * self.feedback;
+        self.idx += 1;
+        if self.idx >= self.buf.len() {
+            self.idx = 0;
+        }
+        output
+    }
+
+    fn set_damp(&mut self, d: f32) {
+        self.damp1 = d;
+        self.damp2 = 1.0 - d;
+    }
+
+    fn clear(&mut self) {
+        self.buf.iter_mut().for_each(|s| *s = 0.0);
+        self.store = 0.0;
+    }
+}
+
+/// A Schroeder allpass diffuser. RT-SAFE process.
+struct Allpass {
+    buf: Vec<f32>,
+    idx: usize,
+    feedback: f32,
+}
+
+impl Allpass {
+    fn new(size: usize) -> Self {
+        Allpass {
+            buf: vec![0.0; size.max(1)],
+            idx: 0,
+            feedback: 0.5,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, input: f32) -> f32 {
+        let bufout = self.buf[self.idx];
+        let output = -input + bufout;
+        self.buf[self.idx] = input + bufout * self.feedback;
+        self.idx += 1;
+        if self.idx >= self.buf.len() {
+            self.idx = 0;
+        }
+        output
+    }
+
+    fn clear(&mut self) {
+        self.buf.iter_mut().for_each(|s| *s = 0.0);
+    }
+}
+
+const NUM_COMBS: usize = 8;
+const NUM_ALLPASS: usize = 4;
+/// Freeverb comb/allpass tunings, in samples at 44.1 kHz (scaled to the device rate).
+const COMB_TUNING: [usize; NUM_COMBS] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
+const ALLPASS_TUNING: [usize; NUM_ALLPASS] = [556, 441, 341, 225];
+/// Right-channel delay offset for stereo decorrelation.
+const STEREO_SPREAD: usize = 23;
+/// Fixed input gain (Freeverb `fixedgain`) — combs amplify, so the input is heavily padded.
+const FIXED_GAIN: f32 = 0.015;
+/// Wet make-up so a moderate `mix` is audible (mirrors Freeverb `scalewet`).
+const WET_SCALE: f32 = 3.0;
+
+/// Freeverb-style stereo reverb: 8 parallel damped comb filters per channel feeding 4
+/// series allpass diffusers. All buffers are **pre-allocated at construction** (sized for
+/// the device rate); [`Reverb::process`] is allocation-free and RT-SAFE. Driven from the
+/// summed (mono) input — the stereo image comes from the per-channel delay spread.
+pub struct Reverb {
+    combs_l: [Comb; NUM_COMBS],
+    combs_r: [Comb; NUM_COMBS],
+    allpass_l: [Allpass; NUM_ALLPASS],
+    allpass_r: [Allpass; NUM_ALLPASS],
+    mix: f32,
+}
+
+impl Reverb {
+    /// Allocate a reverb tuned for `sample_rate`. Allocation happens here (setup), so
+    /// [`process`](Self::process) stays RT-safe.
+    pub fn new(sample_rate: f32) -> Self {
+        let scale = sample_rate / 44_100.0;
+        let sized = |tuning: usize, spread: usize| (((tuning + spread) as f32 * scale).round() as usize).max(1);
+        let mut rv = Reverb {
+            combs_l: std::array::from_fn(|i| Comb::new(sized(COMB_TUNING[i], 0))),
+            combs_r: std::array::from_fn(|i| Comb::new(sized(COMB_TUNING[i], STEREO_SPREAD))),
+            allpass_l: std::array::from_fn(|i| Allpass::new(sized(ALLPASS_TUNING[i], 0))),
+            allpass_r: std::array::from_fn(|i| Allpass::new(sized(ALLPASS_TUNING[i], STEREO_SPREAD))),
+            mix: 0.0,
+        };
+        rv.set_room_size(0.5);
+        rv.set_damp(0.5);
+        rv
+    }
+
+    /// Room size 0..1 — larger = longer tail (higher comb feedback). RT-SAFE.
+    pub fn set_room_size(&mut self, size: f32) {
+        // Freeverb: roomsize1 = size * scaleroom + offsetroom.
+        let fb = size.clamp(0.0, 1.0) * 0.28 + 0.7;
+        for c in self.combs_l.iter_mut().chain(self.combs_r.iter_mut()) {
+            c.feedback = fb;
+        }
+    }
+
+    /// High-frequency damping 0..1 (more = darker tail). RT-SAFE.
+    pub fn set_damp(&mut self, damp: f32) {
+        let d = damp.clamp(0.0, 1.0) * 0.4; // Freeverb scaledamp
+        for c in self.combs_l.iter_mut().chain(self.combs_r.iter_mut()) {
+            c.set_damp(d);
+        }
+    }
+
+    /// Wet mix: 0 = dry, 1 = fully wet. RT-SAFE.
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix.clamp(0.0, 1.0);
+    }
+
+    /// Zero all comb/allpass buffers — call when (re)engaging so an old tail doesn't
+    /// reappear. Bounded; intended for occasional control events, not per-sample use.
+    pub fn clear(&mut self) {
+        self.combs_l.iter_mut().chain(self.combs_r.iter_mut()).for_each(Comb::clear);
+        self.allpass_l.iter_mut().chain(self.allpass_r.iter_mut()).for_each(Allpass::clear);
+    }
+
+    /// Process one stereo frame, returning the wet/dry mix. RT-SAFE.
+    #[inline]
+    pub fn process(&mut self, in_l: f32, in_r: f32) -> (f32, f32) {
+        let input = (in_l + in_r) * FIXED_GAIN;
+        let mut out_l = 0.0;
+        let mut out_r = 0.0;
+        for i in 0..NUM_COMBS {
+            out_l += self.combs_l[i].process(input);
+            out_r += self.combs_r[i].process(input);
+        }
+        for i in 0..NUM_ALLPASS {
+            out_l = self.allpass_l[i].process(out_l);
+            out_r = self.allpass_r[i].process(out_r);
+        }
+        let dry = 1.0 - self.mix;
+        let wet = self.mix * WET_SCALE;
+        (in_l * dry + out_l * wet, in_r * dry + out_r * wet)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,5 +642,36 @@ mod tests {
             second > 0.1 && second < first,
             "second echo {second} should be a decayed {first}"
         );
+    }
+
+    #[test]
+    fn reverb_is_dry_at_zero_mix() {
+        let mut r = Reverb::new(48_000.0);
+        r.set_mix(0.0);
+        for x in [0.4, -0.6, 0.2] {
+            let (l, rr) = r.process(x, x);
+            assert!((l - x).abs() < 1e-6 && (rr - x).abs() < 1e-6, "not dry: {l}");
+        }
+    }
+
+    #[test]
+    fn reverb_tail_rings_and_decays() {
+        let sr = 48_000.0;
+        let mut r = Reverb::new(sr);
+        r.set_room_size(0.8);
+        r.set_mix(1.0);
+        r.clear();
+        r.process(1.0, 1.0); // impulse
+        let (mut early, mut late) = (0.0f32, 0.0f32);
+        for i in 0..48_000 {
+            let l = r.process(0.0, 0.0).0;
+            if i < 4_000 {
+                early += l * l;
+            } else if (20_000..24_000).contains(&i) {
+                late += l * l;
+            }
+        }
+        assert!(early > 1e-6, "no reverb tail (early energy {early})");
+        assert!(late < early, "reverb did not decay (early {early}, late {late})");
     }
 }
