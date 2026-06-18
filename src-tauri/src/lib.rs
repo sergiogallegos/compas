@@ -304,6 +304,14 @@ struct MasterMeterEvent {
 }
 
 #[derive(Serialize, Clone)]
+struct EngineLoadEvent {
+    /// Audio-callback load, 0..~1 (≥1 = overrun).
+    load: f32,
+    /// Cumulative real-time-budget overruns since start.
+    xruns: u64,
+}
+
+#[derive(Serialize, Clone)]
 struct DeckLoadingEvent {
     deck: usize,
     path: String,
@@ -743,6 +751,13 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
             }
             let (l, r) = telemetry.master_level();
             let _ = app.emit("master:level", MasterMeterEvent { l, r });
+            let _ = app.emit(
+                "engine:load",
+                EngineLoadEvent {
+                    load: telemetry.rt_load(),
+                    xruns: telemetry.xruns(),
+                },
+            );
             thread::sleep(period);
         }
     });

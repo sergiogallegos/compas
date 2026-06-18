@@ -37,7 +37,8 @@
   beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
 - **Master recording** — record the master mix to a 32-bit-float stereo WAV (audio-thread tap →
   lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
-- Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.
+- Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering; **manual
+  beatgrid-anchor nudge**. **RT-load + xrun meter** in the title bar.
 - **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
   progress feedback.
 - Full performance UI (frameless window + traffic-light controls), brand mark + icons.

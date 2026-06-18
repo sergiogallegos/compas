@@ -11,6 +11,8 @@ interface Lane {
   letter: string;
   color: string;
   onSeek: (frac: number) => void;
+  onNudgeGrid?: (deltaSec: number) => void;
+  onResetGrid?: () => void;
 }
 
 export function WaveformZone({ lanes }: { lanes: Lane[] }) {
@@ -35,7 +37,7 @@ export function WaveformZone({ lanes }: { lanes: Lane[] }) {
 }
 
 function WaveLane({ lane, view }: { lane: Lane; view: number }) {
-  const { state, color, letter, onSeek } = lane;
+  const { state, color, letter, onSeek, onNudgeGrid, onResetGrid } = lane;
   const meta = state.meta;
   const streaming = !state.dsp;
   const effBpm = meta ? meta.bpm * state.tempo : 0;
@@ -73,7 +75,7 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
   // beat lines in the visible window
   const beats: { x: number; down: boolean }[] = [];
   const interval = meta?.beat_interval_sec ?? 0;
-  const offset = meta?.first_beat_sec ?? 0;
+  const offset = (meta?.first_beat_sec ?? 0) + state.gridOffset;
   if (interval > 0.05) {
     let k = Math.floor((t0 - offset) / interval) - 1;
     for (let n = 0; n < 4096; n++, k++) {
@@ -125,6 +127,15 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
         </span>
         <span className="wf-title">{meta ? `${meta.title} — ${meta.artist}` : "No track loaded"}</span>
         {streaming && <span className="wf-badge">STREAM · CONTROL-ONLY</span>}
+        {meta && interval > 0.05 && onNudgeGrid && (
+          <span className="wf-grid-edit" onPointerDown={(e) => e.stopPropagation()} title="Nudge the beatgrid to line it up with the audio">
+            <button onClick={() => onNudgeGrid(-0.005)}>◀</button>
+            <button onClick={onResetGrid} className="wf-grid-reset">
+              GRID{Math.abs(state.gridOffset) > 1e-4 ? ` ${state.gridOffset > 0 ? "+" : ""}${(state.gridOffset * 1000).toFixed(0)}ms` : ""}
+            </button>
+            <button onClick={() => onNudgeGrid(0.005)}>▶</button>
+          </span>
+        )}
       </div>
     </div>
   );

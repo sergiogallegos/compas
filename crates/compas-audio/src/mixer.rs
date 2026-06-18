@@ -131,6 +131,10 @@ pub struct DeckTelemetry {
     level_bits: [AtomicU64; NUM_DECKS],
     master_l_bits: AtomicU64,
     master_r_bits: AtomicU64,
+    /// Audio-callback CPU load (processing time ÷ block duration), smoothed. ≥1.0 = overload.
+    rt_load_bits: AtomicU64,
+    /// Count of blocks that overran their real-time budget (potential underruns).
+    xruns: AtomicU64,
 }
 
 impl DeckTelemetry {
@@ -142,7 +146,19 @@ impl DeckTelemetry {
             level_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             master_l_bits: AtomicU64::new(0),
             master_r_bits: AtomicU64::new(0),
+            rt_load_bits: AtomicU64::new(0),
+            xruns: AtomicU64::new(0),
         }
+    }
+
+    /// Audio-thread CPU load, 0..~1 (≥1 means the callback is overrunning its budget).
+    pub fn rt_load(&self) -> f32 {
+        f64::from_bits(self.rt_load_bits.load(Ordering::Relaxed)) as f32
+    }
+
+    /// Number of blocks that overran their real-time budget since start.
+    pub fn xruns(&self) -> u64 {
+        self.xruns.load(Ordering::Relaxed)
     }
 
     /// Per-deck output peak in 0..~1 (linear). For VU meters.
@@ -399,6 +415,9 @@ pub struct Mixer {
     peak_r: f32,
     /// When recording, the master output is pushed here for the writer thread to drain.
     record_sink: Option<Producer<f32>>,
+    /// Smoothed audio-callback load, and the running overrun count.
+    rt_load: f32,
+    xrun_count: u64,
 }
 
 impl Mixer {
@@ -420,7 +439,30 @@ impl Mixer {
             peak_l: 0.0,
             peak_r: 0.0,
             record_sink: None,
+            rt_load: 0.0,
+            xrun_count: 0,
         }
+    }
+
+    /// Publish the audio-callback load (processing time ÷ block budget). Smoothed for a
+    /// stable UI readout; each overrun (load ≥ 1.0) bumps the xrun counter. RT-SAFE.
+    #[inline]
+    pub fn publish_rt_load(&mut self, load: f32) {
+        // Fast attack, slow release so brief spikes are visible but the readout is steady.
+        self.rt_load = if load > self.rt_load {
+            load
+        } else {
+            self.rt_load * 0.9 + load * 0.1
+        };
+        if load >= 1.0 {
+            self.xrun_count += 1;
+        }
+        self.telemetry
+            .rt_load_bits
+            .store((self.rt_load as f64).to_bits(), Ordering::Relaxed);
+        self.telemetry
+            .xruns
+            .store(self.xrun_count, Ordering::Relaxed);
     }
 
     /// Retire a deck's old buffer to the control thread for dropping (RT-safe: if the

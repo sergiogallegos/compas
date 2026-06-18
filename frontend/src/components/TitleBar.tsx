@@ -2,16 +2,18 @@ import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Logo } from "./Logo";
 import { Icon } from "./icons";
-import { inTauri, pickRecordingPath, startRecording, stopRecording, type MasterMeter } from "../lib/ipc";
+import { inTauri, pickRecordingPath, startRecording, stopRecording, type EngineLoad, type MasterMeter } from "../lib/ipc";
 
 export function TitleBar({
   masterBpm,
   master,
+  load,
   syncEnabled = false,
   onSync,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
+  load?: EngineLoad;
   syncEnabled?: boolean;
   onSync?: () => void;
 }) {
@@ -91,7 +93,17 @@ export function TitleBar({
       </div>
 
       <div className="titlebar-right">
-        <span className="mono cpu">RT OK</span>
+        {(() => {
+          const pct = Math.round((load?.load ?? 0) * 100);
+          const xruns = load?.xruns ?? 0;
+          const tone = xruns > 0 || pct >= 100 ? "var(--status-alarm-2)" : pct >= 70 ? "var(--status-warn)" : "var(--status-ok)";
+          const text = xruns > 0 ? `RT ⚠ ${xruns}` : `RT ${pct}%`;
+          return (
+            <span className="mono cpu" style={{ color: tone }} title={`Audio-thread load ${pct}%${xruns > 0 ? ` · ${xruns} overruns` : ""}`}>
+              {text}
+            </span>
+          );
+        })()}
         <button className="icon-btn" disabled title="Settings"><Icon name="settings" size={16} /></button>
         <span className="avatar">M</span>
       </div>

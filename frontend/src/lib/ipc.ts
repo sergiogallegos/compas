@@ -40,6 +40,13 @@ export interface MasterMeter {
   r: number;
 }
 
+export interface EngineLoad {
+  /** Audio-callback load, 0..~1 (≥1 = overrun). */
+  load: number;
+  /** Cumulative real-time-budget overruns since start. */
+  xruns: number;
+}
+
 export interface DeckError {
   deck: number;
   message: string;
@@ -160,3 +167,5 @@ export const onDeckError = (cb: (e: DeckError) => void): Promise<UnlistenFn> =>
   listen<DeckError>("deck:error", (e) => cb(e.payload));
 export const onMasterMeter = (cb: (e: MasterMeter) => void): Promise<UnlistenFn> =>
   listen<MasterMeter>("master:level", (e) => cb(e.payload));
+export const onEngineLoad = (cb: (e: EngineLoad) => void): Promise<UnlistenFn> =>
+  listen<EngineLoad>("engine:load", (e) => cb(e.payload));

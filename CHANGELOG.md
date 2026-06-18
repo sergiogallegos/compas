@@ -29,6 +29,11 @@ All notable changes to compas are documented here. Format follows
   series allpass diffusers per channel, sample-rate-scaled tunings, all buffers pre-allocated).
   Per-deck insert (post-echo) via `SetDeckReverb` / `set_deck_reverb`; UI is a toggle with SIZE
   and MIX knobs. Criterion bench added.
+- **RT-load / underrun meter:** the title-bar indicator now shows real audio-thread load
+  (processing time ÷ block budget) and counts real-time-budget overruns (xruns), replacing the
+  hardcoded "RT OK".
+- **Manual beatgrid-anchor edit:** nudge a deck's beatgrid (±5 ms) from the waveform to line it
+  up with the audio; feeds both the grid overlay and beat-loop math.
 - **Master recording:** one-click record of the master mix to a 32-bit-float stereo WAV. The
   audio thread taps the post-crossfader master into a lock-free ring; a writer thread streams it
   to disk and finalizes on stop (`start_recording` / `stop_recording`). RT-safe — no allocation

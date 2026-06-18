@@ -73,6 +73,8 @@ export interface DeckState {
   tempo: number;
   /** Key-lock (master tempo): tempo changes preserve pitch. */
   keylock: boolean;
+  /** Manual beatgrid nudge (seconds) added to the analyzed first-beat anchor. */
+  gridOffset: number;
   eq: Eq;
   filter: number;
   gain: number;
@@ -100,6 +102,7 @@ export function useDeck(deck: number, dsp = true) {
   const [level, setLevel] = useState(0);
   const [tempo, setTempo] = useState(1);
   const [keylock, setKeylockState] = useState(false);
+  const [gridOffset, setGridOffset] = useState(0);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
   const [filter, setFilterState] = useState(0);
   const [gain, setGainState] = useState(1);
@@ -114,6 +117,8 @@ export function useDeck(deck: number, dsp = true) {
   tempoRef.current = tempo;
   const keylockRef = useRef(keylock);
   keylockRef.current = keylock;
+  const gridOffsetRef = useRef(gridOffset);
+  gridOffsetRef.current = gridOffset;
   const loopRef = useRef(loop);
   loopRef.current = loop;
   const echoRef = useRef(echo);
@@ -143,6 +148,7 @@ export function useDeck(deck: number, dsp = true) {
         setPlaying(false);
         setTempo(1);
         setKeylockState(false); // engine resets key-lock on load
+        setGridOffset(0);
         setHotCues(Array(8).fill(null));
         setLoopState({ active: false, beats: null, inFrame: 0, outFrame: 0 });
         // Engine resets FX on load; mirror that (keep the user's param settings).
@@ -219,6 +225,10 @@ export function useDeck(deck: number, dsp = true) {
         setKeylockState(next);
         setDeckKeylock(deck, next).catch(swallow);
       },
+      // Manual beatgrid anchor: shift the grid to line it up with the audio (UI-only;
+      // feeds waveform rendering + beat-loop math).
+      nudgeGrid: (deltaSec: number) => setGridOffset((g) => g + deltaSec),
+      resetGrid: () => setGridOffset(0),
       // Persistent fine tempo trim (the jog wheel handles momentary pitch bend). Reads
       // the ref so rapid clicks accumulate instead of all seeing the same render's tempo.
       trimTempo: (dir: 1 | -1) => {
@@ -260,7 +270,7 @@ export function useDeck(deck: number, dsp = true) {
         if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return;
         const sr = meta.source_rate;
         const interval = meta.beat_interval_sec * sr;
-        const offset = meta.first_beat_sec * sr;
+        const offset = (meta.first_beat_sec + gridOffsetRef.current) * sr;
         const k = Math.round((frameRef.current - offset) / interval);
         const inFrame = Math.max(0, offset + k * interval);
         const outFrame = inFrame + beats * interval;
@@ -319,7 +329,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
   return { state, actions };
 }
 

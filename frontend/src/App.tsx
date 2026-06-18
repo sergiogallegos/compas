@@ -7,7 +7,7 @@ import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { useDeck } from "./hooks/useDeck";
-import { engineStatus, inTauri, onMasterMeter, setCrossfader, type MasterMeter } from "./lib/ipc";
+import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const MAGENTA = "var(--accent)";
 const CYAN = "var(--stream)";
@@ -21,14 +21,17 @@ export function App() {
 
   const [sampleRate, setSampleRate] = useState<number | null>(null);
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
+  const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
 
   useEffect(() => {
     if (!inTauri()) return;
     engineStatus().then((s) => setSampleRate(s.sample_rate)).catch(() => setSampleRate(0));
-    const un = onMasterMeter(setMaster);
+    const unMeter = onMasterMeter(setMaster);
+    const unLoad = onEngineLoad(setLoad);
     return () => {
-      un.then((u) => u());
+      unMeter.then((u) => u());
+      unLoad.then((u) => u());
     };
   }, []);
 
@@ -50,14 +53,14 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} syncEnabled={bothReady} onSync={() => syncDeck("B")} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} onSync={() => syncDeck("B")} />
       <div className="body">
         <NavRail />
         <div className="content">
           <WaveformZone
             lanes={[
-              { state: deckA.state, letter: "A", color: MAGENTA, onSeek: deckA.actions.seekFrac },
-              { state: deckB.state, letter: "B", color: CYAN, onSeek: deckB.actions.seekFrac },
+              { state: deckA.state, letter: "A", color: MAGENTA, onSeek: deckA.actions.seekFrac, onNudgeGrid: deckA.actions.nudgeGrid, onResetGrid: deckA.actions.resetGrid },
+              { state: deckB.state, letter: "B", color: CYAN, onSeek: deckB.actions.seekFrac, onNudgeGrid: deckB.actions.nudgeGrid, onResetGrid: deckB.actions.resetGrid },
             ]}
           />
           <div className="deck-row">

@@ -47,13 +47,13 @@ Concrete tasks:
    click-to-seek within the window).
 6. ✅ **BPM + beatgrid + key.** Tempo (spectral-flux onset → autocorrelation → parabolic refine
    → octave fold) + **beat phase** (comb over the envelope) → grid overlay with emphasized
-   downbeats. **Musical key** via chromagram → Krumhansl–Schmuckler (Camelot). *Remaining: manual
-   grid-anchor editing.*
+   downbeats. **Musical key** via chromagram → Krumhansl–Schmuckler (Camelot). ✅ Manual
+   grid-anchor nudge (waveform).
 7. ✅ **Manual beatmatch + tempo SYNC.** Varispeed (tempo+pitch coupled) + tempo fader + nudge;
    one-shot **SYNC** matches a deck's effective BPM to the other. *Remaining: end-to-end verify
    against real tracks; continuous/phase sync (→ P4).* Key-lock (in-house WSOLA) is now done.
-8. ✅ **Engine telemetry.** `engine_status` + per-deck position/level + master meter.
-   *Remaining: buffer size + underrun counters surfaced to the UI.*
+8. ✅ **Engine telemetry.** `engine_status` + per-deck position/level + master meter + ✅
+   audio-thread load / xrun counter surfaced in the title bar.
 9. 🔨 **Tests.** ✅ Tempo/beatgrid/key on synthetic signals; ✅ interpolation/crossfade/EQ/peaks.
    *Remaining: integration test that decodes a fixture file and renders N frames.*
 

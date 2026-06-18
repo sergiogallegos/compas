@@ -114,12 +114,14 @@ where
     T: SizedSample + FromSample<f32> + Send + 'static,
 {
     let channels = config.channels as usize;
+    let sample_rate = config.sample_rate.0 as f64;
     let err_fn = |e| tracing::error!("cpal stream error: {e}");
 
     let stream = device
         .build_output_stream(
             config,
             move |out: &mut [T], _: &cpal::OutputCallbackInfo| {
+                let t0 = std::time::Instant::now();
                 mixer.drain_commands();
                 for frame in out.chunks_mut(channels) {
                     let (l, r) = mixer.next_frame();
@@ -134,6 +136,14 @@ where
                         }
                     }
                 }
+                // RT load = time spent in the callback ÷ this block's real-time budget.
+                let block_secs = (out.len() / channels) as f64 / sample_rate;
+                let load = if block_secs > 0.0 {
+                    (t0.elapsed().as_secs_f64() / block_secs) as f32
+                } else {
+                    0.0
+                };
+                mixer.publish_rt_load(load);
                 mixer.publish_telemetry();
             },
             err_fn,
