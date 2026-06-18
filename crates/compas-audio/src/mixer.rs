@@ -4,7 +4,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use compas_core::DeckBuffer;
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq};
+use compas_dsp::{
+    Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq, TimeStretch,
+};
 use rtrb::Producer;
 
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
@@ -71,6 +73,11 @@ pub enum AudioCommand {
     SetDeckTempo {
         deck: usize,
         ratio: f64,
+    },
+    /// Toggle key-lock (master tempo): tempo changes keep the original pitch.
+    SetDeckKeylock {
+        deck: usize,
+        active: bool,
     },
     /// Seek to an absolute position in source frames.
     SeekDeck {
@@ -190,6 +197,12 @@ struct DeckPlayer {
     /// `tempo`, and audio plays regardless of the transport state.
     scratching: bool,
     scratch_speed: f64,
+    /// Key-lock (master tempo): when on, the play-head is read through `stretch` so tempo
+    /// changes without pitch. `stretch_engaged` tracks the previous frame's read mode so a
+    /// jump into stretched reading (toggle/seek/scratch-release) re-primes the stretcher.
+    keylock: bool,
+    stretch: TimeStretch,
+    stretch_engaged: bool,
     gain: GainSmoother,
     eq_l: ThreeBandEq,
     eq_r: ThreeBandEq,
@@ -219,6 +232,9 @@ impl DeckPlayer {
             playing: false,
             scratching: false,
             scratch_speed: 0.0,
+            keylock: false,
+            stretch: TimeStretch::new(),
+            stretch_engaged: false,
             gain: GainSmoother::new(1.0, device_rate, 8.0),
             eq_l: ThreeBandEq::new(device_rate),
             eq_r: ThreeBandEq::new(device_rate),
@@ -262,7 +278,23 @@ impl DeckPlayer {
         }
 
         let max = frames as f64 - 1.0;
-        let (mut l, mut r) = interp_stereo(&buf.samples, frames, self.playhead.clamp(0.0, max));
+
+        // Read mode: with key-lock on, stream through the WSOLA stretcher (tempo without
+        // pitch); otherwise read directly. Scratching always uses the direct (varispeed)
+        // path. Re-prime the stretcher whenever we (re)enter stretched reading, since the
+        // play-head may have jumped (toggle / seek / scratch release).
+        let engaged = self.keylock && !self.scratching;
+        if engaged && !self.stretch_engaged {
+            self.stretch.reset();
+        }
+        self.stretch_engaged = engaged;
+
+        let (mut l, mut r) = if engaged {
+            self.stretch
+                .next_frame(&buf.samples, frames, self.base_ratio, self.playhead)
+        } else {
+            interp_stereo(&buf.samples, frames, self.playhead.clamp(0.0, max))
+        };
 
         if self.scratching {
             // Hand-driven read rate (can be negative); clamp to the track bounds.
@@ -466,9 +498,18 @@ impl Mixer {
                         d.tempo = ratio.clamp(0.05, 4.0);
                     }
                 }
+                AudioCommand::SetDeckKeylock { deck, active } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.keylock = active;
+                        // Force a re-prime on the next stretched frame.
+                        d.stretch_engaged = false;
+                    }
+                }
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
+                        // The play-head jumped — re-prime the stretcher on the next frame.
+                        d.stretch_engaged = false;
                     }
                 }
                 AudioCommand::LoadDeck { deck, buffer } => {
@@ -479,6 +520,8 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
+                        d.keylock = false;
+                        d.stretch_engaged = false;
                         d.echo_active = false;
                         d.echo.clear();
                         d.reverb_active = false;
@@ -520,6 +563,8 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
+                        d.keylock = false;
+                        d.stretch_engaged = false;
                         d.echo_active = false;
                         d.echo.clear();
                         d.reverb_active = false;

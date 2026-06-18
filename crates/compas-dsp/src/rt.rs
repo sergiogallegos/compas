@@ -545,6 +545,166 @@ impl Reverb {
     }
 }
 
+// ---------------------------------------------------------------------------------
+// Time-stretch (WSOLA) — key-lock / master-tempo
+// ---------------------------------------------------------------------------------
+
+/// Grain (window) length in output samples. 2048 ≈ 43 ms @ 48 kHz — long enough for
+/// solid bass, the cost being ~43 ms of key-lock latency.
+const STRETCH_WINDOW: usize = 2048;
+/// Synthesis hop. 50% overlap so a periodic Hann window sums to unity (no normalization).
+const STRETCH_HOP: usize = STRETCH_WINDOW / 2;
+/// Similarity-search radius (± output samples) for phase-continuous grain placement.
+const STRETCH_SEARCH: usize = 384;
+
+/// WSOLA time-stretcher for **key-lock** (change tempo without changing pitch).
+///
+/// Reads grains directly from the fully-decoded source buffer, so it needs no input
+/// ring. The caller advances the play-head as usual (`base_ratio * tempo` per output
+/// frame) and passes it as the per-sample `anchor`; the stretcher overlap-adds Hann
+/// grains stepped at `base_ratio` (→ pitch preserved) and uses waveform-similarity search
+/// to keep successive grains phase-continuous. All buffers are pre-allocated; per-sample
+/// processing is allocation-free and RT-SAFE (a similarity search runs once per hop).
+pub struct TimeStretch {
+    win: Vec<f32>,
+    accum_l: Vec<f32>,
+    accum_r: Vec<f32>,
+    cand_mono: Vec<f32>,
+    template: Vec<f32>,
+    emit_idx: usize,
+    prev_pos: f64,
+    primed: bool,
+}
+
+impl TimeStretch {
+    pub fn new() -> Self {
+        let n = STRETCH_WINDOW;
+        let win = (0..n)
+            .map(|k| 0.5 * (1.0 - (2.0 * PI * k as f32 / n as f32).cos()))
+            .collect();
+        TimeStretch {
+            win,
+            accum_l: vec![0.0; n],
+            accum_r: vec![0.0; n],
+            cand_mono: vec![0.0; 2 * STRETCH_SEARCH + STRETCH_HOP],
+            template: vec![0.0; STRETCH_HOP],
+            emit_idx: 0,
+            prev_pos: 0.0,
+            primed: false,
+        }
+    }
+
+    /// Drop buffered output and re-prime on the next sample (call on engage / seek /
+    /// after scratching, where the play-head jumps discontinuously). RT-SAFE.
+    pub fn reset(&mut self) {
+        self.primed = false;
+        self.emit_idx = 0;
+    }
+
+    /// Pull one device-rate stereo frame. `samples` is interleaved stereo source of
+    /// `frames` frames; `base_ratio` = source_rate/device_rate; `anchor` is the current
+    /// play-head (source frames). RT-SAFE. Pitch is preserved; tempo is whatever rate the
+    /// caller advances `anchor` at.
+    #[inline]
+    pub fn next_frame(&mut self, samples: &[f32], frames: usize, base_ratio: f64, anchor: f64) -> (f32, f32) {
+        if !self.primed {
+            self.prime(samples, frames, base_ratio, anchor);
+        }
+        let l = self.accum_l[self.emit_idx];
+        let r = self.accum_r[self.emit_idx];
+        self.emit_idx += 1;
+        if self.emit_idx >= STRETCH_HOP {
+            self.advance(samples, frames, base_ratio, anchor);
+            self.emit_idx = 0;
+        }
+        (l, r)
+    }
+
+    fn prime(&mut self, samples: &[f32], frames: usize, base_ratio: f64, anchor: f64) {
+        self.accum_l.iter_mut().for_each(|x| *x = 0.0);
+        self.accum_r.iter_mut().for_each(|x| *x = 0.0);
+        self.overlap_add(samples, frames, base_ratio, anchor);
+        self.prev_pos = anchor;
+        self.emit_idx = 0;
+        self.primed = true;
+    }
+
+    fn advance(&mut self, samples: &[f32], frames: usize, base_ratio: f64, anchor: f64) {
+        // Slide the finished hop out; the second half becomes the new overlap region.
+        self.accum_l.copy_within(STRETCH_HOP.., 0);
+        self.accum_r.copy_within(STRETCH_HOP.., 0);
+        for i in (STRETCH_WINDOW - STRETCH_HOP)..STRETCH_WINDOW {
+            self.accum_l[i] = 0.0;
+            self.accum_r[i] = 0.0;
+        }
+        let pos = self.best_grain(samples, frames, base_ratio, anchor);
+        self.overlap_add(samples, frames, base_ratio, pos);
+        self.prev_pos = pos;
+    }
+
+    /// Similarity search: pick the grain near `anchor` whose head best matches the
+    /// previous grain's natural continuation (its overlap tail), for phase continuity.
+    fn best_grain(&mut self, samples: &[f32], frames: usize, base_ratio: f64, anchor: f64) -> f64 {
+        for j in 0..STRETCH_HOP {
+            let pos = self.prev_pos + ((STRETCH_HOP + j) as f64) * base_ratio;
+            self.template[j] = lerp_mono(samples, frames, pos);
+        }
+        let span = 2 * STRETCH_SEARCH + STRETCH_HOP;
+        for i in 0..span {
+            let pos = anchor + ((i as f64) - STRETCH_SEARCH as f64) * base_ratio;
+            self.cand_mono[i] = lerp_mono(samples, frames, pos);
+        }
+        let mut best_o = STRETCH_SEARCH; // offset 0 (= anchor) by default
+        let mut best = f32::NEG_INFINITY;
+        for o in 0..=(2 * STRETCH_SEARCH) {
+            let mut acc = 0.0f32;
+            for j in 0..STRETCH_HOP {
+                acc += self.template[j] * self.cand_mono[o + j];
+            }
+            if acc > best {
+                best = acc;
+                best_o = o;
+            }
+        }
+        anchor + ((best_o as f64) - STRETCH_SEARCH as f64) * base_ratio
+    }
+
+    fn overlap_add(&mut self, samples: &[f32], frames: usize, base_ratio: f64, pos: f64) {
+        for k in 0..STRETCH_WINDOW {
+            let w = self.win[k];
+            let sp = pos + (k as f64) * base_ratio;
+            self.accum_l[k] += w * lerp_ch(samples, frames, sp, 0);
+            self.accum_r[k] += w * lerp_ch(samples, frames, sp, 1);
+        }
+    }
+}
+
+impl Default for TimeStretch {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Linear interpolation of one channel of an interleaved-stereo buffer at a fractional
+/// frame position (clamped to the buffer). RT-SAFE.
+#[inline]
+fn lerp_ch(samples: &[f32], frames: usize, pos: f64, ch: usize) -> f32 {
+    if frames == 0 {
+        return 0.0;
+    }
+    let p = pos.clamp(0.0, (frames - 1) as f64);
+    let i = p.floor() as usize;
+    let f = (p - i as f64) as f32;
+    let a = samples[i * 2 + ch];
+    let b = samples[(i + 1).min(frames - 1) * 2 + ch];
+    a + (b - a) * f
+}
+
+#[inline]
+fn lerp_mono(samples: &[f32], frames: usize, pos: f64) -> f32 {
+    0.5 * (lerp_ch(samples, frames, pos, 0) + lerp_ch(samples, frames, pos, 1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -673,5 +833,85 @@ mod tests {
         }
         assert!(early > 1e-6, "no reverb tail (early energy {early})");
         assert!(late < early, "reverb did not decay (early {early}, late {late})");
+    }
+
+    /// Build an interleaved-stereo sine of the given period (frames), `n` frames long.
+    fn sine_src(period: f64, n: usize) -> Vec<f32> {
+        let mut s = Vec::with_capacity(n * 2);
+        for i in 0..n {
+            let v = (2.0 * std::f64::consts::PI * i as f64 / period).sin() as f32;
+            s.push(v);
+            s.push(v);
+        }
+        s
+    }
+
+    /// Count sign changes — a proxy for frequency that's independent of duration.
+    fn zero_crossings(xs: &[f32]) -> usize {
+        xs.windows(2).filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0).count()
+    }
+
+    #[test]
+    fn time_stretch_preserves_pitch_when_slowed() {
+        let period = 100.0; // 480 Hz @ 48 kHz
+        let frames = 48_000;
+        let src = sine_src(period, frames);
+        let mut st = TimeStretch::new();
+        // Slow to half speed: advance the anchor at 0.5 frames/output-sample.
+        let tempo = 0.5;
+        let mut anchor = 0.0f64;
+        let mut out = Vec::with_capacity(8_000);
+        for _ in 0..8_000 {
+            out.push(st.next_frame(&src, frames, 1.0, anchor).0);
+            anchor += tempo;
+        }
+        // Skip the prime/latency transient, measure a steady stretch of output.
+        let win = &out[2_000..6_000];
+        let zc = zero_crossings(win);
+        // Pitch preserved ⇒ ~same period as the source: 4000/100*2 = 80 crossings.
+        // Varispeed at 0.5 would instead halve it to ~40.
+        let expected = (win.len() as f64 / period * 2.0) as i64;
+        assert!(
+            (zc as i64 - expected).abs() <= expected / 5,
+            "zero-crossings {zc}, expected ~{expected} (pitch not preserved?)"
+        );
+    }
+
+    #[test]
+    fn time_stretch_preserves_pitch_when_sped_up() {
+        let period = 160.0; // 300 Hz @ 48 kHz
+        let frames = 48_000;
+        let src = sine_src(period, frames);
+        let mut st = TimeStretch::new();
+        let tempo = 1.5; // faster
+        let mut anchor = 0.0f64;
+        let mut out = Vec::with_capacity(8_000);
+        for _ in 0..8_000 {
+            out.push(st.next_frame(&src, frames, 1.0, anchor).0);
+            anchor += tempo;
+        }
+        let win = &out[2_000..6_000];
+        let zc = zero_crossings(win);
+        let expected = (win.len() as f64 / period * 2.0) as i64;
+        assert!(
+            (zc as i64 - expected).abs() <= expected / 5,
+            "zero-crossings {zc}, expected ~{expected} (pitch not preserved?)"
+        );
+    }
+
+    #[test]
+    fn time_stretch_output_is_bounded() {
+        let src = sine_src(73.0, 20_000);
+        let mut st = TimeStretch::new();
+        let mut anchor = 0.0f64;
+        let mut peak = 0.0f32;
+        for _ in 0..10_000 {
+            let (l, r) = st.next_frame(&src, 20_000, 1.0, anchor);
+            assert!(l.is_finite() && r.is_finite(), "non-finite output");
+            peak = peak.max(l.abs());
+            anchor += 1.07;
+        }
+        assert!(peak > 0.3, "output suspiciously quiet (peak {peak})");
+        assert!(peak < 1.6, "output overshoots badly (peak {peak})");
     }
 }

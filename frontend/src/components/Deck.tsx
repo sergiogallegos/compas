@@ -364,6 +364,17 @@ export function Deck({
               <button onClick={() => actions.trimTempo(1)} disabled={!meta} title="Nudge tempo +0.1%">+</button>
             </div>
           )}
+          {dsp && (
+            <button
+              className={`keylock-btn ${state.keylock ? "keylock-btn--on" : ""}`}
+              style={state.keylock ? { color, borderColor: `${color}80` } : undefined}
+              onClick={actions.toggleKeylock}
+              disabled={!meta}
+              title="Key-lock: change tempo without changing pitch (master tempo)"
+            >
+              {state.keylock ? "🔒 KEY" : "KEY"}
+            </button>
+          )}
         </div>
       </div>
       {/* EQ/gain knobs live in the mixer channel strip per the design. */}

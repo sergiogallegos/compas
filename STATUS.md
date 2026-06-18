@@ -10,17 +10,21 @@
 2. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
 3. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
    only if a real format gap shows up.
-4. **P1 remainders:** key-lock toggle (signalsmith-stretch), manual beatgrid-anchor edit, underrun
-   counters in the UI, a decode-a-fixture integration test, 4-deck layout.
-5. **FX/scratch polish (optional):** scratch release-throw inertia + configurable platter mapping
-   (fixed at 360° = 1.8 s); FX param tuning by ear (echo glide/depth curve, reverb `WET_SCALE`).
+4. **P1 remainders:** manual beatgrid-anchor edit, underrun counters in the UI, a
+   decode-a-fixture integration test, 4-deck layout.
+5. **FX/scratch/key-lock polish (optional):** scratch release-throw inertia + configurable
+   platter mapping (360° = 1.8 s); FX param tuning by ear (echo glide/depth curve, reverb
+   `WET_SCALE`); key-lock window size (`STRETCH_WINDOW` 2048 ≈ 43 ms latency — drop for lower
+   latency at some bass-fidelity cost).
 
 ## ✅ Done
 **P0 scaffold** · Tauri 2 workspace, 4 engine crates, CI-green.
 
 **P1 — local dual-deck engine (functionally complete):**
 - Decode (symphonia, in-RAM `DeckBuffer`), 2 decks, transport (play/pause/cue/seek), crossfader,
-  per-deck gain, 3-band EQ, HPF/LPF filter, varispeed + nudge, one-shot tempo **SYNC**.
+  per-deck gain, 3-band EQ, HPF/LPF filter, varispeed + fine tempo trim, one-shot tempo **SYNC**.
+- **Key-lock (master tempo)** — hand-rolled RT-safe WSOLA stretcher in `compas-dsp` (Hann grains
+  + similarity search, reads from the in-RAM buffer, ~4%/core/deck); per-deck `KEY` toggle.
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.
 - **Beat loops** (IN/OUT manual + 4/8/16 grid-snapped; waveform loop band).
 - **Hot cues** (set/jump/clear).

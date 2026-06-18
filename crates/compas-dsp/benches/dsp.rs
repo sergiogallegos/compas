@@ -3,7 +3,7 @@
 //! estimator, so regressions in either show up as wall-clock changes.
 
 use compas_dsp::analysis::estimate_tempo;
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, Reverb, ThreeBandEq};
+use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, Reverb, ThreeBandEq, TimeStretch};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const BLOCK: usize = 1024;
@@ -83,6 +83,33 @@ fn bench_reverb(c: &mut Criterion) {
     });
 }
 
+fn bench_time_stretch(c: &mut Criterion) {
+    // A 1 s stereo sine as the source the stretcher reads grains from.
+    let frames = 48_000usize;
+    let mut src = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        let v = (2.0 * std::f32::consts::PI * i as f32 / 100.0).sin();
+        src.push(v);
+        src.push(v);
+    }
+    let mut st = TimeStretch::new();
+    c.bench_function("time_stretch_block", |bn| {
+        bn.iter(|| {
+            let mut anchor = 0.0f64;
+            let mut acc = 0.0f32;
+            for _ in 0..BLOCK {
+                let (l, _) = st.next_frame(black_box(&src), frames, 1.0, anchor);
+                acc += l;
+                anchor += 1.06; // +6% key-locked
+                if anchor > (frames - 4) as f64 {
+                    anchor = 0.0;
+                }
+            }
+            acc
+        })
+    });
+}
+
 fn bench_tempo(c: &mut Criterion) {
     // 8 s of a 128 BPM click — representative analysis input.
     let sr = 44_100u32;
@@ -110,6 +137,7 @@ criterion_group!(
     bench_crossfader,
     bench_delay,
     bench_reverb,
+    bench_time_stretch,
     bench_tempo
 );
 criterion_main!(benches);

@@ -12,6 +12,10 @@ All notable changes to compas are documented here. Format follows
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
 - **Tempo SYNC:** one-shot beat-tempo match (per-deck + title-bar).
+- **Key-lock (master tempo):** change tempo without changing pitch, via a hand-rolled,
+  RT-safe WSOLA time-stretcher in `compas-dsp` (overlapping Hann grains + waveform-similarity
+  search, reads grains straight from the in-RAM buffer, no allocation on the audio thread —
+  ~4% of a core per deck). Per-deck `KEY` toggle; `SetDeckKeylock` / `set_deck_keylock`.
 - **Beat loops:** manual IN/OUT + 4/8/16-beat grid-snapped loops (RT-safe play-head wrap), with a
   loop region drawn on the waveform; **hot cues** (set/jump/clear).
 - **Jog-wheel scratch:** the platter is a draggable, spinning disc — dragging drives the

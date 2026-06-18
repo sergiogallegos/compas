@@ -6,6 +6,7 @@ import {
   deckScratch,
   deckSeek,
   deckUnload,
+  setDeckKeylock,
   inTauri,
   loadTrack,
   onDeckError,
@@ -70,6 +71,8 @@ export interface DeckState {
   playing: boolean;
   level: number;
   tempo: number;
+  /** Key-lock (master tempo): tempo changes preserve pitch. */
+  keylock: boolean;
   eq: Eq;
   filter: number;
   gain: number;
@@ -96,6 +99,7 @@ export function useDeck(deck: number, dsp = true) {
   const [playing, setPlaying] = useState(false);
   const [level, setLevel] = useState(0);
   const [tempo, setTempo] = useState(1);
+  const [keylock, setKeylockState] = useState(false);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
   const [filter, setFilterState] = useState(0);
   const [gain, setGainState] = useState(1);
@@ -108,6 +112,8 @@ export function useDeck(deck: number, dsp = true) {
   const frameRef = useRef(0);
   const tempoRef = useRef(tempo);
   tempoRef.current = tempo;
+  const keylockRef = useRef(keylock);
+  keylockRef.current = keylock;
   const loopRef = useRef(loop);
   loopRef.current = loop;
   const echoRef = useRef(echo);
@@ -136,6 +142,7 @@ export function useDeck(deck: number, dsp = true) {
         frameRef.current = 0;
         setPlaying(false);
         setTempo(1);
+        setKeylockState(false); // engine resets key-lock on load
         setHotCues(Array(8).fill(null));
         setLoopState({ active: false, beats: null, inFrame: 0, outFrame: 0 });
         // Engine resets FX on load; mirror that (keep the user's param settings).
@@ -206,6 +213,11 @@ export function useDeck(deck: number, dsp = true) {
       setTempo: (ratio: number) => {
         setTempo(ratio);
         setDeckTempo(deck, ratio).catch(swallow);
+      },
+      toggleKeylock: () => {
+        const next = !keylockRef.current;
+        setKeylockState(next);
+        setDeckKeylock(deck, next).catch(swallow);
       },
       // Persistent fine tempo trim (the jog wheel handles momentary pitch bend). Reads
       // the ref so rapid clicks accumulate instead of all seeing the same render's tempo.
@@ -307,7 +319,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
   return { state, actions };
 }
 

@@ -106,6 +106,9 @@ export const deckScratch = (deck: number, active: boolean, speed: number) =>
   invoke("deck_scratch", { deck, active, speed });
 export const setDeckTempo = (deck: number, ratio: number) =>
   invoke("set_deck_tempo", { deck, ratio });
+/** Key-lock (master tempo): tempo changes preserve pitch. */
+export const setDeckKeylock = (deck: number, active: boolean) =>
+  invoke("set_deck_keylock", { deck, active });
 export const setDeckGain = (deck: number, gain: number) => invoke("set_deck_gain", { deck, gain });
 export const setDeckEq = (deck: number, low: number, mid: number, high: number) =>
   invoke("set_deck_eq", { deck, low, mid, high });

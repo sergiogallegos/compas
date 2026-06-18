@@ -149,6 +149,9 @@
 .tempo-val small { font-size: 9px; color: var(--text-secondary); }
 .nudge { display: flex; gap: 4px; }
 .nudge button { width: 22px; height: 22px; border-radius: 5px; background: var(--surface-control); border: 1px solid var(--border-hairline-strong); color: var(--text-secondary); }
+.keylock-btn { background: transparent; border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 3px 6px; font-size: 9px; font-weight: 700; letter-spacing: 0.06em; color: var(--text-tertiary); white-space: nowrap; }
+.keylock-btn--on { background: rgba(255,255,255,.04); }
+.keylock-btn:disabled { opacity: 0.4; }
 
 /* ===== mixer ===== */
 .mixer { width: 300px; flex: none; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 14px; display: flex; flex-direction: column; gap: 12px; }

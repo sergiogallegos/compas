@@ -14,4 +14,4 @@
 pub mod analysis;
 pub mod rt;
 
-pub use rt::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq};
+pub use rt::{Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq, TimeStretch};

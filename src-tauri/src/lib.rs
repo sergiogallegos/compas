@@ -68,6 +68,10 @@ enum EngineMsg {
         deck: usize,
         ratio: f64,
     },
+    DeckKeylock {
+        deck: usize,
+        active: bool,
+    },
     DeckSeek {
         deck: usize,
         frame: f64,
@@ -195,6 +199,9 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::DeckTempo { deck, ratio } => {
                         AudioCommand::SetDeckTempo { deck, ratio }
+                    }
+                    EngineMsg::DeckKeylock { deck, active } => {
+                        AudioCommand::SetDeckKeylock { deck, active }
                     }
                     EngineMsg::DeckSeek { deck, frame } => AudioCommand::SeekDeck { deck, frame },
                     EngineMsg::Loop {
@@ -452,6 +459,16 @@ fn set_deck_tempo(state: State<'_, EngineHandle>, deck: usize, ratio: f64) -> Re
     state.send(EngineMsg::DeckTempo { deck, ratio })
 }
 
+/// Toggle key-lock (master tempo) on a deck: tempo changes preserve the original pitch.
+#[tauri::command]
+fn set_deck_keylock(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckKeylock { deck, active })
+}
+
 #[tauri::command]
 fn set_loop(
     state: State<'_, EngineHandle>,
@@ -635,6 +652,7 @@ pub fn run() {
             set_loop_active,
             deck_scratch,
             set_deck_tempo,
+            set_deck_keylock,
             set_deck_gain,
             set_deck_eq,
             set_deck_filter,
