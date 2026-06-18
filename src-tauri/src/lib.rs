@@ -6,6 +6,9 @@
 //! Decoding/analysis runs on a per-load worker thread and reports back via Tauri events.
 //! A telemetry thread samples lock-free deck position/state and emits it at UI rate.
 
+use std::fs::File;
+use std::io::{BufWriter, Seek, SeekFrom, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 use std::thread;
@@ -16,6 +19,7 @@ mod spotify;
 use compas_audio::{
     compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
 };
+use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tracing_subscriber::EnvFilter;
@@ -98,6 +102,10 @@ enum EngineMsg {
     Unload {
         deck: usize,
     },
+    StartRecording {
+        sink: Producer<f32>,
+    },
+    StopRecording,
 }
 
 /// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
@@ -106,6 +114,8 @@ struct EngineHandle {
     tx: Sender<EngineMsg>,
     telemetry: Arc<DeckTelemetry>,
     sample_rate: u32,
+    /// True while a master recording is in progress (guards against double-start).
+    recording: AtomicBool,
 }
 
 impl EngineHandle {
@@ -229,6 +239,8 @@ fn spawn_engine() -> EngineHandle {
                     },
                     EngineMsg::Load { deck, buffer } => AudioCommand::LoadDeck { deck, buffer },
                     EngineMsg::Unload { deck } => AudioCommand::UnloadDeck { deck },
+                    EngineMsg::StartRecording { sink } => AudioCommand::StartRecording { sink },
+                    EngineMsg::StopRecording => AudioCommand::StopRecording,
                 };
                 if let Err(e) = engine.send(cmd) {
                     tracing::warn!("dropped audio command: {e}");
@@ -246,6 +258,7 @@ fn spawn_engine() -> EngineHandle {
         tx,
         telemetry,
         sample_rate,
+        recording: AtomicBool::new(false),
     }
 }
 
@@ -596,6 +609,120 @@ fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), Str
     state.send(EngineMsg::SetMasterGain(value))
 }
 
+// ----------------------------------------------------------------------------------
+// Master recording (audio thread taps master → ring → this writer thread → WAV)
+// ----------------------------------------------------------------------------------
+
+/// Recording ring capacity (f32 samples) — ~5 s of stereo @ 48 kHz, ample slack for the
+/// writer thread's scheduling so the audio thread never has to drop frames.
+const RECORD_RING_CAPACITY: usize = 1 << 19;
+
+#[tauri::command]
+fn start_recording(state: State<'_, EngineHandle>, path: String) -> Result<(), String> {
+    if state.recording.swap(true, Ordering::SeqCst) {
+        return Err("already recording".into());
+    }
+    let file = match File::create(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            state.recording.store(false, Ordering::SeqCst);
+            return Err(format!("could not create file: {e}"));
+        }
+    };
+    let (producer, consumer) = RingBuffer::<f32>::new(RECORD_RING_CAPACITY);
+    spawn_wav_writer(consumer, file, state.sample_rate);
+    if let Err(e) = state.send(EngineMsg::StartRecording { sink: producer }) {
+        state.recording.store(false, Ordering::SeqCst);
+        return Err(e);
+    }
+    tracing::info!("recording started → {path}");
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_recording(state: State<'_, EngineHandle>) -> Result<(), String> {
+    state.recording.store(false, Ordering::SeqCst);
+    state.send(EngineMsg::StopRecording)
+}
+
+/// Stream f32 master samples from `consumer` into a 32-bit-float stereo WAV, finalizing the
+/// RIFF/data chunk sizes once the producer is dropped (StopRecording). Dedicated thread; it
+/// never touches the audio thread.
+fn spawn_wav_writer(mut consumer: Consumer<f32>, file: File, sample_rate: u32) {
+    thread::spawn(move || {
+        let mut w = BufWriter::new(file);
+        if let Err(e) = write_wav_header(&mut w, sample_rate) {
+            tracing::error!("recording: WAV header write failed: {e}");
+            return;
+        }
+        let mut data_bytes: u32 = 0;
+        loop {
+            match drain_into(&mut consumer, &mut w) {
+                Ok(n) => data_bytes = data_bytes.saturating_add(n),
+                Err(e) => {
+                    tracing::error!("recording: write error: {e}");
+                    return;
+                }
+            }
+            if consumer.is_abandoned() {
+                // Final drain of anything pushed just before the producer dropped.
+                if let Ok(n) = drain_into(&mut consumer, &mut w) {
+                    data_bytes = data_bytes.saturating_add(n);
+                }
+                break;
+            }
+            thread::sleep(Duration::from_millis(8));
+        }
+        match finalize_wav(w, data_bytes) {
+            Ok(()) => tracing::info!("recording: saved ({data_bytes} bytes of audio)"),
+            Err(e) => tracing::error!("recording: finalize failed: {e}"),
+        }
+    });
+}
+
+/// Pop all available samples and write them as little-endian f32. Returns bytes written.
+fn drain_into<W: Write>(consumer: &mut Consumer<f32>, w: &mut W) -> std::io::Result<u32> {
+    let mut n = 0u32;
+    while let Ok(s) = consumer.pop() {
+        w.write_all(&s.to_le_bytes())?;
+        n = n.saturating_add(4);
+    }
+    Ok(n)
+}
+
+/// Write a 32-bit-float stereo WAV header with placeholder sizes (patched in `finalize_wav`).
+fn write_wav_header(w: &mut impl Write, sample_rate: u32) -> std::io::Result<()> {
+    let channels: u16 = 2;
+    let bits: u16 = 32;
+    let block_align = channels * (bits / 8);
+    let byte_rate = sample_rate * block_align as u32;
+    w.write_all(b"RIFF")?;
+    w.write_all(&0u32.to_le_bytes())?; // RIFF chunk size — patched at finalize
+    w.write_all(b"WAVE")?;
+    w.write_all(b"fmt ")?;
+    w.write_all(&16u32.to_le_bytes())?; // fmt chunk size
+    w.write_all(&3u16.to_le_bytes())?; // format = 3 (IEEE float)
+    w.write_all(&channels.to_le_bytes())?;
+    w.write_all(&sample_rate.to_le_bytes())?;
+    w.write_all(&byte_rate.to_le_bytes())?;
+    w.write_all(&block_align.to_le_bytes())?;
+    w.write_all(&bits.to_le_bytes())?;
+    w.write_all(b"data")?;
+    w.write_all(&0u32.to_le_bytes())?; // data chunk size — patched at finalize
+    Ok(())
+}
+
+/// Patch the RIFF and data chunk sizes now that the total byte count is known.
+fn finalize_wav(w: BufWriter<File>, data_bytes: u32) -> std::io::Result<()> {
+    let mut file = w.into_inner().map_err(|e| e.into_error())?;
+    file.seek(SeekFrom::Start(4))?;
+    file.write_all(&36u32.saturating_add(data_bytes).to_le_bytes())?;
+    file.seek(SeekFrom::Start(40))?;
+    file.write_all(&data_bytes.to_le_bytes())?;
+    file.flush()?;
+    Ok(())
+}
+
 /// Spawn the telemetry emitter: samples lock-free deck state and emits `deck:position`.
 fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
     thread::spawn(move || {
@@ -660,6 +787,8 @@ pub fn run() {
             set_deck_reverb,
             set_crossfader,
             set_master_gain,
+            start_recording,
+            stop_recording,
             spotify::spotify_listen
         ])
         .run(tauri::generate_context!());

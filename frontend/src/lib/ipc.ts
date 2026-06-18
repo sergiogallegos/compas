@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 /** True when running inside the Tauri webview (vs. a plain browser dev tab). */
 export function inTauri(): boolean {
@@ -127,6 +127,22 @@ export const setDeckReverb = (deck: number, active: boolean, roomSize: number, m
   invoke("set_deck_reverb", { deck, active, roomSize, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
+
+// ---- Master recording -------------------------------------------------------------
+
+/** Record the master mix to `path` (32-bit-float stereo WAV). */
+export const startRecording = (path: string) => invoke("start_recording", { path });
+export const stopRecording = () => invoke("stop_recording");
+
+/** Native save dialog for the recording target; returns the chosen path or null. */
+export async function pickRecordingPath(): Promise<string | null> {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const selected = await save({
+    defaultPath: `compas-mix-${stamp}.wav`,
+    filters: [{ name: "WAV audio", extensions: ["wav"] }],
+  });
+  return typeof selected === "string" ? selected : null;
+}
 
 // ---- Event subscriptions ----------------------------------------------------------
 

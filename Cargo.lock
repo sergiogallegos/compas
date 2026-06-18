@@ -621,6 +621,7 @@ dependencies = [
  "compas-core",
  "compas-dsp",
  "compas-sources",
+ "rtrb",
  "serde",
  "serde_json",
  "tauri",

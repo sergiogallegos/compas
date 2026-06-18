@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Logo } from "./Logo";
 import { Icon } from "./icons";
-import { inTauri, type MasterMeter } from "../lib/ipc";
+import { inTauri, pickRecordingPath, startRecording, stopRecording, type MasterMeter } from "../lib/ipc";
 
 export function TitleBar({
   masterBpm,
@@ -16,6 +17,30 @@ export function TitleBar({
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
+
+  const [recording, setRecording] = useState(false);
+  const [recBusy, setRecBusy] = useState(false);
+  const toggleRecord = async () => {
+    if (!inTauri() || recBusy) return;
+    setRecBusy(true);
+    try {
+      if (recording) {
+        await stopRecording();
+        setRecording(false);
+      } else {
+        const path = await pickRecordingPath();
+        if (path) {
+          await startRecording(path);
+          setRecording(true);
+        }
+      }
+    } catch {
+      // Failed to start/stop — reset to a safe state.
+      setRecording(false);
+    } finally {
+      setRecBusy(false);
+    }
+  };
   return (
     <header className="titlebar" data-tauri-drag-region>
       {/* macOS-style controls: close / minimize / zoom */}
@@ -54,7 +79,14 @@ export function TitleBar({
         <div className="mini-transport">
           <button className="mt-btn" disabled title="Metronome: later"><Icon name="play" size={13} /></button>
           <span className="mt-btn mono">4/4</span>
-          <button className="mt-btn mt-rec" disabled title="Recording: Phase 5"><span className="rec-dot" /></button>
+          <button
+            className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}
+            onClick={toggleRecord}
+            disabled={recBusy}
+            title={recording ? "Stop recording the master mix" : "Record the master mix to a WAV"}
+          >
+            <span className="rec-dot" />
+          </button>
         </div>
       </div>
 

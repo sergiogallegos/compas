@@ -35,6 +35,8 @@
   time-glide, feedback/mix) and Schroeder/Moorer-style `Reverb` (8 combs → 4 allpass per channel,
   pre-allocated). Per-deck inserts post-EQ (`SetDeckEcho`/`SetDeckReverb`); UI: echo toggle +
   beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
+- **Master recording** — record the master mix to a 32-bit-float stereo WAV (audio-thread tap →
+  lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.
 - **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
   progress feedback.

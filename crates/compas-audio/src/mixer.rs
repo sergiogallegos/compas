@@ -112,6 +112,13 @@ pub enum AudioCommand {
     UnloadDeck {
         deck: usize,
     },
+    /// Begin tapping the master output into `sink` (interleaved stereo f32 at device rate).
+    /// The control thread owns the matching consumer and writes it to a file.
+    StartRecording {
+        sink: Producer<f32>,
+    },
+    /// Stop tapping; dropping the producer signals the writer thread to finalize the file.
+    StopRecording,
 }
 
 /// Shared, lock-free telemetry the control thread samples to drive the UI (position,
@@ -390,6 +397,8 @@ pub struct Mixer {
     peak_deck: [f32; NUM_DECKS],
     peak_l: f32,
     peak_r: f32,
+    /// When recording, the master output is pushed here for the writer thread to drain.
+    record_sink: Option<Producer<f32>>,
 }
 
 impl Mixer {
@@ -410,6 +419,7 @@ impl Mixer {
             peak_deck: [0.0; NUM_DECKS],
             peak_l: 0.0,
             peak_r: 0.0,
+            record_sink: None,
         }
     }
 
@@ -558,6 +568,15 @@ impl Mixer {
                         d.scratch_speed = speed.clamp(-16.0, 16.0);
                     }
                 }
+                AudioCommand::StartRecording { sink } => {
+                    self.record_sink = Some(sink);
+                }
+                AudioCommand::StopRecording => {
+                    // Dropping the producer makes the writer thread see `is_abandoned`
+                    // and finalize the WAV. Drop happens here on the audio thread, but the
+                    // consumer is still alive so it only decrements a refcount (RT-safe).
+                    self.record_sink = None;
+                }
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
@@ -604,6 +623,14 @@ impl Mixer {
         let (ol, or) = (l * m, r * m);
         self.peak_l = self.peak_l.max(ol.abs());
         self.peak_r = self.peak_r.max(or.abs());
+        // Recording tap: push the master frame for the writer thread. Push both samples
+        // together (or neither) so L/R never split across a full-ring drop. RT-safe.
+        if let Some(sink) = self.record_sink.as_mut() {
+            if sink.slots() >= 2 {
+                let _ = sink.push(ol);
+                let _ = sink.push(or);
+            }
+        }
         (ol, or)
     }
 

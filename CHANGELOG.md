@@ -29,6 +29,10 @@ All notable changes to compas are documented here. Format follows
   series allpass diffusers per channel, sample-rate-scaled tunings, all buffers pre-allocated).
   Per-deck insert (post-echo) via `SetDeckReverb` / `set_deck_reverb`; UI is a toggle with SIZE
   and MIX knobs. Criterion bench added.
+- **Master recording:** one-click record of the master mix to a 32-bit-float stereo WAV. The
+  audio thread taps the post-crossfader master into a lock-free ring; a writer thread streams it
+  to disk and finalizes on stop (`start_recording` / `stop_recording`). RT-safe — no allocation
+  or file I/O on the audio thread.
 - **Local library:** add files (persisted), search, load to deck A/B (double-click / buttons),
   with load-progress feedback.
 - **Performance UI:** dual decks, center mixer, scrolling zoom waveforms with beat grid, VU

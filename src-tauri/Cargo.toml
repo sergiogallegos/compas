@@ -30,3 +30,4 @@ compas-core = { workspace = true }
 compas-audio = { workspace = true }
 compas-dsp = { workspace = true }
 compas-sources = { workspace = true }
+rtrb = { workspace = true }       # recording ring: master tap → WAV writer thread
