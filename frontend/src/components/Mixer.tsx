@@ -10,20 +10,47 @@ interface Channel {
   color: string;
 }
 
+interface AutoMixProps {
+  enabled: boolean;
+  transitioning: boolean;
+  onToggle: () => void;
+  onMixNow: () => void;
+}
+
 export function Mixer({
   channels,
   crossfader,
   onCrossfader,
+  auto,
 }: {
   channels: Channel[];
   crossfader: number;
   onCrossfader: (v: number) => void;
+  auto?: AutoMixProps;
 }) {
   return (
     <section className="mixer">
       <div className="mixer-head">
         <span className="overline">MIXER</span>
-        <span className="overline" style={{ color: "var(--text-tertiary)" }}>2-CH</span>
+        {auto && (
+          <div className="automix">
+            <button
+              className={`chip ${auto.enabled ? "chip--on" : ""}`}
+              onClick={auto.onToggle}
+              title="Auto-mix: beatmatch + bass-swap crossfade into the other deck near track end"
+            >
+              AUTO
+            </button>
+            <button
+              className="chip"
+              onClick={auto.onMixNow}
+              disabled={auto.transitioning}
+              title="Transition to the other deck now"
+            >
+              {auto.transitioning ? "MIXING…" : "MIX"}
+            </button>
+          </div>
+        )}
       </div>
       <div className="mixer-strips">
         {channels.map((c) => (

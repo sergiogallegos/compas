@@ -71,12 +71,13 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
   (DSP controls disabled + explained).
 - Document the per-service ToS/PCM/analysis constraints in-app.
 
-## Phase 3 — Auto-mix / intelligent transitions ⬜
+## Phase 3 — Auto-mix / intelligent transitions 🔨
 
-- Local↔local: true beat-synced transitions using our beatgrids (the strong case).
-- Streaming decks: **position/metadata-timed** transitions only (no beat data for new Spotify
-  apps; no PCM). Be explicit in the UI about which kind of transition is happening.
-- Transition planner (the "agentic" angle): pick in/out points, EQ swaps, tempo ramps.
+- ✅ Local↔local: beat-synced auto-transition (cue → sync → 16-beat crossfade + bass swap →
+  stop outgoing). AUTO (near track end) + MIX (now), via the frontend `useAutoMix` orchestrator.
+- ⬜ A playlist/queue so AUTO chains track→track→track unattended (today it needs the idle deck
+  pre-loaded). ⬜ Smarter planner: per-track in/out point selection, tempo ramps, EQ curves.
+- ⬜ Streaming decks: **position/metadata-timed** transitions only (no beat data; no PCM).
 
 ## Phase 4 — Cue/loops/hot cues + sync engine hardening 🔨
 

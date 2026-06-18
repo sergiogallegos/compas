@@ -11,6 +11,11 @@ All notable changes to compas are documented here. Format follows
   equal-power crossfader, master, lock-free audio thread with reclaim ring.
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
+- **Auto-mix / transitions:** an **AUTO** toggle (auto-transition near track end) and a **MIX**
+  button (transition now). A transition cues the incoming deck at its first downbeat, beat-syncs
+  it to the live deck, starts it, and runs a 16-beat crossfade with a **bass swap** (hands the low
+  end over cleanly), then stops the outgoing deck. Frontend orchestration over the existing
+  sync/crossfader/EQ — no audio-thread changes.
 - **Continuous beat-sync (tempo + phase):** SYNC is now a toggle that holds a follower deck
   locked to a master in the audio thread — a phase-locked loop rate-matches the beat rate and
   nudges the read rate (±8%, click-free) to null the beat-phase error continuously. Composes with

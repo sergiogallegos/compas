@@ -164,7 +164,9 @@
 
 /* ===== mixer ===== */
 .mixer { width: 300px; flex: none; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
-.mixer-head { display: flex; justify-content: space-between; }
+.mixer-head { display: flex; justify-content: space-between; align-items: center; }
+.automix { display: flex; gap: 4px; }
+.automix .chip { flex: none; padding: 3px 8px; font-size: 9px; }
 .mixer-strips { flex: 1; display: flex; gap: 16px; justify-content: center; min-height: 0; overflow: hidden; }
 .strip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 0; }
 .strip-letter { font-size: 15px; font-weight: 600; }

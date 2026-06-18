@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { NavRail } from "./components/NavRail";
 import { StatusBar } from "./components/StatusBar";
@@ -7,6 +7,7 @@ import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { useDeck } from "./hooks/useDeck";
+import { useAutoMix } from "./hooks/useAutoMix";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const MAGENTA = "var(--accent)";
@@ -23,6 +24,12 @@ export function App() {
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
+
+  const applyCrossfade = useCallback((v: number) => {
+    setXfade(v);
+    if (inTauri()) setCrossfader(v).catch(() => {});
+  }, []);
+  const auto = useAutoMix([deckA, deckB], applyCrossfade);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -77,10 +84,8 @@ export function App() {
                 { ctrl: deckB, letter: "B", color: CYAN },
               ]}
               crossfader={xfade}
-              onCrossfader={(v) => {
-                setXfade(v);
-                if (inTauri()) setCrossfader(v).catch(() => {});
-              }}
+              onCrossfader={applyCrossfade}
+              auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
             />
             <Deck ctrl={deckB} color={CYAN} onSync={() => toggleSync("B")} syncEnabled={bothReady} syncActive={deckB.state.synced} />
           </div>

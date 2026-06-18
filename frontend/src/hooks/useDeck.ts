@@ -221,6 +221,8 @@ export function useDeck(deck: number, dsp = true) {
         setPlaying(false);
       },
       togglePlay: () => (playing ? deckPause(deck) : deckPlay(deck)).catch(swallow),
+      play: () => deckPlay(deck).catch(swallow),
+      pause: () => deckPause(deck).catch(swallow),
       cue: () => deckSeek(deck, 0).catch(swallow),
       seekFrac: (f: number) => {
         const frames = meta?.frames ?? 0;
