@@ -54,7 +54,7 @@ compas/
   src-tauri/                 Tauri 2 app crate (binary `compas` + lib `compas_lib`); IPC commands
   frontend/                  React 19 + Vite + TS; WebGL waveforms (P1); streaming SDK host (P2)
   scripts/                   tooling (icon generation, etc.)
-  docs/                      djvibebar-review.md and other notes
+  docs/                      design assets and notes
 ```
 
 `default-members` excludes `src-tauri` so `cargo check`/`test`/`clippy` run the engine crates
@@ -151,8 +151,8 @@ there. Marked `TODO(P1)` in `compas-audio/src/mixer.rs`.
 
 - **Auth:** Authorization Code **+ PKCE** for Spotify & SoundCloud (public client, no secret),
   token exchange/refresh in the Rust process, tokens in the **OS keychain**. Apple Music uses an
-  ES256 developer token (personal-use secret). Logic ports from djvibebar; transport does not
-  (see `docs/djvibebar-review.md` §5).
+  ES256 developer token. The auth uses a public-client (PKCE) transport so no secret ships in
+  the distributable binary.
 - **Playback:** the service SDK runs in the WebView; Rust sends transport commands via IPC. No
   PCM crosses into the engine.
 - **Analysis gap:** Spotify `audio-features`/`audio-analysis` are deprecated for new apps, so
@@ -160,10 +160,9 @@ there. Marked `TODO(P1)` in `compas-audio/src/mixer.rs`.
   position-/metadata-timed transitions, not beat-sync.
 - **Decode dependency licensing:** `symphonia` (MPL-2.0, permissive) is the default decoder.
   `ffmpeg-next` (LGPL/GPL) is a *fallback only* for genuine format gaps, dynamically linked,
-  built without GPL components, and documented when used. Time-stretch: **not** Rubber Band
-  (GPL/commercial); use `signalsmith-stretch` (MIT, via FFI) or a permissive pure-Rust
-  phase-vocoder. Beat/key detection is implemented in-house (aubio is GPL, reference-only).
-  See `ROADMAP.md` for the dependency licensing table.
+  built without GPL components, and documented when used. Time-stretch / key-lock and beat/key
+  detection are implemented **in-house** (a pure-Rust, RT-safe WSOLA stretcher and our own
+  analysis), so they add no third-party DSP dependency. See `ROADMAP.md` for the dependency table.
 
 ## 7. IPC design (Tauri)
 

@@ -25,7 +25,7 @@ All notable changes to compas are documented here. Format follows
   read with one-pole time-glide for tape-style pitch bend, feedback + wet/dry). Per-deck insert
   (post-EQ) via `SetDeckEcho` / `set_deck_echo`; UI is a beat-synced toggle (¼/½/1/2 beats) with
   a single DEPTH knob. Criterion bench added.
-- **FX rack — reverb:** RT-safe Freeverb-style `Reverb` (8 parallel damped comb filters → 4
+- **FX rack — reverb:** RT-safe Schroeder/Moorer-style `Reverb` (8 parallel damped comb filters → 4
   series allpass diffusers per channel, sample-rate-scaled tunings, all buffers pre-allocated).
   Per-deck insert (post-echo) via `SetDeckReverb` / `set_deck_reverb`; UI is a toggle with SIZE
   and MIX knobs. Criterion bench added.

@@ -373,7 +373,7 @@ impl Delay {
 }
 
 // ---------------------------------------------------------------------------------
-// Reverb (Freeverb-style: parallel damped combs → series allpass diffusers)
+// Reverb (Schroeder/Moorer-style: parallel damped combs → series allpass diffusers)
 // ---------------------------------------------------------------------------------
 
 /// A feedback comb with a one-pole low-pass in the loop (the "damp"). RT-SAFE process.
@@ -456,17 +456,18 @@ impl Allpass {
 
 const NUM_COMBS: usize = 8;
 const NUM_ALLPASS: usize = 4;
-/// Freeverb comb/allpass tunings, in samples at 44.1 kHz (scaled to the device rate).
+/// Comb/allpass tunings, in samples at 44.1 kHz (scaled to the device rate). These are the
+/// well-known prime-spaced delays used by the classic public-domain comb+allpass reverb.
 const COMB_TUNING: [usize; NUM_COMBS] = [1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617];
 const ALLPASS_TUNING: [usize; NUM_ALLPASS] = [556, 441, 341, 225];
 /// Right-channel delay offset for stereo decorrelation.
 const STEREO_SPREAD: usize = 23;
-/// Fixed input gain (Freeverb `fixedgain`) — combs amplify, so the input is heavily padded.
+/// Fixed input gain — the combs amplify, so the input is heavily padded.
 const FIXED_GAIN: f32 = 0.015;
-/// Wet make-up so a moderate `mix` is audible (mirrors Freeverb `scalewet`).
+/// Wet make-up so a moderate `mix` is audible.
 const WET_SCALE: f32 = 3.0;
 
-/// Freeverb-style stereo reverb: 8 parallel damped comb filters per channel feeding 4
+/// Schroeder/Moorer-style stereo reverb: 8 parallel damped comb filters per channel feeding 4
 /// series allpass diffusers. All buffers are **pre-allocated at construction** (sized for
 /// the device rate); [`Reverb::process`] is allocation-free and RT-SAFE. Driven from the
 /// summed (mono) input — the stereo image comes from the per-channel delay spread.
@@ -498,7 +499,7 @@ impl Reverb {
 
     /// Room size 0..1 — larger = longer tail (higher comb feedback). RT-SAFE.
     pub fn set_room_size(&mut self, size: f32) {
-        // Freeverb: roomsize1 = size * scaleroom + offsetroom.
+        // roomsize feedback = size * scaleroom + offsetroom.
         let fb = size.clamp(0.0, 1.0) * 0.28 + 0.7;
         for c in self.combs_l.iter_mut().chain(self.combs_r.iter_mut()) {
             c.feedback = fb;
@@ -507,7 +508,7 @@ impl Reverb {
 
     /// High-frequency damping 0..1 (more = darker tail). RT-SAFE.
     pub fn set_damp(&mut self, damp: f32) {
-        let d = damp.clamp(0.0, 1.0) * 0.4; // Freeverb scaledamp
+        let d = damp.clamp(0.0, 1.0) * 0.4; // damp scale
         for c in self.combs_l.iter_mut().chain(self.combs_r.iter_mut()) {
             c.set_damp(d);
         }

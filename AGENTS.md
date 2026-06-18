@@ -16,7 +16,7 @@ crates/compas-sources   AudioSource abstraction: LocalFileSource (PcmSource) + S
 src-tauri               Tauri app: IPC commands, audio thread bridge, Spotify auth (spotify.rs)
 frontend                React + Vite + TS UI (components/, hooks/, lib/)
 website                 static landing page (no build step)
-docs/                   djvibebar review, design assets
+docs/                   design assets
 ```
 `Cargo.toml` `default-members` = the four engine crates, so `cargo check/test/clippy` skip the
 Tauri app (which needs WebView2/WebKitGTK + a built frontend).
@@ -38,7 +38,7 @@ node scripts/make-test-audio.mjs             # synth 120/128 BPM test WAVs into 
 2. **No `unwrap()`/`expect()`/`panic!` in non-test code.** `Result` everywhere.
 3. **Capability honesty (a product value, not a detail).** Local files = full DSP; streaming =
    control-only. Never render a DSP control for audio we don't decode. Locked state is driven by
-   `SourceCapabilities` / a `dsp` prop, never hard-coded. See `docs/djvibebar-review.md` §6.
+   `SourceCapabilities` / a `dsp` prop, never hard-coded.
 4. **Cross-platform from commit one.** Gate platform-specific code; document it.
 
 ## Architecture cheatsheet

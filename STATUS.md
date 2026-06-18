@@ -32,7 +32,7 @@
   velocity (forward/reverse scrub + hold), engine `SetScratch`/`deck_scratch`, disc tracks the
   hand 1:1 (DSP/local decks only).
 - **FX rack — echo/delay + reverb** — RT-safe `Delay` (pre-allocated ring, fractional read +
-  time-glide, feedback/mix) and Freeverb-style `Reverb` (8 combs → 4 allpass per channel,
+  time-glide, feedback/mix) and Schroeder/Moorer-style `Reverb` (8 combs → 4 allpass per channel,
   pre-allocated). Per-deck inserts post-EQ (`SetDeckEcho`/`SetDeckReverb`); UI: echo toggle +
   beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering.

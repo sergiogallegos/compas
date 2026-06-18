@@ -16,7 +16,7 @@ Status legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ `AudioSource`/`PcmSource` abstraction with the local/streaming split enforced by types.
 - ✅ Tauri 2 app shell (compiles; window opens; engine thread starts and degrades gracefully with
   no audio device) + React/Vite/TS frontend shell with a working IPC bridge and capability-gated UI.
-- ✅ `docs/djvibebar-review.md`, `ARCHITECTURE.md`, this file, and a build/run `README.md`.
+- ✅ `ARCHITECTURE.md`, this file, and a build/run `README.md`.
 
 ## Phase 1 — Local-file dual-deck engine (MVP) 🔨
 
@@ -51,7 +51,7 @@ Concrete tasks:
    grid-anchor editing.*
 7. ✅ **Manual beatmatch + tempo SYNC.** Varispeed (tempo+pitch coupled) + tempo fader + nudge;
    one-shot **SYNC** matches a deck's effective BPM to the other. *Remaining: end-to-end verify
-   against real tracks; key-lock toggle (signalsmith-stretch); continuous/phase sync (→ P4).*
+   against real tracks; continuous/phase sync (→ P4).* Key-lock (in-house WSOLA) is now done.
 8. ✅ **Engine telemetry.** `engine_status` + per-deck position/level + master meter.
    *Remaining: buffer size + underrun counters surfaced to the UI.*
 9. 🔨 **Tests.** ✅ Tempo/beatgrid/key on synthetic signals; ✅ interpolation/crossfade/EQ/peaks.
@@ -65,7 +65,7 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 ## Phase 2 — Streaming integration ⬜
 
 - Authorization Code **+ PKCE** for Spotify & SoundCloud (Rust-side exchange/refresh, OS-keychain
-  storage); Apple Music ES256 developer token. Port search/metadata clients from djvibebar.
+  storage); Apple Music ES256 developer token. Build the search/metadata clients per provider.
 - Library browser with local + streaming sources; BPM/key columns (local only, honestly blank for
   streaming where no data exists).
 - Streaming **playback-only decks**: SDK in the WebView, transport via IPC, **capability-gated UI**
@@ -124,13 +124,11 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 | `rtrb` | lock-free SPSC rings | MIT/Apache-2.0 | ✅ |
 | `rubato` | resampling / varispeed | MIT | ✅ |
 | `rustfft` | offline FFT (analysis) | MIT/Apache-2.0 | ✅ |
-| `signalsmith-stretch` (planned, P1/P5) | time-stretch + key-lock | **MIT** (C++ via FFI) | ✅ preferred over Rubber Band |
 | `ffmpeg-next` (fallback only) | decode gap coverage | **LGPL/GPL** | ⚠️ dynamic-link, LGPL build, no GPL components, documented |
 | `keyring` (P2) | OS keychain for tokens | MIT/Apache-2.0 | ✅ |
 
-**Reference-only (read to learn; never linked/copied — GPL):** Mixxx, Rubber Band, aubio, VLC
-(LGPL, reference for I/O/clock patterns). Copying or statically linking GPL code would impose GPL
-on compas; we do not.
+Time-stretch / key-lock and beat/key detection are **implemented in-house** (a pure-Rust,
+RT-safe WSOLA stretcher and our own analysis), so they add no third-party DSP dependency.
 
 **Patent note:** MP3 patents have expired. AAC patents may still apply to the *codec*; symphonia's
 AAC/ALAC coverage is also partial — another reason the FFmpeg fallback decision is documented.
@@ -140,7 +138,7 @@ AAC/ALAC coverage is also partial — another reason the FFmpeg fallback decisio
 - **Apple Music: deferred.** P2 ships Spotify + SoundCloud control-only decks. Apple Music is
   revisited later if wanted (avoids the extractable-`.p8` problem and trims scope).
 - **Beatmatch: varispeed by default, key-lock as a toggle.** Tempo+pitch move together (vinyl
-  feel, `rubato`); key-lock (tempo-independent pitch, `signalsmith-stretch`) is opt-in.
+  feel); key-lock (tempo-independent pitch, our in-house WSOLA stretcher) is opt-in.
 - **Windows output: WASAPI shared mode, safe buffers (~10–20 ms) for P1.** Low-latency
   exclusive/ASIO is a later optimization. macOS uses CoreAudio.
 

@@ -13,9 +13,8 @@ pub enum MusicProvider {
 
 /// Normalized track metadata shared across providers and the UI.
 ///
-/// Ported and renamed from djvibebar's `TrackMetadata`. The original conflated
-/// every provider id into a field named `spotify_id`; here it is `provider_id`
-/// and the owning provider is explicit.
+/// A provider-agnostic id (`provider_id`) plus an explicit owning provider, so no single
+/// source's id scheme leaks into the shared model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrackMetadata {
     /// Stable local id (UUID) we assign on import/search.

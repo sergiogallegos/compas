@@ -10,8 +10,7 @@ A cross-platform, real-time professional DJ application. Rust audio core + TypeS
 > **Scope & honesty.** compas does **true DSP mixing only on local DRM-free files** — that is the
 > real DJ engine. Streaming services (Spotify / Apple Music / SoundCloud) expose **playback
 > control only, never decoded audio**, so streaming decks are control-only and the UI disables
-> the DSP they can't perform. For **personal, non-commercial use**. See `ARCHITECTURE.md` §1 and
-> `docs/djvibebar-review.md` §6 for why.
+> the DSP they can't perform. See `ARCHITECTURE.md` §1 for why.
 
 Status: **Phase 1 — local-file dual-deck engine** (in progress). Two local decks decode, play, mix
 through a crossfader + 3-band EQ + filter, with BPM detection, waveforms, and varispeed beatmatch.

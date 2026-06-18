@@ -95,7 +95,7 @@
 .wf-badge { font-family: var(--font-mono); font-size: 9px; color: var(--stream); border: 1px solid rgba(40, 224, 255, 0.4); background: rgba(40, 224, 255, 0.1); padding: 2px 6px; border-radius: 4px; }
 
 /* ===== deck row ===== */
-.deck-row { height: 372px; flex: none; display: flex; gap: 10px; padding: 10px; }
+.deck-row { min-height: 372px; flex: none; display: flex; gap: 10px; padding: 10px; }
 .deck { flex: 1; min-width: 0; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-top: 2px solid; border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
 .deck-header { display: flex; align-items: center; gap: 10px; }
