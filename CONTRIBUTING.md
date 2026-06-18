@@ -1,7 +1,7 @@
 # Contributing to compas
 
 Thanks for your interest! compas is a cross-platform real-time DJ app (Rust core + TypeScript UI
-in Tauri 2). For personal, non-commercial use.
+in Tauri 2), open-source under the MIT license — contributions are welcome.
 
 ## Dev setup
 See `README.md` for prerequisites (Rust ≥ 1.82, Node ≥ 18, WebView2 / Xcode CLT, Tauri CLI).

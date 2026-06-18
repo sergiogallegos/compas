@@ -5,7 +5,7 @@ the things that matter.
 
 ## What compas is
 A cross-platform, real-time professional DJ app. **Rust audio core + TypeScript UI in Tauri 2.**
-Windows is the primary target; macOS is first-class; Linux best-effort. Personal, non-commercial use.
+Windows is the primary target; macOS is first-class; Linux best-effort. Open-source under MIT.
 
 ## Repository map
 ```

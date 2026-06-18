@@ -7,10 +7,10 @@
 A cross-platform, real-time professional DJ application. Rust audio core + TypeScript UI in a
 **Tauri 2** shell. Windows is the primary target; **macOS is first-class**; Linux is best-effort.
 
-> **Scope & honesty.** compas does **true DSP mixing only on local DRM-free files** — that is the
-> real DJ engine. Streaming services (Spotify / Apple Music / SoundCloud) expose **playback
-> control only, never decoded audio**, so streaming decks are control-only and the UI disables
-> the DSP they can't perform. See `ARCHITECTURE.md` §1 for why.
+> **Scope & honesty.** compas does **true DSP mixing on local DRM-free files** — that is the real
+> DJ engine, and the focus of the app today. Optional streaming-service control decks are on the
+> roadmap; since services expose **playback control, not decoded audio**, any such deck would be
+> control-only by design and the UI would disable the DSP it can't perform. See `ARCHITECTURE.md` §1.
 
 Status: **Phase 1 — local-file dual-deck engine** (in progress). Two local decks decode, play, mix
 through a crossfader + 3-band EQ + filter, with BPM detection, waveforms, and varispeed beatmatch.

@@ -70,7 +70,7 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
   streaming where no data exists).
 - Streaming **playback-only decks**: SDK in the WebView, transport via IPC, **capability-gated UI**
   (DSP controls disabled + explained).
-- Document the per-service ToS/PCM/analysis constraints in-app (personal-use posture).
+- Document the per-service ToS/PCM/analysis constraints in-app.
 
 ## Phase 3 — Auto-mix / intelligent transitions ⬜
 

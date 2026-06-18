@@ -5,7 +5,8 @@
 
 compas is a cross-platform real-time DJ application. **Windows is the primary launch target;
 macOS is first-class from day one** (no Windows-only dependencies). Linux is best-effort.
-The product is for **personal, non-commercial use**, which shapes the streaming design (§6).
+compas is **open-source (MIT)** and ships as a distributable binary, which shapes the streaming
+design — a distributable can't embed a client secret, so streaming auth is public-client PKCE (§6).
 
 ---
 

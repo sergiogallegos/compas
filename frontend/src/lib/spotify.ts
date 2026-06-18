@@ -1,7 +1,7 @@
 // Spotify Authorization Code + PKCE (public client — no secret). Rust runs the loopback
 // listener (spotify_listen) and opens the browser; this module does PKCE, the token
-// exchange/refresh, and Web API calls. Tokens live in localStorage (personal-use; a
-// later pass can move them to the OS keychain).
+// exchange/refresh, and Web API calls. Tokens live in localStorage for now; a later pass
+// can move them to the OS keychain.
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
