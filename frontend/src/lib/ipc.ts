@@ -141,6 +141,26 @@ export const setDeckReverb = (deck: number, active: boolean, roomSize: number, m
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
+// ---- Synth instrument + MIDI ------------------------------------------------------
+
+export const noteOn = (note: number, velocity: number) => invoke("note_on", { note, velocity });
+export const noteOff = (note: number) => invoke("note_off", { note });
+export const allNotesOff = () => invoke("all_notes_off");
+export const setSynthWaveform = (index: number) => invoke("set_synth_waveform", { index });
+export const setSynthGain = (gain: number) => invoke("set_synth_gain", { gain });
+/** List connected MIDI input ports (index = position in the returned list). */
+export const midiListPorts = () => invoke<string[]>("midi_list_ports");
+/** Open a MIDI port; returns its name. Its notes drive the synth, knobs emit `midi:cc`. */
+export const midiConnect = (index: number) => invoke<string>("midi_connect", { index });
+export const midiDisconnect = () => invoke("midi_disconnect");
+
+export interface MidiCc {
+  controller: number;
+  value: number;
+}
+export const onMidiCc = (cb: (e: MidiCc) => void): Promise<UnlistenFn> =>
+  listen<MidiCc>("midi:cc", (e) => cb(e.payload));
+
 // ---- Master recording -------------------------------------------------------------
 
 /** Record the master mix to `path` (32-bit-float stereo WAV). */

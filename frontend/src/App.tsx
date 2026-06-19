@@ -6,6 +6,7 @@ import { WaveformZone } from "./components/WaveformZone";
 import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
+import { Instrument } from "./components/Instrument";
 import { useDeck } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
@@ -24,6 +25,7 @@ export function App() {
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
+  const [showKeys, setShowKeys] = useState(false);
 
   const applyCrossfade = useCallback((v: number) => {
     setXfade(v);
@@ -66,7 +68,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} syncActive={deckB.state.synced} onSync={() => toggleSync("B")} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} syncActive={deckB.state.synced} onSync={() => toggleSync("B")} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -93,6 +95,7 @@ export function App() {
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} />
+      {showKeys && <Instrument onClose={() => setShowKeys(false)} />}
     </div>
   );
 }

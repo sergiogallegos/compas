@@ -706,6 +706,216 @@ fn lerp_mono(samples: &[f32], frames: usize, pos: f64) -> f32 {
     0.5 * (lerp_ch(samples, frames, pos, 0) + lerp_ch(samples, frames, pos, 1))
 }
 
+// ---------------------------------------------------------------------------------
+// Synth (polyphonic instrument — playable from the on-screen keyboard or MIDI)
+// ---------------------------------------------------------------------------------
+
+/// Number of simultaneous synth voices. Note-on past this steals the quietest voice.
+const SYNTH_VOICES: usize = 16;
+
+/// Oscillator shape for the synth instrument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Waveform {
+    Sine,
+    Triangle,
+    Saw,
+    Square,
+}
+
+impl Waveform {
+    /// Map a small integer (from the UI/IPC) to a waveform.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            0 => Waveform::Sine,
+            1 => Waveform::Triangle,
+            2 => Waveform::Saw,
+            _ => Waveform::Square,
+        }
+    }
+
+    #[inline]
+    fn sample(self, phase: f32) -> f32 {
+        match self {
+            Waveform::Sine => (2.0 * PI * phase).sin(),
+            Waveform::Triangle => 4.0 * (phase - 0.5).abs() - 1.0,
+            Waveform::Saw => 2.0 * phase - 1.0,
+            Waveform::Square => {
+                if phase < 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EnvStage {
+    Off,
+    Attack,
+    Decay,
+    Sustain,
+    Release,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Voice {
+    note: u8,
+    phase: f32,
+    phase_inc: f32,
+    vel: f32,
+    env: f32,
+    stage: EnvStage,
+}
+
+impl Voice {
+    const fn idle() -> Self {
+        Voice {
+            note: 0,
+            phase: 0.0,
+            phase_inc: 0.0,
+            vel: 0.0,
+            env: 0.0,
+            stage: EnvStage::Off,
+        }
+    }
+}
+
+/// A small polyphonic subtractive-ish synth: per-voice oscillator + linear ADSR envelope.
+/// All state is fixed-size, so [`Synth::process`] is allocation-free and RT-SAFE. Driven by
+/// `note_on`/`note_off` (from the on-screen keyboard or a MIDI controller).
+pub struct Synth {
+    voices: [Voice; SYNTH_VOICES],
+    sample_rate: f32,
+    waveform: Waveform,
+    attack_rate: f32,
+    decay_rate: f32,
+    sustain: f32,
+    release_rate: f32,
+    gain: f32,
+}
+
+impl Synth {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let per = |secs: f32| 1.0 / (secs * sr).max(1.0); // env units per sample
+        Synth {
+            voices: [Voice::idle(); SYNTH_VOICES],
+            sample_rate: sr,
+            waveform: Waveform::Triangle,
+            attack_rate: per(0.004),
+            decay_rate: per(0.25),
+            sustain: 0.4,
+            release_rate: per(0.3),
+            gain: 0.6,
+        }
+    }
+
+    pub fn set_waveform(&mut self, w: Waveform) {
+        self.waveform = w;
+    }
+
+    /// Output level of the instrument, 0..~1. RT-SAFE.
+    pub fn set_gain(&mut self, gain: f32) {
+        self.gain = gain.clamp(0.0, 1.5);
+    }
+
+    /// Trigger a note (MIDI note number, velocity 0..127). RT-SAFE.
+    pub fn note_on(&mut self, note: u8, velocity: u8) {
+        if velocity == 0 {
+            self.note_off(note);
+            return;
+        }
+        let freq = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
+        // Reuse a voice already on this note, else a free one, else steal the quietest.
+        let mut idx = None;
+        let mut free = None;
+        let (mut quiet_i, mut quiet_env) = (0usize, f32::INFINITY);
+        for (i, v) in self.voices.iter().enumerate() {
+            if v.stage != EnvStage::Off && v.note == note {
+                idx = Some(i);
+                break;
+            }
+            if v.stage == EnvStage::Off && free.is_none() {
+                free = Some(i);
+            }
+            if v.env < quiet_env {
+                quiet_env = v.env;
+                quiet_i = i;
+            }
+        }
+        let i = idx.or(free).unwrap_or(quiet_i);
+        let v = &mut self.voices[i];
+        v.note = note;
+        v.phase_inc = freq / self.sample_rate;
+        v.vel = velocity as f32 / 127.0;
+        v.stage = EnvStage::Attack;
+        // Keep phase/env on retrigger to avoid a click.
+    }
+
+    /// Release any voices playing `note`. RT-SAFE.
+    pub fn note_off(&mut self, note: u8) {
+        for v in self.voices.iter_mut() {
+            if v.stage != EnvStage::Off && v.stage != EnvStage::Release && v.note == note {
+                v.stage = EnvStage::Release;
+            }
+        }
+    }
+
+    /// Release every voice (panic button / on disconnect). RT-SAFE.
+    pub fn all_notes_off(&mut self) {
+        for v in self.voices.iter_mut() {
+            if v.stage != EnvStage::Off {
+                v.stage = EnvStage::Release;
+            }
+        }
+    }
+
+    /// Process one sample (mono). RT-SAFE.
+    #[inline]
+    pub fn process(&mut self) -> f32 {
+        let mut out = 0.0f32;
+        for v in self.voices.iter_mut() {
+            if v.stage == EnvStage::Off {
+                continue;
+            }
+            // Advance the ADSR envelope.
+            match v.stage {
+                EnvStage::Attack => {
+                    v.env += self.attack_rate;
+                    if v.env >= 1.0 {
+                        v.env = 1.0;
+                        v.stage = EnvStage::Decay;
+                    }
+                }
+                EnvStage::Decay => {
+                    v.env -= self.decay_rate;
+                    if v.env <= self.sustain {
+                        v.env = self.sustain;
+                        v.stage = EnvStage::Sustain;
+                    }
+                }
+                EnvStage::Sustain => {}
+                EnvStage::Release => {
+                    v.env -= self.release_rate;
+                    if v.env <= 0.0 {
+                        v.env = 0.0;
+                        v.stage = EnvStage::Off;
+                    }
+                }
+                EnvStage::Off => {}
+            }
+            out += self.waveform.sample(v.phase) * v.env * v.vel;
+            v.phase += v.phase_inc;
+            if v.phase >= 1.0 {
+                v.phase -= 1.0;
+            }
+        }
+        out * self.gain
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -834,6 +1044,56 @@ mod tests {
         }
         assert!(early > 1e-6, "no reverb tail (early energy {early})");
         assert!(late < early, "reverb did not decay (early {early}, late {late})");
+    }
+
+    #[test]
+    fn synth_sounds_then_releases_to_silence() {
+        let mut s = Synth::new(48_000.0);
+        s.note_on(69, 100); // A4
+        let mut peak = 0.0f32;
+        for _ in 0..4_800 {
+            peak = peak.max(s.process().abs());
+        }
+        assert!(peak > 0.05, "note produced no sound (peak {peak})");
+        s.note_off(69);
+        for _ in 0..48_000 {
+            s.process(); // let the release finish (300 ms ≪ 1 s)
+        }
+        let mut after = 0.0f32;
+        for _ in 0..1_000 {
+            after = after.max(s.process().abs());
+        }
+        assert!(after < 1e-4, "note did not release to silence (residual {after})");
+    }
+
+    #[test]
+    fn synth_pitch_tracks_note() {
+        // A sine voice at A4 (440 Hz) should cross zero ~880 times/sec.
+        let mut s = Synth::new(48_000.0);
+        s.set_waveform(Waveform::Sine);
+        s.note_on(69, 127);
+        let out: Vec<f32> = (0..48_000).map(|_| s.process()).collect();
+        let win = &out[4_800..43_200]; // skip attack, steady sustain
+        let zc = win.windows(2).filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0).count();
+        let expected = (win.len() as f64 / 48_000.0 * 880.0) as i64;
+        assert!(
+            (zc as i64 - expected).abs() <= expected / 20,
+            "zero-crossings {zc}, expected ~{expected}"
+        );
+    }
+
+    #[test]
+    fn synth_is_polyphonic() {
+        let mut s = Synth::new(48_000.0);
+        s.set_waveform(Waveform::Sine);
+        s.note_on(60, 100);
+        let one: f32 = (0..2_400).map(|_| s.process().abs()).fold(0.0, f32::max);
+        let mut s2 = Synth::new(48_000.0);
+        s2.set_waveform(Waveform::Sine);
+        s2.note_on(60, 100);
+        s2.note_on(67, 100); // a fifth on top
+        let two: f32 = (0..2_400).map(|_| s2.process().abs()).fold(0.0, f32::max);
+        assert!(two > one * 1.2, "second note did not add (one={one}, two={two})");
     }
 
     /// Build an interleaved-stereo sine of the given period (frames), `n` frames long.

@@ -11,6 +11,8 @@ export function TitleBar({
   syncEnabled = false,
   syncActive = false,
   onSync,
+  keysOpen = false,
+  onToggleKeys,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -18,6 +20,8 @@ export function TitleBar({
   syncEnabled?: boolean;
   syncActive?: boolean;
   onSync?: () => void;
+  keysOpen?: boolean;
+  onToggleKeys?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
@@ -83,6 +87,13 @@ export function TitleBar({
         <div className="mini-transport">
           <button className="mt-btn" disabled title="Metronome: later"><Icon name="play" size={13} /></button>
           <span className="mt-btn mono">4/4</span>
+          <button
+            className={`mt-btn ${keysOpen ? "mt-rec--on" : ""}`}
+            onClick={onToggleKeys}
+            title="Synth instrument keyboard"
+          >
+            <Icon name="music" size={13} />
+          </button>
           <button
             className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}
             onClick={toggleRecord}

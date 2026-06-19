@@ -167,6 +167,21 @@
 .mixer-head { display: flex; justify-content: space-between; align-items: center; }
 .automix { display: flex; gap: 4px; }
 .automix .chip { flex: none; padding: 3px 8px; font-size: 9px; }
+
+/* Synth instrument panel (bottom overlay) */
+.instrument { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--surface-1-bot); border-top: 1px solid var(--border-hairline-strong); box-shadow: 0 -8px 24px rgba(0,0,0,.5); padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.instrument-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.inst-waves, .inst-oct, .inst-midi { display: flex; align-items: center; gap: 5px; }
+.instrument .chip { flex: none; padding: 4px 8px; font-size: 9px; }
+.inst-midi select { background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 4px 6px; font-size: 11px; max-width: 200px; }
+.inst-cc { color: var(--text-tertiary); font-size: 10px; }
+.inst-close { margin-left: auto; }
+.piano { position: relative; height: 96px; display: flex; gap: 2px; user-select: none; touch-action: none; }
+.pkey { padding: 0; border: none; cursor: pointer; }
+.pkey-w { flex: 1; background: linear-gradient(180deg, #f4f4f6, #d6d6dc); border: 1px solid #25252c; border-top: none; border-radius: 0 0 5px 5px; }
+.pkey-w:active { background: linear-gradient(180deg, #c9c9d2, #b4b4be); }
+.pkey-b { position: absolute; top: 0; height: 60%; background: linear-gradient(180deg, #2a2a33, #0e0e12); border: 1px solid #000; border-radius: 0 0 4px 4px; z-index: 2; }
+.pkey-b:active { background: linear-gradient(180deg, #45454f, #1a1a20); }
 .mixer-strips { flex: 1; display: flex; gap: 16px; justify-content: center; min-height: 0; overflow: hidden; }
 .strip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 0; }
 .strip-letter { font-size: 15px; font-weight: 600; }

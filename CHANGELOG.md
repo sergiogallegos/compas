@@ -11,6 +11,10 @@ All notable changes to compas are documented here. Format follows
   equal-power crossfader, master, lock-free audio thread with reclaim ring.
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
+- **Synth instrument + MIDI input:** a polyphonic synth (4 waveforms, ADSR, 16 voices) on the
+  master bus, playable from an **on-screen keyboard**, the **computer keyboard**, or a **MIDI
+  controller** (via `midir` — connect a device; its notes play the synth, knobs emit `midi:cc`).
+  RT-safe (fixed-voice, no allocation). It's mixed into the master, so it's recordable too.
 - **Auto-mix / transitions:** an **AUTO** toggle (auto-transition near track end) and a **MIX**
   button (transition now). A transition cues the incoming deck at its first downbeat, beat-syncs
   it to the live deck, starts it, and runs a 16-beat crossfade with a **bass swap** (hands the low

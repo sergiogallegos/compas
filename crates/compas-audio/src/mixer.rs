@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, ThreeBandEq, TimeStretch,
+    Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, Synth, ThreeBandEq, TimeStretch,
+    Waveform,
 };
 use rtrb::Producer;
 
@@ -148,6 +149,21 @@ pub enum AudioCommand {
     },
     /// Stop tapping; dropping the producer signals the writer thread to finalize the file.
     StopRecording,
+    /// Synth instrument note on (MIDI note 0..127, velocity 0..127; 0 velocity = note off).
+    NoteOn {
+        note: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        note: u8,
+    },
+    AllNotesOff,
+    SetSynthWaveform {
+        index: u8,
+    },
+    SetSynthGain {
+        gain: f32,
+    },
 }
 
 /// Shared, lock-free telemetry the control thread samples to drive the UI (position,
@@ -461,6 +477,8 @@ pub struct Mixer {
     /// Smoothed audio-callback load, and the running overrun count.
     rt_load: f32,
     xrun_count: u64,
+    /// Polyphonic synth instrument, summed into the master (post-deck, pre-master-gain).
+    synth: Synth,
 }
 
 impl Mixer {
@@ -484,6 +502,7 @@ impl Mixer {
             record_sink: None,
             rt_load: 0.0,
             xrun_count: 0,
+            synth: Synth::new(device_rate),
         }
     }
 
@@ -731,6 +750,13 @@ impl Mixer {
                     // consumer is still alive so it only decrements a refcount (RT-safe).
                     self.record_sink = None;
                 }
+                AudioCommand::NoteOn { note, velocity } => self.synth.note_on(note, velocity),
+                AudioCommand::NoteOff { note } => self.synth.note_off(note),
+                AudioCommand::AllNotesOff => self.synth.all_notes_off(),
+                AudioCommand::SetSynthWaveform { index } => {
+                    self.synth.set_waveform(Waveform::from_index(index))
+                }
+                AudioCommand::SetSynthGain { gain } => self.synth.set_gain(gain),
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
@@ -777,6 +803,11 @@ impl Mixer {
             l += dl * xf;
             r += dr * xf;
         }
+        // Synth instrument sits on the master bus (centered), so it's always audible and
+        // captured by the recorder, independent of the crossfader.
+        let sy = self.synth.process();
+        l += sy;
+        r += sy;
         let m = self.master.next_gain();
         let (ol, or) = (l * m, r * m);
         self.peak_l = self.peak_l.max(ol.abs());

@@ -91,10 +91,14 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 
-## Phase 6 — MIDI controller mapping / hardware ⬜
+## Phase 6 — MIDI controller mapping / hardware 🔨
 
 - ✅ **Jog-wheel scratch** (draggable platter; drag velocity drives the audio-thread read rate).
-- ⬜ MIDI learn + mapping engine; common controller profiles; scratch latency tuning.
+- ✅ **MIDI input** (`midir`): connect a controller; notes drive the synth, CC emits `midi:cc`.
+- ✅ **Synth instrument** (polyphonic, master bus, recordable) — on-screen + computer + MIDI keys.
+- ⬜ **MIDI-learn / mapping engine**: bind controller knobs/pads/keys to deck controls (EQ, filter,
+  crossfader, transport, hot cues, loops). Built-in profile for the Akai MPK Mini MK3.
+- ⬜ Sampled/instrument upgrades (a real piano sample set); scratch latency tuning.
 
 > **Note:** features were pulled forward out of phase order. Beyond P1, what's *actually* shipped
 > already includes key-lock, beat loops, hot cues, the echo/reverb FX rack, jog-wheel scratch, and

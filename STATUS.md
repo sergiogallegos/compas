@@ -27,6 +27,9 @@
   tempo rate-match + ±8% phase-lock), composes with key-lock/loops.
 - **Auto-mix** — AUTO (auto-transition near track end) + MIX (now): cue→sync→16-beat crossfade
   with bass swap→stop outgoing. Frontend orchestration (`useAutoMix`) over sync/crossfader/EQ.
+- **Synth instrument + MIDI** — polyphonic synth (`Synth`: 4 waveforms, ADSR, 16 voices) on the
+  master bus; on-screen keyboard + computer keyboard + MIDI controller input (`midir`; notes →
+  synth, knobs → `midi:cc`). Recordable. MIDI-learn / control mapping is the next step.
 - **Key-lock (master tempo)** — hand-rolled RT-safe WSOLA stretcher in `compas-dsp` (Hann grains
   + similarity search, reads from the in-RAM buffer, ~4%/core/deck); per-deck `KEY` toggle.
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.

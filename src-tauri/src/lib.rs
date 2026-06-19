@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -19,6 +19,7 @@ mod spotify;
 use compas_audio::{
     compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
 };
+use midir::{MidiInput, MidiInputConnection};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -117,6 +118,20 @@ enum EngineMsg {
         sink: Producer<f32>,
     },
     StopRecording,
+    NoteOn {
+        note: u8,
+        velocity: u8,
+    },
+    NoteOff {
+        note: u8,
+    },
+    AllNotesOff,
+    SynthWaveform {
+        index: u8,
+    },
+    SynthGain {
+        gain: f32,
+    },
 }
 
 /// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
@@ -274,6 +289,15 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::StartRecording { sink } => AudioCommand::StartRecording { sink },
                     EngineMsg::StopRecording => AudioCommand::StopRecording,
+                    EngineMsg::NoteOn { note, velocity } => {
+                        AudioCommand::NoteOn { note, velocity }
+                    }
+                    EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
+                    EngineMsg::AllNotesOff => AudioCommand::AllNotesOff,
+                    EngineMsg::SynthWaveform { index } => {
+                        AudioCommand::SetSynthWaveform { index }
+                    }
+                    EngineMsg::SynthGain { gain } => AudioCommand::SetSynthGain { gain },
                 };
                 if let Err(e) = engine.send(cmd) {
                     tracing::warn!("dropped audio command: {e}");
@@ -796,6 +820,124 @@ fn finalize_wav(w: BufWriter<File>, data_bytes: u32) -> std::io::Result<()> {
     Ok(())
 }
 
+// ----------------------------------------------------------------------------------
+// Synth instrument + MIDI input
+// ----------------------------------------------------------------------------------
+
+/// Holds the live MIDI input connection (kept alive so its callback keeps firing).
+struct MidiState(Mutex<Option<MidiInputConnection<()>>>);
+
+#[derive(Serialize, Clone)]
+struct MidiCcEvent {
+    controller: u8,
+    value: u8,
+}
+
+#[tauri::command]
+fn note_on(state: State<'_, EngineHandle>, note: u8, velocity: u8) -> Result<(), String> {
+    state.send(EngineMsg::NoteOn { note, velocity })
+}
+
+#[tauri::command]
+fn note_off(state: State<'_, EngineHandle>, note: u8) -> Result<(), String> {
+    state.send(EngineMsg::NoteOff { note })
+}
+
+#[tauri::command]
+fn all_notes_off(state: State<'_, EngineHandle>) -> Result<(), String> {
+    state.send(EngineMsg::AllNotesOff)
+}
+
+#[tauri::command]
+fn set_synth_waveform(state: State<'_, EngineHandle>, index: u8) -> Result<(), String> {
+    state.send(EngineMsg::SynthWaveform { index })
+}
+
+#[tauri::command]
+fn set_synth_gain(state: State<'_, EngineHandle>, gain: f32) -> Result<(), String> {
+    state.send(EngineMsg::SynthGain { gain })
+}
+
+/// List connected MIDI input port names (index = position in this list).
+#[tauri::command]
+fn midi_list_ports() -> Result<Vec<String>, String> {
+    let midi_in = MidiInput::new("compas-probe").map_err(|e| e.to_string())?;
+    Ok(midi_in
+        .ports()
+        .iter()
+        .filter_map(|p| midi_in.port_name(p).ok())
+        .collect())
+}
+
+/// Open a MIDI input port; its messages drive the synth (notes) and emit `midi:cc` (knobs).
+#[tauri::command]
+fn midi_connect(
+    app: AppHandle,
+    engine: State<'_, EngineHandle>,
+    midi: State<'_, MidiState>,
+    index: usize,
+) -> Result<String, String> {
+    let midi_in = MidiInput::new("compas").map_err(|e| e.to_string())?;
+    let ports = midi_in.ports();
+    let port = ports.get(index).ok_or("invalid MIDI port index")?.clone();
+    let name = midi_in.port_name(&port).unwrap_or_else(|_| "MIDI".into());
+
+    let tx = engine.tx.clone();
+    let app_cc = app.clone();
+    let conn = midi_in
+        .connect(
+            &port,
+            "compas-in",
+            move |_t, message, _| {
+                if message.len() < 2 {
+                    return;
+                }
+                match message[0] & 0xF0 {
+                    0x90 => {
+                        let (note, vel) = (message[1], *message.get(2).unwrap_or(&0));
+                        let _ = if vel > 0 {
+                            tx.send(EngineMsg::NoteOn { note, velocity: vel })
+                        } else {
+                            tx.send(EngineMsg::NoteOff { note })
+                        };
+                    }
+                    0x80 => {
+                        let _ = tx.send(EngineMsg::NoteOff { note: message[1] });
+                    }
+                    0xB0 => {
+                        let _ = app_cc.emit(
+                            "midi:cc",
+                            MidiCcEvent {
+                                controller: message[1],
+                                value: *message.get(2).unwrap_or(&0),
+                            },
+                        );
+                    }
+                    _ => {}
+                }
+            },
+            (),
+        )
+        .map_err(|e| e.to_string())?;
+
+    *midi.0.lock().map_err(|e| e.to_string())? = Some(conn);
+    tracing::info!("MIDI connected: {name}");
+    Ok(name)
+}
+
+/// Close the MIDI input connection (releases all held notes).
+#[tauri::command]
+fn midi_disconnect(
+    state: State<'_, EngineHandle>,
+    midi: State<'_, MidiState>,
+) -> Result<(), String> {
+    if let Ok(mut guard) = midi.0.lock() {
+        guard.take(); // dropping the connection closes the port
+    }
+    let _ = state.send(EngineMsg::AllNotesOff);
+    Ok(())
+}
+
 /// Spawn the telemetry emitter: samples lock-free deck state and emits `deck:position`.
 fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
     thread::spawn(move || {
@@ -843,6 +985,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(engine)
+        .manage(MidiState(Mutex::new(None)))
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             Ok(())
@@ -871,6 +1014,14 @@ pub fn run() {
             set_master_gain,
             start_recording,
             stop_recording,
+            note_on,
+            note_off,
+            all_notes_off,
+            set_synth_waveform,
+            set_synth_gain,
+            midi_list_ports,
+            midi_connect,
+            midi_disconnect,
             spotify::spotify_listen
         ])
         .run(tauri::generate_context!());
