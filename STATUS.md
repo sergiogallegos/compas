@@ -5,47 +5,19 @@
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **Bitcrusher FX** — a per-deck **CRUSH** chip in the FX rack: bit-depth + sample-rate
-reduction (`compas-dsp::Bitcrusher`), BITS + RATE knobs, inserted after the flanger.
-`set_deck_crusher`. The deck FX row is now ECHO · REVERB · FLANGE · CRUSH (renders cleanly).
-Builds clean (check/clippy/test — 3 crusher DSP tests, tsc, vite); ran the app — engine clean
-@48kHz + the CRUSH chip renders. **Ears check pending:** enable CRUSH on a playing track, sweep
-BITS/RATE → grittier.
+**User-confirmed working in the running app (2026-06-19):** the user ran `tauri dev` and reported
+the recent batch works — FX rack (echo/reverb/flanger/bitcrusher), performance row (quantize /
+beat-jump / loop-roll), sampler pads, headphone cue, and A/B/C/D library loading. (Hardware MIDI
+with the MPK MK3 still needs the controller on hand; the rest is confirmed.)
 
-Prior: **Flanger FX (beat-synced)** — FLANGE chip: `compas-dsp::Flanger` (quadrature L/R), 1/2/4/8
--beat rate chips + DEPTH, after reverb. Ears check: enable FLANGE, hear the sweep.
+Most recent feature was the **Bitcrusher FX** (CRUSH chip), preceded by the flanger, MIDI-mapped
+sampler pads, the sampler, the perf row, cue monitoring, the SQLite DB, MIDI-learn, and 4-deck —
+all described in the **Done** section below. SQLite was also verified end-to-end via a live DB
+query (migration + analysis-cache + play history).
 
-Prior: **MIDI-mapped sampler pads + headphone CUE** — MIDI-learn registry exposes the 8 sampler
-pads (a "Sampler" group) + per-deck PFL Headphone CUE; MPK MK3 starter profile maps its 8 pads →
-the sampler pads. **Test (needs MK3):** load the MK3 profile (or LEARN), hit a pad → fires it.
-
-Prior: **Sampler / performance pads** — 8 pads (pads icon, title bar): click empty → load a file,
-press → fire (one-shots overlap), per-pad ⟳ loop toggle, global LEVEL. RT-safe
-`compas-audio::sampler` (16-voice pool) on the master bus, recordable. **Ears check pending:**
-open the panel, load a short WAV onto a pad, press → hear it; ⟳ → press loops/stops.
-
-**Runtime verification done earlier** (2026-06-19, real `tauri dev`; window captured via
-PrintWindow, DB queried live). **PASS** for everything observable without ears:
-- App launches clean — `audio engine started @ 48000 Hz`, RT ~4%, no panics/command errors.
-- **SQLite DB** verified end-to-end: created at `%APPDATA%/com.compas.dj/compas.db` (WAL, 4 tables);
-  old localStorage library **migrated in**; load→analyze **cached BPM/key** back to the row
-  (sample1 123/7B, sample2 123/8A); play→`play_count`/`history` recorded.
-- **All new UI renders:** perf row (Q ◀4 4▶ ⅛/¼/½), 4 per-channel CUE buttons + phones bar
-  (real device in the dropdown → `list_output_devices` works, OFF, CUE◁▷MAS, PHONES), 4-deck
-  mixer strips, MIDI sliders icon.
-- **Fixed a found gap:** library load buttons were A/B-only → now A/B/C/D (commit `b70788b`).
-
-**Still needs an ears/hardware pass** (can't drive audio output or click WebView2 headlessly):
-1. **Cue:** phones ON (any device) → click a deck 🎧 → hear only cued decks, master untouched;
-   sweep CUE◁▷MAS toward MASTER; PHONES sets level.
-2. **Loop-roll slip:** hold ¼ while playing → release → playback resumes *in time* (where the
-   track would be), not where the loop sat. Compare ⅛/¼/½.
-3. **Beat-jump / Quantize:** ◀4/4▶ jump exactly a bar; with Q on, jumps + off-beat cue jumps
-   snap to the grid.
-4. **Cue/loop/grid restore:** set cues + a loop, eject, reload → they come back (DB persistence);
-   nudge grid, reload → offset restored.
-5. **MIDI (MPK Mini MK3):** LEARN a knob → drives the binding; pads don't honk the synth while
-   the instrument panel is closed.
+**Only remaining unverified item:** **MIDI with real hardware** — when the Akai MPK Mini MK3 is on
+hand, load its starter profile (or LEARN), check knobs drive the mixer + pads fire the sampler,
+and that pads don't honk the synth while the instrument panel is closed.
 
 Next, from the ROADMAP backlog:
 
