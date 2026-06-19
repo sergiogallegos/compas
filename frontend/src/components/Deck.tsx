@@ -30,12 +30,15 @@ export function Deck({
   onSync,
   syncEnabled = false,
   syncActive = false,
+  mirror = false,
 }: {
   ctrl: DeckController;
   color: string;
   onSync?: () => void;
   syncEnabled?: boolean;
   syncActive?: boolean;
+  /** Mirror the deck so the platter sits on the inner edge (next to the mixer). */
+  mirror?: boolean;
 }) {
   const { state, actions } = ctrl;
   const { meta, frame, playing, tempo, dsp, loading } = state;
@@ -147,7 +150,7 @@ export function Deck({
   }, []);
 
   return (
-    <section className="deck" style={{ borderTopColor: color }}>
+    <section className={`deck${mirror ? " deck--mirror" : ""}`} style={{ borderTopColor: color }}>
       {/* header */}
       <div className="deck-header">
         <button

@@ -123,6 +123,10 @@
 .tile-val.small { font-size: 14px; }
 
 .deck-body { flex: 1; display: flex; gap: 12px; min-height: 0; }
+/* Mirrored deck (left of the mixer): platter sits on the inner edge, near the center. */
+.deck--mirror .deck-header,
+.deck--mirror .readouts,
+.deck--mirror .deck-body { flex-direction: row-reverse; }
 .platter-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .platter { width: 130px; height: 130px; position: relative; border-radius: 50%; background: radial-gradient(circle at 50% 42%, #30303d 0%, #1c1c25 72%); border: 1px solid var(--border-hairline-strong); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .platter--scratch { cursor: grabbing; border-color: var(--text-tertiary); }

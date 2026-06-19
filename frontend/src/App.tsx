@@ -79,7 +79,7 @@ export function App() {
             ]}
           />
           <div className="deck-row">
-            <Deck ctrl={deckA} color={MAGENTA} onSync={() => toggleSync("A")} syncEnabled={bothReady} syncActive={deckA.state.synced} />
+            <Deck ctrl={deckA} color={MAGENTA} onSync={() => toggleSync("A")} syncEnabled={bothReady} syncActive={deckA.state.synced} mirror />
             <Mixer
               channels={[
                 { ctrl: deckA, letter: "A", color: MAGENTA },
