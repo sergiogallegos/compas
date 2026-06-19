@@ -8,11 +8,13 @@ import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { Instrument } from "./components/Instrument";
 import { MidiMap } from "./components/MidiMap";
+import { Sampler } from "./components/Sampler";
 import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
 import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
+import { useSampler } from "./hooks/useSampler";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
@@ -33,8 +35,10 @@ export function App() {
   const [xfade, setXfade] = useState(0.5);
   const [showKeys, setShowKeys] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  const [showPads, setShowPads] = useState(false);
   const midi = useMidi();
   const cue = useCue();
+  const sampler = useSampler();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);
   const [rightSel, setRightSel] = useState(1);
@@ -95,7 +99,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -138,6 +142,7 @@ export function App() {
       <StatusBar sampleRate={sampleRate} />
       {showKeys && <Instrument midi={midi} onClose={() => setShowKeys(false)} />}
       {showMap && <MidiMap midi={midi} map={midiMap} onClose={() => setShowMap(false)} />}
+      {showPads && <Sampler sampler={sampler} onClose={() => setShowPads(false)} />}
     </div>
   );
 }

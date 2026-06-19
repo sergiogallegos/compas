@@ -143,8 +143,9 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
   Demucs-class model: bundle / optional-download / defer). Biggest single feature gap.
 - ⬜ **More FX + beat-synced timing + FX units/chains** (flanger, phaser, bitcrusher; FX time in
   beats from the BPM; chain multiple).
-- ⬜ **Sampler / performance pads** — trigger one-shots + loops (à la VirtualDJ StemSwap / Traktor
-  Remix Decks). Reuses the synth/voice infrastructure.
+- ✅ **Sampler / performance pads** — 8 pads, one-shots (polyphonic) + per-pad loop toggle, global
+  level; RT-safe `compas-audio::sampler` on the master bus (recordable). MIDI-mapping the pads is
+  a follow-up.
 - 🔶 **Beat jump / loop roll / slip mode / reverse-censor** — beat-jump (±bar) + held loop-roll
   *with slip* shipped; full global slip mode + reverse/censor still to do.
 - ⬜ **Harmonic-mixing assist** — we already detect Camelot key; suggest key-compatible next tracks.
@@ -164,8 +165,8 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. ✅ **Headphone/cue monitoring** — done.
 5. **Stem separation** — marquee feature (needs the model decision first).
-6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) done; sampler/pads, more
-   beat-synced FX, full slip mode, harmonic-mixing assist still open.
+6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) + sampler/pads done; more
+   beat-synced FX, full slip mode, harmonic-mixing assist, MIDI-mapped pads still open.
 
 ---
 

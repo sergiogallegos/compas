@@ -153,6 +153,27 @@ enum EngineMsg {
     SynthGain {
         gain: f32,
     },
+    LoadSample {
+        slot: usize,
+        buffer: Arc<DeckBuffer>,
+    },
+    ClearSample {
+        slot: usize,
+    },
+    TriggerSample {
+        slot: usize,
+        velocity: u8,
+    },
+    StopSample {
+        slot: usize,
+    },
+    SampleLoop {
+        slot: usize,
+        looping: bool,
+    },
+    SamplerGain {
+        gain: f32,
+    },
 }
 
 /// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
@@ -338,6 +359,18 @@ fn spawn_engine() -> EngineHandle {
                         AudioCommand::SetSynthWaveform { index }
                     }
                     EngineMsg::SynthGain { gain } => AudioCommand::SetSynthGain { gain },
+                    EngineMsg::LoadSample { slot, buffer } => {
+                        AudioCommand::LoadSample { slot, buffer }
+                    }
+                    EngineMsg::ClearSample { slot } => AudioCommand::ClearSample { slot },
+                    EngineMsg::TriggerSample { slot, velocity } => {
+                        AudioCommand::TriggerSample { slot, velocity }
+                    }
+                    EngineMsg::StopSample { slot } => AudioCommand::StopSample { slot },
+                    EngineMsg::SampleLoop { slot, looping } => {
+                        AudioCommand::SetSampleLoop { slot, looping }
+                    }
+                    EngineMsg::SamplerGain { gain } => AudioCommand::SetSamplerGain { gain },
                 };
                 if let Err(e) = engine.send(cmd) {
                     tracing::warn!("dropped audio command: {e}");
@@ -1153,6 +1186,72 @@ fn set_synth_gain(state: State<'_, EngineHandle>, gain: f32) -> Result<(), Strin
     state.send(EngineMsg::SynthGain { gain })
 }
 
+// ----------------------------------------------------------------------------------
+// Sampler / performance pads
+// ----------------------------------------------------------------------------------
+
+#[derive(Serialize)]
+struct LoadedSample {
+    slot: usize,
+    name: String,
+}
+
+/// Decode an audio file into a sampler pad. Decoding is synchronous (samples are short); the
+/// whole-file PCM is installed on the audio thread via [`EngineMsg::LoadSample`].
+#[tauri::command]
+fn load_sample(
+    state: State<'_, EngineHandle>,
+    slot: usize,
+    path: String,
+) -> Result<LoadedSample, String> {
+    let (buffer, metadata) = compas_sources::decode_full(&path).map_err(|e| e.to_string())?;
+    // Prefer the embedded title; fall back to the file stem.
+    let name = if metadata.title.trim().is_empty() {
+        std::path::Path::new(&path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "sample".into())
+    } else {
+        metadata.title.clone()
+    };
+    state.send(EngineMsg::LoadSample {
+        slot,
+        buffer: Arc::new(buffer),
+    })?;
+    Ok(LoadedSample { slot, name })
+}
+
+#[tauri::command]
+fn clear_sample(state: State<'_, EngineHandle>, slot: usize) -> Result<(), String> {
+    state.send(EngineMsg::ClearSample { slot })
+}
+
+#[tauri::command]
+fn trigger_sample(state: State<'_, EngineHandle>, slot: usize, velocity: u8) -> Result<(), String> {
+    state.send(EngineMsg::TriggerSample { slot, velocity })
+}
+
+#[tauri::command]
+fn stop_sample(state: State<'_, EngineHandle>, slot: usize) -> Result<(), String> {
+    state.send(EngineMsg::StopSample { slot })
+}
+
+#[tauri::command]
+fn set_sample_loop(state: State<'_, EngineHandle>, slot: usize, looping: bool) -> Result<(), String> {
+    state.send(EngineMsg::SampleLoop { slot, looping })
+}
+
+#[tauri::command]
+fn set_sampler_gain(state: State<'_, EngineHandle>, gain: f32) -> Result<(), String> {
+    state.send(EngineMsg::SamplerGain { gain })
+}
+
+/// Number of sampler pads, so the UI lays out the right number without hard-coding it.
+#[tauri::command]
+fn sampler_pad_count() -> usize {
+    compas_audio::NUM_SAMPLER_PADS
+}
+
 /// List connected MIDI input port names (index = position in this list).
 #[tauri::command]
 fn midi_list_ports() -> Result<Vec<String>, String> {
@@ -1374,6 +1473,13 @@ pub fn run() {
             all_notes_off,
             set_synth_waveform,
             set_synth_gain,
+            load_sample,
+            clear_sample,
+            trigger_sample,
+            stop_sample,
+            set_sample_loop,
+            set_sampler_gain,
+            sampler_pad_count,
             midi_list_ports,
             midi_connect,
             midi_disconnect,

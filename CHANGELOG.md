@@ -11,6 +11,12 @@ All notable changes to compas are documented here. Format follows
   loaded-as tag recognises all four.
 
 ### Added
+- **Sampler / performance pads:** an 8-pad sampler (pads icon in the title bar). Click an empty
+  pad to load a short audio file; press a loaded pad to fire it — one-shots overlap
+  (polyphonic), and a per-pad ⟳ makes it a loop that toggles play/stop on press. A global LEVEL
+  knob. Playback runs in a new RT-safe `compas-audio::sampler` (fixed 16-voice pool, no
+  allocation on the audio thread; replaced buffers reclaimed off-thread) summed onto the master
+  bus next to the synth, so it's recordable. New `*_sample*` commands; unit-tested.
 - **Performance layer — beat jump, quantize, loop roll:** each deck gains a performance row.
   **Q** quantizes hot-cue jumps and beat-jumps to the beatgrid. **◀4 / 4▶** jump the play-head a
   bar back/forward (grid-aligned). **⅛ / ¼ / ½** are held loop **rolls** with true **slip** — the

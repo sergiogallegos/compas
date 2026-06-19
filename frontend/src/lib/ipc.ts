@@ -230,6 +230,26 @@ export const noteOff = (note: number) => invoke("note_off", { note });
 export const allNotesOff = () => invoke("all_notes_off");
 export const setSynthWaveform = (index: number) => invoke("set_synth_waveform", { index });
 export const setSynthGain = (gain: number) => invoke("set_synth_gain", { gain });
+
+// ---- Sampler / performance pads ---------------------------------------------------
+
+export interface LoadedSample {
+  slot: number;
+  name: string;
+}
+/** Number of sampler pads (engine-defined). */
+export const samplerPadCount = () => invoke<number>("sampler_pad_count");
+/** Decode an audio file into a pad; returns the pad index + display name. */
+export const loadSample = (slot: number, path: string) =>
+  invoke<LoadedSample>("load_sample", { slot, path });
+export const clearSample = (slot: number) => invoke("clear_sample", { slot });
+/** Trigger a pad (velocity 0..127). One-shot pads overlap; looped pads toggle. */
+export const triggerSample = (slot: number, velocity = 110) =>
+  invoke("trigger_sample", { slot, velocity });
+export const stopSample = (slot: number) => invoke("stop_sample", { slot });
+export const setSampleLoop = (slot: number, looping: boolean) =>
+  invoke("set_sample_loop", { slot, looping });
+export const setSamplerGain = (gain: number) => invoke("set_sampler_gain", { gain });
 /** List connected MIDI input ports (index = position in the returned list). */
 export const midiListPorts = () => invoke<string[]>("midi_list_ports");
 /** Open a MIDI port; returns its name. Notes emit `midi:note` (+ drive the synth when

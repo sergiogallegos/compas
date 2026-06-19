@@ -10,6 +10,8 @@ use compas_dsp::{
 };
 use rtrb::Producer;
 
+use crate::sampler::Sampler;
+
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
@@ -211,6 +213,29 @@ pub enum AudioCommand {
         index: u8,
     },
     SetSynthGain {
+        gain: f32,
+    },
+    /// Install (or, with the engine clearing it, replace) a sampler pad's PCM. The replaced
+    /// buffer is pushed to the reclaim ring so it frees off the audio thread.
+    LoadSample {
+        slot: usize,
+        buffer: Arc<DeckBuffer>,
+    },
+    ClearSample {
+        slot: usize,
+    },
+    TriggerSample {
+        slot: usize,
+        velocity: u8,
+    },
+    StopSample {
+        slot: usize,
+    },
+    SetSampleLoop {
+        slot: usize,
+        looping: bool,
+    },
+    SetSamplerGain {
         gain: f32,
     },
 }
@@ -552,6 +577,8 @@ pub struct Mixer {
     xrun_count: u64,
     /// Polyphonic synth instrument, summed into the master (post-deck, pre-master-gain).
     synth: Synth,
+    /// Sampler / performance pads, summed into the master alongside the synth.
+    sampler: Sampler,
 }
 
 impl Mixer {
@@ -589,6 +616,7 @@ impl Mixer {
             rt_load: 0.0,
             xrun_count: 0,
             synth: Synth::new(device_rate),
+            sampler: Sampler::new(device_rate),
         }
     }
 
@@ -881,6 +909,24 @@ impl Mixer {
                     self.synth.set_waveform(Waveform::from_index(index))
                 }
                 AudioCommand::SetSynthGain { gain } => self.synth.set_gain(gain),
+                AudioCommand::LoadSample { slot, buffer } => {
+                    if let Some(old) = self.sampler.set_slot(slot, Some(buffer)) {
+                        let _ = self.reclaim.push(old); // free the replaced buffer off the RT thread
+                    }
+                }
+                AudioCommand::ClearSample { slot } => {
+                    if let Some(old) = self.sampler.set_slot(slot, None) {
+                        let _ = self.reclaim.push(old);
+                    }
+                }
+                AudioCommand::TriggerSample { slot, velocity } => {
+                    self.sampler.trigger(slot, velocity)
+                }
+                AudioCommand::StopSample { slot } => self.sampler.stop(slot),
+                AudioCommand::SetSampleLoop { slot, looping } => {
+                    self.sampler.set_loop(slot, looping)
+                }
+                AudioCommand::SetSamplerGain { gain } => self.sampler.set_gain(gain),
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
@@ -939,6 +985,10 @@ impl Mixer {
         let sy = self.synth.process();
         l += sy;
         r += sy;
+        // Sampler / performance pads share the master bus with the synth (stereo).
+        let (sxl, sxr) = self.sampler.process();
+        l += sxl;
+        r += sxr;
         let m = self.master.next_gain();
         let (ol, or) = (l * m, r * m);
         self.peak_l = self.peak_l.max(ol.abs());

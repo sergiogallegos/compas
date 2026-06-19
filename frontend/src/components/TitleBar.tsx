@@ -15,6 +15,8 @@ export function TitleBar({
   onToggleKeys,
   mapOpen = false,
   onToggleMap,
+  padsOpen = false,
+  onTogglePads,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -26,6 +28,8 @@ export function TitleBar({
   onToggleKeys?: () => void;
   mapOpen?: boolean;
   onToggleMap?: () => void;
+  padsOpen?: boolean;
+  onTogglePads?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
@@ -104,6 +108,13 @@ export function TitleBar({
             title="MIDI controller mapping (learn)"
           >
             <Icon name="sliders" size={13} />
+          </button>
+          <button
+            className={`mt-btn ${padsOpen ? "mt-rec--on" : ""}`}
+            onClick={onTogglePads}
+            title="Sampler / performance pads"
+          >
+            <Icon name="pads" size={13} />
           </button>
           <button
             className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}

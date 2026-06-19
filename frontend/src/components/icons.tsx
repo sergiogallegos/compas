@@ -15,6 +15,7 @@ type IconName =
   | "folder"
   | "sliders"
   | "perform"
+  | "pads"
   | "sun";
 
 const PATHS: Record<IconName, ReactNode> = {
@@ -83,6 +84,14 @@ const PATHS: Record<IconName, ReactNode> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <polygon points="14.5 9 9 12 9.5 15 15 12" fill="currentColor" stroke="none" />
+    </>
+  ),
+  pads: (
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
     </>
   ),
   sun: (

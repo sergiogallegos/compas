@@ -202,6 +202,24 @@
 .mm-binding { flex: none; width: 96px; text-align: right; font-size: 10px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-learn { width: 52px; }
 .mm-clear { width: 22px; padding: 4px 0; }
+/* Sampler / performance pads panel — bottom sheet like the instrument */
+.sampler { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--surface-1-bot); border-top: 1px solid var(--border-hairline-strong); box-shadow: 0 -8px 24px rgba(0,0,0,.5); padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sampler-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sampler .chip { flex: none; padding: 4px 8px; font-size: 9px; }
+.sampler-hint { color: var(--text-tertiary); font-size: 10px; }
+.sampler-close { margin-left: auto; }
+.spad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.spad { position: relative; height: 78px; border-radius: var(--r-pad); background: var(--surface-control); border: 1px solid var(--border-hairline-strong); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; cursor: pointer; user-select: none; touch-action: none; padding: 6px; }
+.spad:active { background: rgba(255,255,255,.05); }
+.spad--loaded { border-color: rgba(255, 46, 126, 0.4); }
+.spad--loaded:active { background: rgba(255, 46, 126, 0.18); }
+.spad--loop { border-color: var(--status-warn); }
+.spad-num { position: absolute; top: 5px; left: 7px; font-size: 9px; color: var(--text-tertiary); font-family: var(--font-display); font-weight: 700; }
+.spad-name { font-size: 11px; color: var(--text-secondary); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
+.spad--loaded .spad-name { color: var(--text-primary); }
+.spad-foot { display: flex; gap: 6px; }
+.spad-mini { width: 22px; height: 18px; border-radius: 4px; background: var(--surface-sunken); border: 1px solid var(--border-hairline); color: var(--text-tertiary); font-size: 11px; line-height: 1; padding: 0; }
+.spad-mini--on { color: var(--status-warn); border-color: var(--status-warn); }
 .piano { position: relative; height: 96px; display: flex; gap: 2px; user-select: none; touch-action: none; }
 .pkey { padding: 0; border: none; cursor: pointer; }
 .pkey-w { flex: 1; background: linear-gradient(180deg, #f4f4f6, #d6d6dc); border: 1px solid #25252c; border-top: none; border-radius: 0 0 5px 5px; }

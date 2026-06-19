@@ -1,12 +1,19 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (runtime-verified last 5 features). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (sampler pads). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-**Runtime verification done** (2026-06-19, real `tauri dev` on the Windows machine; window
-captured via PrintWindow, DB queried live). **PASS** for everything observable without ears:
+Latest: **Sampler / performance pads** — 8 pads (pads icon, title bar): click empty → load a
+file, press → fire (one-shots overlap), per-pad ⟳ loop toggle, global LEVEL. RT-safe
+`compas-audio::sampler` (16-voice pool) on the master bus, recordable. Builds clean
+(check/clippy/test — 4 sampler tests, tsc, vite); runtime-checked the app launches clean with the
+sampler in the mixer + the pads toggle renders. **Ears check pending:** open the panel, load a
+short WAV onto a pad, press it → hear it; toggle ⟳ → press loops/stops; LEVEL sets volume.
+
+**Runtime verification done earlier** (2026-06-19, real `tauri dev`; window captured via
+PrintWindow, DB queried live). **PASS** for everything observable without ears:
 - App launches clean — `audio engine started @ 48000 Hz`, RT ~4%, no panics/command errors.
 - **SQLite DB** verified end-to-end: created at `%APPDATA%/com.compas.dj/compas.db` (WAL, 4 tables);
   old localStorage library **migrated in**; load→analyze **cached BPM/key** back to the row
@@ -55,6 +62,10 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
 - **Synth instrument + MIDI** — polyphonic synth (`Synth`: 4 waveforms, ADSR, 16 voices) on the
   master bus; on-screen keyboard + computer keyboard + MIDI controller input (`midir`; notes →
   synth, knobs → `midi:cc`). Recordable.
+- **Sampler / performance pads** — 8-pad sampler (`compas-audio::sampler`, 16-voice pool,
+  RT-safe) on the master bus: load a file per pad, press to fire (one-shots overlap), per-pad
+  loop toggle, global level. `load_sample`/`trigger_sample`/`clear_sample`/`stop_sample`/
+  `set_sample_loop`/`set_sampler_gain`. Unit-tested. MIDI-mapping the pads is a follow-up.
 - **MIDI-learn / control mapping** — per-target LEARN binds any CC/note to deck + mixer controls
   (gain/EQ/filter/tempo/play/cue/sync/key-lock/hot-cues/loops/FX + crossfader); bindings persist
   to localStorage. Frontend mapping layer (`lib/midiMap.ts`, `hooks/useMidi.ts` +
