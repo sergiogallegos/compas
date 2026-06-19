@@ -1,22 +1,32 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (perf layer: beat-jump/quantize/roll). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (runtime-verified last 5 features). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **Performance layer (round 1)** landed — each deck has a perf row: **Q** (quantize cue
-jumps + beat-jumps to the grid), **◀4 / 4▶** (beat-jump a bar), **⅛/¼/½** held loop **rolls with
-true slip** (engine tracks a shadow play-head; release drops back in where the track would be).
-Engine `SetLoopRoll` + unit-tested slip. Builds clean (check/clippy/test, tsc, vite) but **not yet
-runtime-tested** — when resuming, hold a roll while playing and confirm release continues in time
-(not where the roll looped); check Q snaps cue jumps; check ◀4/4▶ land on the beat.
+**Runtime verification done** (2026-06-19, real `tauri dev` on the Windows machine; window
+captured via PrintWindow, DB queried live). **PASS** for everything observable without ears:
+- App launches clean — `audio engine started @ 48000 Hz`, RT ~4%, no panics/command errors.
+- **SQLite DB** verified end-to-end: created at `%APPDATA%/com.compas.dj/compas.db` (WAL, 4 tables);
+  old localStorage library **migrated in**; load→analyze **cached BPM/key** back to the row
+  (sample1 123/7B, sample2 123/8A); play→`play_count`/`history` recorded.
+- **All new UI renders:** perf row (Q ◀4 4▶ ⅛/¼/½), 4 per-channel CUE buttons + phones bar
+  (real device in the dropdown → `list_output_devices` works, OFF, CUE◁▷MAS, PHONES), 4-deck
+  mixer strips, MIDI sliders icon.
+- **Fixed a found gap:** library load buttons were A/B-only → now A/B/C/D (commit `b70788b`).
 
-**Still unverified from prior sessions** (do opportunistically, all need the running app/hardware):
-headphone cue (2nd device → arm CUE → hear only cued decks, master unaffected, sweep blend);
-SQLite cue/loop/grid restore (set cues/loop → reload → restored; DB at
-`%APPDATA%/<bundle-id>/compas.db`); MIDI-learn with the MPK Mini MK3 (LEARN → drives control;
-pads don't honk the synth while the instrument panel is closed).
+**Still needs an ears/hardware pass** (can't drive audio output or click WebView2 headlessly):
+1. **Cue:** phones ON (any device) → click a deck 🎧 → hear only cued decks, master untouched;
+   sweep CUE◁▷MAS toward MASTER; PHONES sets level.
+2. **Loop-roll slip:** hold ¼ while playing → release → playback resumes *in time* (where the
+   track would be), not where the loop sat. Compare ⅛/¼/½.
+3. **Beat-jump / Quantize:** ◀4/4▶ jump exactly a bar; with Q on, jumps + off-beat cue jumps
+   snap to the grid.
+4. **Cue/loop/grid restore:** set cues + a loop, eject, reload → they come back (DB persistence);
+   nudge grid, reload → offset restored.
+5. **MIDI (MPK Mini MK3):** LEARN a knob → drives the binding; pads don't honk the synth while
+   the instrument panel is closed.
 
 Next, from the ROADMAP backlog:
 

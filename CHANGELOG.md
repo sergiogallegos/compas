@@ -5,6 +5,11 @@ All notable changes to compas are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Library loads onto all four decks:** track rows now have **A / B / C / D** load buttons
+  (deck-coloured) instead of just A/B, so decks C and D are reachable from the list; the
+  loaded-as tag recognises all four.
+
 ### Added
 - **Performance layer — beat jump, quantize, loop roll:** each deck gains a performance row.
   **Q** quantizes hot-cue jumps and beat-jumps to the beatgrid. **◀4 / 4▶** jump the play-head a
