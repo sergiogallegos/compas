@@ -1,31 +1,31 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (SQLite track DB landed). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (headphone cue landed). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **SQLite track DB + saved cues/loops** landed (`rusqlite` bundled; `db.rs` schema +
-WAL + FK cascade, unit-tested). Hot cues, last loop, grid nudge, gain persist + restore on
-reload; BPM/key cached + shown in library; play count/history recorded. Old localStorage library
-auto-migrates once. Builds clean (cargo check/clippy/test, tsc, vite) but **not yet runtime-tested
-in the app** — when resuming, do a quick manual pass: add tracks, set cues/a loop, reload the
-track, confirm they come back; check the DB at `%APPDATA%/<bundle-id>/compas.db`.
+Latest: **Headphone / cue monitoring** landed. Per-channel CUE (PFL) buttons + a phones bar under
+the crossfader (device picker, ON/OFF, CUE◁▷MASTER blend, PHONES level). The master mixer sums
+cued decks into a cue bus → ring → **2nd cpal output stream** (`compas-audio::cue`) on its own
+thread; primes a small buffer + re-primes on underrun for clock drift. Builds clean
+(check/clippy/test, tsc, vite) but **not yet runtime-tested with real hardware** — when resuming,
+enable cue on a 2nd output device (or even the default), arm a deck's CUE, confirm you hear only
+cued decks in the phones and the master is unaffected; sweep the CUE◁▷MASTER blend.
 
-Before MIDI-learn, also still **not hardware-tested**: when the MPK Mini MK3 is on hand, connect
-in the MIDI-mapping panel (sliders icon), LEARN a knob/pad, confirm it drives the bound control
-and pads don't honk the synth while the instrument panel is closed.
+**Still unverified from prior sessions** (do opportunistically): SQLite cue/loop/grid restore
+(add tracks → set cues/loop → reload → confirm restored; DB at `%APPDATA%/<bundle-id>/compas.db`);
+MIDI-learn with the MPK Mini MK3 (LEARN a knob/pad → drives the bound control; pads don't honk
+the synth while the instrument panel is closed).
 
 Next, from the ROADMAP backlog:
 
-1. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
-   cue bus). Biggest "real DJ" gap; the mixer's headphone button is already stubbed.
-2. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
+1. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
    runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
    ethos cleanly — discuss before starting.
-3. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
+2. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
    harmonic-mixing assist (we already detect Camelot key).
-4. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
+3. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
    `vergen` version string in the status bar.
 
 **Optional polish (tune by ear):** scratch release-inertia + platter mapping; FX curves
@@ -67,6 +67,11 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
 - **Master recording** — record the master mix to a 32-bit-float stereo WAV (audio-thread tap →
   lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
+- **Headphone / cue monitoring (PFL)** — per-channel CUE buttons + a phones bar (device picker,
+  ON/OFF, CUE◁▷MASTER blend, PHONES level). Mixer sums cued decks into a cue bus, blends with the
+  master, pushes through a ring to a 2nd cpal output stream (`compas-audio::cue`) on its own
+  thread (prime + re-prime on underrun for clock drift). `start/stop_cue_output`,
+  `set_deck_cue`/`set_cue_mix`/`set_cue_volume`, `list_output_devices`. Unit-tested cue summing.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering; **manual
   beatgrid-anchor nudge**. **RT-load + xrun meter** in the title bar.
 - **Local library + SQLite track DB** (`rusqlite` bundled; `db.rs`) — library persists in

@@ -15,10 +15,12 @@
 
 #![forbid(unsafe_code)]
 
+mod cue;
 mod engine;
 mod mixer;
 mod waveform;
 
+pub use cue::{open_cue_output, output_device_names, CueOutput};
 pub use engine::{AudioEngine, EngineConfig};
 pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS};
 pub use waveform::compute_peaks;

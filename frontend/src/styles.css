@@ -220,6 +220,13 @@
 .strip-meterfader { flex: 1; min-height: 50px; display: flex; gap: 10px; align-items: stretch; justify-content: center; }
 .cue-btn { width: 30px; height: 26px; flex: none; border-radius: var(--r-pad); background: var(--surface-control); border: 1px solid var(--border-hairline-strong); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; }
 .cue-btn:disabled { opacity: 0.5; }
+.cue-btn--on { color: var(--status-warn); border-color: var(--status-warn); background: rgba(255, 184, 0, 0.12); }
+
+/* headphone cue master controls (below the crossfader) */
+.phones { display: flex; align-items: center; gap: 8px; padding-top: 8px; margin-top: 6px; border-top: 1px solid var(--border-hairline); color: var(--text-secondary); }
+.phones-dev { flex: 1; min-width: 0; background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 3px 5px; font-size: 10px; }
+.phones-dev:disabled { opacity: 0.7; }
+.phones .chip.phones-on { flex: none; padding: 4px 9px; font-size: 9px; }
 
 .knob { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .knob-label { font-size: 8px; }

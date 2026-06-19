@@ -6,6 +6,15 @@ All notable changes to compas are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **Headphone / cue monitoring (pre-fader listen):** pre-listen any deck on a second output
+  device without touching the master. Each mixer channel has a **CUE** (PFL) button; a
+  headphone bar under the crossfader picks the **output device**, toggles cue **ON/OFF**, and
+  offers **CUE◁▷MASTER** blend + **PHONES** level knobs. The master mixer sums the cued decks
+  into a cue bus, blends it with the master, and pushes it through a ring to a **2nd cpal output
+  stream** on its own thread (`compas-audio::cue`) — the play-heads/DSP stay in the one mixer, so
+  decks never double-advance. The cue stream primes a small latency buffer and re-primes on
+  underrun to ride the two devices' independent clocks. New `*_cue_*` commands; unit-tested cue
+  summing.
 - **SQLite track database + saved cues/loops:** the library and per-track performance state now
   persist in a real database (`rusqlite`, bundled SQLite, in the app-data dir) instead of
   localStorage. Hot cues, the last loop, the manual beatgrid nudge, and a gain trim are

@@ -1,4 +1,5 @@
 import type { DeckController } from "../hooks/useDeck";
+import type { CueApi } from "../hooks/useCue";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { Meter } from "./Meter";
@@ -22,11 +23,13 @@ export function Mixer({
   crossfader,
   onCrossfader,
   auto,
+  cue,
 }: {
   channels: Channel[];
   crossfader: number;
   onCrossfader: (v: number) => void;
   auto?: AutoMixProps;
+  cue?: CueApi;
 }) {
   return (
     <section className="mixer">
@@ -54,7 +57,7 @@ export function Mixer({
       </div>
       <div className="mixer-strips">
         {channels.map((c) => (
-          <ChannelStrip key={c.letter} {...c} />
+          <ChannelStrip key={c.letter} {...c} cue={cue} />
         ))}
       </div>
       <div className="xfader">
@@ -71,15 +74,47 @@ export function Mixer({
         />
         <span className="overline" style={{ color: "var(--stream)" }}>B</span>
       </div>
+      {cue && <Phones cue={cue} />}
     </section>
+  );
+}
+
+/** Headphone cue master controls: output device, on/off, cue↔master blend, level. */
+function Phones({ cue }: { cue: CueApi }) {
+  return (
+    <div className="phones">
+      <Icon name="headphones" size={14} />
+      <select
+        className="phones-dev"
+        value={cue.device ?? ""}
+        onChange={(e) => cue.setDevice(e.target.value || null)}
+        disabled={cue.enabled}
+        title="Headphone output device"
+      >
+        <option value="">Default output</option>
+        {cue.devices.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+      <button
+        className={`chip phones-on ${cue.enabled ? "chip--on" : ""}`}
+        onClick={cue.toggle}
+        title={cue.enabled ? `Cue on: ${cue.connectedName ?? ""}` : "Start headphone cue output"}
+      >
+        {cue.enabled ? "ON" : "OFF"}
+      </button>
+      <Knob value={cue.mix} min={0} max={1} size={26} label="CUE◁▷MAS" onChange={cue.setMix} />
+      <Knob value={cue.volume} min={0} max={1} size={26} label="PHONES" onChange={cue.setVolume} />
+    </div>
   );
 }
 
 const XF_LABELS = ["A", "│", "B"]; // assign: 0 = A side, 1 = thru, 2 = B side
 
-function ChannelStrip({ ctrl, letter, color }: Channel) {
+function ChannelStrip({ ctrl, letter, color, cue }: Channel & { cue?: CueApi }) {
   const { state, actions } = ctrl;
   const dsp = state.dsp;
+  const cued = !!cue?.cued.has(ctrl.deck);
   // GAIN trim × channel fader both scale the single engine gain.
   const setVol = (trim: number, fader: number) => actions.setGain(trim * fader);
 
@@ -120,7 +155,12 @@ function ChannelStrip({ ctrl, letter, color }: Channel) {
           onChange={(v) => setVol(1, v)} />
       </div>
 
-      <button className="cue-btn" disabled title="Headphone cue bus — a later phase">
+      <button
+        className={`cue-btn ${cued ? "cue-btn--on" : ""}`}
+        onClick={() => cue?.toggleDeckCue(ctrl.deck)}
+        disabled={!cue}
+        title="Pre-listen this deck in the headphones (PFL)"
+      >
         <Icon name="headphones" size={14} />
       </button>
     </div>

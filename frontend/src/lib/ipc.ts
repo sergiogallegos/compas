@@ -263,6 +263,22 @@ export async function pickRecordingPath(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+// ---- Headphone / cue monitoring ---------------------------------------------------
+
+/** List output devices the headphone cue can target (first is usually the system default). */
+export const listOutputDevices = () => invoke<string[]>("list_output_devices");
+/** Start cue monitoring on `device` (omit for the default output); returns the device name. */
+export const startCueOutput = (device?: string) =>
+  invoke<string>("start_cue_output", { device: device ?? null });
+export const stopCueOutput = () => invoke("stop_cue_output");
+/** Toggle pre-fader-listen (PFL) for a deck on the headphone cue bus. */
+export const setDeckCue = (deck: number, active: boolean) =>
+  invoke("set_deck_cue", { deck, active });
+/** Headphone cue/master blend: 0 = cue bus only, 1 = master only. */
+export const setCueMix = (value: number) => invoke("set_cue_mix", { value });
+/** Headphone output level. */
+export const setCueVolume = (value: number) => invoke("set_cue_volume", { value });
+
 // ---- Event subscriptions ----------------------------------------------------------
 
 export interface DeckLoading {

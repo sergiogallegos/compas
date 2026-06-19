@@ -10,6 +10,7 @@ import { Instrument } from "./components/Instrument";
 import { MidiMap } from "./components/MidiMap";
 import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
+import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
@@ -33,6 +34,7 @@ export function App() {
   const [showKeys, setShowKeys] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const midi = useMidi();
+  const cue = useCue();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);
   const [rightSel, setRightSel] = useState(1);
@@ -116,6 +118,7 @@ export function App() {
               crossfader={xfade}
               onCrossfader={applyCrossfade}
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
+              cue={cue}
             />
             <Deck
               ctrl={rightDeck}

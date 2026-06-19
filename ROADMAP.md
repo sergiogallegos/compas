@@ -127,8 +127,8 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 
 **Tier 1 — core DJ essentials still missing:**
 - ✅ **4-deck layout** — A/C + B/D switching slots, 4-channel mixer, per-deck crossfader assign.
-- ⬜ **Headphone / cue monitoring** — pre-listen the next track on a second output. The biggest
-  "real DJ" gap; needs a second cpal output stream + a cue bus in the mixer.
+- ✅ **Headphone / cue monitoring** — per-channel PFL/CUE + a 2nd cpal output stream fed by a
+  cue bus in the mixer; CUE↔MASTER blend + phones level, device picker.
 - ✅ **MIDI-learn / controller mapping** — per-target LEARN binds any knob/fader/pad to deck +
   mixer controls (EQ/filter/xfader/transport/sync/key-lock/cues/loops/FX); bindings persist;
   one-click **Akai MPK Mini MK3** starter profile.
@@ -161,7 +161,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 1. ✅ **4-deck layout** — done.
 2. ✅ **MIDI-learn / mapping** (+ Akai profile) — done.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
-4. **Headphone/cue monitoring** — the key "real DJ" essential.
+4. ✅ **Headphone/cue monitoring** — done.
 5. **Stem separation** — marquee feature (needs the model decision first).
 6. **Sampler/pads + more FX + beat-jump/slip + quantize + harmonic assist** — performance layer.
 

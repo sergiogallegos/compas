@@ -119,6 +119,22 @@ pub enum AudioCommand {
         deck: usize,
         assign: u8,
     },
+    /// Pre-fader-listen (PFL): add/remove a deck from the headphone cue bus.
+    SetDeckCue {
+        deck: usize,
+        active: bool,
+    },
+    /// Headphone cue/master blend: 0 = cue bus only, 1 = master only.
+    SetCueMix(f32),
+    /// Headphone output level (0..~1).
+    SetCueVolume(f32),
+    /// Begin pushing the headphone cue mix into `sink` (interleaved stereo f32 at device
+    /// rate). The control thread owns the matching consumer + the 2nd output stream.
+    StartCueOutput {
+        sink: Producer<f32>,
+    },
+    /// Stop pushing the cue mix; dropping the producer lets the cue stream wind down.
+    StopCueOutput,
     /// Seek to an absolute position in source frames.
     SeekDeck {
         deck: usize,
@@ -303,6 +319,9 @@ struct DeckPlayer {
     filter_active: bool,
     /// Crossfader routing (4-deck assign matrix): A side, B side, or straight through.
     xfader_assign: XfaderAssign,
+    /// Pre-fader-listen: when true, this deck feeds the headphone cue bus regardless of the
+    /// crossfader/master. Independent of `xfader_assign`.
+    cue: bool,
     /// Echo/delay insert (post-EQ). The delay line is pre-allocated; toggling only flips
     /// `echo_active` and clears the line on engage.
     echo: Delay,
@@ -344,6 +363,7 @@ impl DeckPlayer {
             filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_active: false,
             xfader_assign: XfaderAssign::Thru,
+            cue: false,
             echo: Delay::new(device_rate, MAX_DELAY_SECS),
             echo_active: false,
             reverb: Reverb::new(device_rate),
@@ -501,6 +521,11 @@ pub struct Mixer {
     peak_r: f32,
     /// When recording, the master output is pushed here for the writer thread to drain.
     record_sink: Option<Producer<f32>>,
+    /// Headphone cue bus: blend (0 = cued decks only, 1 = master only) and output level.
+    cue_mix: f32,
+    cue_vol: GainSmoother,
+    /// When cue monitoring is on, the headphone mix is pushed here for the 2nd output stream.
+    cue_sink: Option<Producer<f32>>,
     /// Smoothed audio-callback load, and the running overrun count.
     rt_load: f32,
     xrun_count: u64,
@@ -536,6 +561,10 @@ impl Mixer {
             peak_l: 0.0,
             peak_r: 0.0,
             record_sink: None,
+            // Default cue blend at the "cue" end so PFL'd decks are audible immediately.
+            cue_mix: 0.0,
+            cue_vol: GainSmoother::new(0.8, device_rate, 10.0),
+            cue_sink: None,
             rt_load: 0.0,
             xrun_count: 0,
             synth: Synth::new(device_rate),
@@ -693,6 +722,15 @@ impl Mixer {
                         d.xfader_assign = XfaderAssign::from_index(assign);
                     }
                 }
+                AudioCommand::SetDeckCue { deck, active } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.cue = active;
+                    }
+                }
+                AudioCommand::SetCueMix(m) => self.cue_mix = m.clamp(0.0, 1.0),
+                AudioCommand::SetCueVolume(v) => self.cue_vol.set_target(v.max(0.0)),
+                AudioCommand::StartCueOutput { sink } => self.cue_sink = Some(sink),
+                AudioCommand::StopCueOutput => self.cue_sink = None,
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
@@ -830,11 +868,18 @@ impl Mixer {
         let (ga, gb) = self.crossfader.next_gains();
         let mut l = 0.0;
         let mut r = 0.0;
+        // Headphone cue (PFL) bus: cued decks summed pre-crossfader, pre-master.
+        let mut cl = 0.0;
+        let mut cr = 0.0;
         for (i, deck) in self.decks.iter_mut().enumerate() {
             let (dl, dr) = deck.next_frame();
             let deck_peak = dl.abs().max(dr.abs());
             if deck_peak > self.peak_deck[i] {
                 self.peak_deck[i] = deck_peak;
+            }
+            if deck.cue {
+                cl += dl;
+                cr += dr;
             }
             let xf = match deck.xfader_assign {
                 XfaderAssign::A => ga,
@@ -859,6 +904,19 @@ impl Mixer {
             if sink.slots() >= 2 {
                 let _ = sink.push(ol);
                 let _ = sink.push(or);
+            }
+        }
+        // Headphone cue tap: blend the cue bus with the master (cue_mix) at the headphone
+        // level, and push for the 2nd output stream. Advance the smoother every frame
+        // (click-free) whether or not the sink is connected. RT-safe.
+        let cvol = self.cue_vol.next_gain();
+        if let Some(sink) = self.cue_sink.as_mut() {
+            let mix = self.cue_mix;
+            let hl = (cl * (1.0 - mix) + ol * mix) * cvol;
+            let hr = (cr * (1.0 - mix) + or * mix) * cvol;
+            if sink.slots() >= 2 {
+                let _ = sink.push(hl);
+                let _ = sink.push(hr);
             }
         }
         (ol, or)
@@ -977,6 +1035,47 @@ mod tests {
         let mut err = mp - fp;
         err -= err.round();
         assert!(err.abs() < 0.02, "follower not phase-locked: err={err}");
+    }
+
+    #[test]
+    fn cue_bus_sums_only_cued_decks_into_the_sink() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        // Two decks playing a DC ramp so each yields nonzero audio.
+        let buf = Arc::new(DeckBuffer::new(vec![0.5; 2 * 1000], 48_000));
+        for d in mixer.decks.iter_mut().take(2) {
+            d.buffer = Some(buf.clone());
+            d.base_ratio = 1.0;
+            d.playing = true;
+            d.xfader_assign = XfaderAssign::Thru;
+        }
+        // Cue only deck 1; full cue (no master bleed), unity headphone level.
+        mixer.decks[1].cue = true;
+        mixer.cue_mix = 0.0;
+        mixer.cue_vol = GainSmoother::new(1.0, 48_000.0, 10.0);
+        let (cue_tx, mut cue_rx) = rtrb::RingBuffer::<f32>::new(64);
+        mixer.cue_sink = Some(cue_tx);
+
+        let (ml, _mr) = mixer.next_frame();
+        let hl = cue_rx.pop().expect("cue L pushed");
+        let _hr = cue_rx.pop().expect("cue R pushed");
+        // Master carries both decks; the cue bus carries only deck 1 → strictly smaller.
+        assert!(hl.abs() > 0.0, "cued deck should reach the headphones");
+        assert!(hl.abs() < ml.abs(), "cue bus (1 deck) < master (2 decks)");
+    }
+
+    #[test]
+    fn no_cue_sink_means_no_push_but_still_advances() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        // With no cue sink installed, next_frame must not panic and the master still mixes.
+        let buf = Arc::new(DeckBuffer::new(vec![0.3; 2 * 100], 48_000));
+        mixer.decks[0].buffer = Some(buf);
+        mixer.decks[0].playing = true;
+        mixer.decks[0].cue = true; // cued, but nowhere to send
+        let _ = mixer.next_frame();
     }
 
     #[test]

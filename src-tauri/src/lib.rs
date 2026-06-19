@@ -123,6 +123,16 @@ enum EngineMsg {
         sink: Producer<f32>,
     },
     StopRecording,
+    DeckCue {
+        deck: usize,
+        active: bool,
+    },
+    CueMix(f32),
+    CueVolume(f32),
+    StartCueOutput {
+        sink: Producer<f32>,
+    },
+    StopCueOutput,
     NoteOn {
         note: u8,
         velocity: u8,
@@ -297,6 +307,11 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::StartRecording { sink } => AudioCommand::StartRecording { sink },
                     EngineMsg::StopRecording => AudioCommand::StopRecording,
+                    EngineMsg::DeckCue { deck, active } => AudioCommand::SetDeckCue { deck, active },
+                    EngineMsg::CueMix(m) => AudioCommand::SetCueMix(m),
+                    EngineMsg::CueVolume(v) => AudioCommand::SetCueVolume(v),
+                    EngineMsg::StartCueOutput { sink } => AudioCommand::StartCueOutput { sink },
+                    EngineMsg::StopCueOutput => AudioCommand::StopCueOutput,
                     EngineMsg::NoteOn { note, velocity } => {
                         AudioCommand::NoteOn { note, velocity }
                     }
@@ -949,6 +964,111 @@ fn finalize_wav(w: BufWriter<File>, data_bytes: u32) -> std::io::Result<()> {
 }
 
 // ----------------------------------------------------------------------------------
+// Headphone / cue monitoring (2nd output stream fed by the mixer's PFL bus)
+// ----------------------------------------------------------------------------------
+
+/// Cue ring capacity (f32 samples) — ~340 ms of stereo @ 48 kHz, slack to ride clock drift
+/// between the master and cue device clocks.
+const CUE_RING_CAPACITY: usize = 1 << 16;
+
+/// Holds the signal that keeps the active cue-output thread alive. Dropping the sender (or
+/// replacing it) tells that thread to drop its `cpal::Stream` and exit. `None` = cue off.
+struct CueState {
+    stop: Mutex<Option<Sender<()>>>,
+}
+
+/// List available output devices the headphone cue can target (first is usually the default).
+#[tauri::command]
+fn list_output_devices() -> Vec<String> {
+    compas_audio::output_device_names()
+}
+
+/// Stop the active cue-output thread (if any) and tell the mixer to stop pushing.
+fn stop_cue_internal(state: &EngineHandle, cue: &CueState) {
+    let _ = state.send(EngineMsg::StopCueOutput);
+    if let Ok(mut guard) = cue.stop.lock() {
+        guard.take(); // dropping the sender ends the thread's recv() → it drops the stream
+    }
+}
+
+/// Start headphone cue monitoring on `device` (None = default output). The mixer pushes the
+/// PFL/cue blend into a ring; a dedicated thread drains it through a 2nd cpal output stream.
+/// Returns the opened device's name.
+#[tauri::command]
+fn start_cue_output(
+    state: State<'_, EngineHandle>,
+    cue: State<'_, CueState>,
+    device: Option<String>,
+) -> Result<String, String> {
+    stop_cue_internal(&state, &cue); // replace any existing cue output
+
+    let (producer, consumer) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
+    // Start the mixer pushing before opening the device so the prime buffer fills promptly.
+    state.send(EngineMsg::StartCueOutput { sink: producer })?;
+
+    let (stop_tx, stop_rx) = channel::<()>();
+    let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let spawn = thread::Builder::new()
+        .name("compas-cue".to_string())
+        .spawn(move || match compas_audio::open_cue_output(device.as_deref(), consumer) {
+            Ok(out) => {
+                let _ = ready_tx.send(Ok(out.device_name.clone()));
+                let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
+                drop(out); // closes the cue stream
+            }
+            Err(e) => {
+                let _ = ready_tx.send(Err(e.to_string()));
+            }
+        });
+    if let Err(e) = spawn {
+        let _ = state.send(EngineMsg::StopCueOutput);
+        return Err(format!("could not spawn cue thread: {e}"));
+    }
+
+    match ready_rx.recv() {
+        Ok(Ok(name)) => {
+            if let Ok(mut guard) = cue.stop.lock() {
+                *guard = Some(stop_tx);
+            }
+            tracing::info!("cue output started → {name}");
+            Ok(name)
+        }
+        Ok(Err(e)) => {
+            let _ = state.send(EngineMsg::StopCueOutput);
+            Err(e)
+        }
+        Err(_) => {
+            let _ = state.send(EngineMsg::StopCueOutput);
+            Err("cue output thread exited before reporting".into())
+        }
+    }
+}
+
+#[tauri::command]
+fn stop_cue_output(state: State<'_, EngineHandle>, cue: State<'_, CueState>) -> Result<(), String> {
+    stop_cue_internal(&state, &cue);
+    Ok(())
+}
+
+/// Toggle pre-fader-listen (PFL) for a deck on the headphone cue bus.
+#[tauri::command]
+fn set_deck_cue(state: State<'_, EngineHandle>, deck: usize, active: bool) -> Result<(), String> {
+    state.send(EngineMsg::DeckCue { deck, active })
+}
+
+/// Headphone cue/master blend (0 = cue only, 1 = master only).
+#[tauri::command]
+fn set_cue_mix(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::CueMix(value))
+}
+
+/// Headphone output level.
+#[tauri::command]
+fn set_cue_volume(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::CueVolume(value))
+}
+
+// ----------------------------------------------------------------------------------
 // Synth instrument + MIDI input
 // ----------------------------------------------------------------------------------
 
@@ -1148,6 +1268,9 @@ pub fn run() {
             conn: Mutex::new(None),
             synth: Arc::new(AtomicBool::new(false)),
         })
+        .manage(CueState {
+            stop: Mutex::new(None),
+        })
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             // Open the library DB in the app-data dir. If it fails, log and carry on —
@@ -1204,6 +1327,12 @@ pub fn run() {
             set_master_gain,
             start_recording,
             stop_recording,
+            list_output_devices,
+            start_cue_output,
+            stop_cue_output,
+            set_deck_cue,
+            set_cue_mix,
+            set_cue_volume,
             note_on,
             note_off,
             all_notes_off,
