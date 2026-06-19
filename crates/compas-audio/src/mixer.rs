@@ -41,6 +41,25 @@ pub enum FilterMode {
     HighPass,
 }
 
+/// Which side of the crossfader a deck is routed to (4-deck assign matrix).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XfaderAssign {
+    A,
+    Thru,
+    B,
+}
+
+impl XfaderAssign {
+    /// Map a small integer (from the UI/IPC) to an assignment.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            0 => XfaderAssign::A,
+            2 => XfaderAssign::B,
+            _ => XfaderAssign::Thru,
+        }
+    }
+}
+
 /// Commands sent from the control thread into the audio callback over an SPSC ring.
 ///
 /// RT note: applying a command is O(1) and allocation-free. [`AudioCommand::LoadDeck`]
@@ -94,6 +113,11 @@ pub enum AudioCommand {
     SetDeckKeylock {
         deck: usize,
         active: bool,
+    },
+    /// Route a deck to a crossfader side (0 = A, 1 = thru, 2 = B) for 4-deck mixing.
+    SetDeckXfaderAssign {
+        deck: usize,
+        assign: u8,
     },
     /// Seek to an absolute position in source frames.
     SeekDeck {
@@ -277,6 +301,8 @@ struct DeckPlayer {
     filter_l: Biquad,
     filter_r: Biquad,
     filter_active: bool,
+    /// Crossfader routing (4-deck assign matrix): A side, B side, or straight through.
+    xfader_assign: XfaderAssign,
     /// Echo/delay insert (post-EQ). The delay line is pre-allocated; toggling only flips
     /// `echo_active` and clears the line on engage.
     echo: Delay,
@@ -317,6 +343,7 @@ impl DeckPlayer {
             filter_l: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
             filter_active: false,
+            xfader_assign: XfaderAssign::Thru,
             echo: Delay::new(device_rate, MAX_DELAY_SECS),
             echo_active: false,
             reverb: Reverb::new(device_rate),
@@ -489,7 +516,16 @@ impl Mixer {
         telemetry: Arc<DeckTelemetry>,
     ) -> Self {
         Mixer {
-            decks: std::array::from_fn(|_| DeckPlayer::new(device_rate)),
+            decks: std::array::from_fn(|i| {
+                let mut d = DeckPlayer::new(device_rate);
+                // Default routing: deck 0 → A side, deck 1 → B side, decks 2/3 → through.
+                d.xfader_assign = match i {
+                    0 => XfaderAssign::A,
+                    1 => XfaderAssign::B,
+                    _ => XfaderAssign::Thru,
+                };
+                d
+            }),
             crossfader: Crossfader::new(device_rate),
             master: GainSmoother::new(0.85, device_rate, 10.0),
             commands,
@@ -652,6 +688,11 @@ impl Mixer {
                         d.stretch_engaged = false;
                     }
                 }
+                AudioCommand::SetDeckXfaderAssign { deck, assign } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.xfader_assign = XfaderAssign::from_index(assign);
+                    }
+                }
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
@@ -795,10 +836,10 @@ impl Mixer {
             if deck_peak > self.peak_deck[i] {
                 self.peak_deck[i] = deck_peak;
             }
-            let xf = match i {
-                0 => ga,
-                1 => gb,
-                _ => 1.0,
+            let xf = match deck.xfader_assign {
+                XfaderAssign::A => ga,
+                XfaderAssign::B => gb,
+                XfaderAssign::Thru => 1.0,
             };
             l += dl * xf;
             r += dr * xf;

@@ -30,6 +30,8 @@
 - **Synth instrument + MIDI** — polyphonic synth (`Synth`: 4 waveforms, ADSR, 16 voices) on the
   master bus; on-screen keyboard + computer keyboard + MIDI controller input (`midir`; notes →
   synth, knobs → `midi:cc`). Recordable. MIDI-learn / control mapping is the next step.
+- **4-deck mixing** — A/C + B/D switching slots, 4-channel mixer with per-deck crossfader-assign
+  (A/thru/B); engine routes each deck to a crossfader side (`SetDeckXfaderAssign`).
 - **Key-lock (master tempo)** — hand-rolled RT-safe WSOLA stretcher in `compas-dsp` (Hann grains
   + similarity search, reads from the in-RAM buffer, ~4%/core/deck); per-deck `KEY` toggle.
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.

@@ -7,31 +7,38 @@ import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { Instrument } from "./components/Instrument";
-import { useDeck } from "./hooks/useDeck";
+import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
-const MAGENTA = "var(--accent)";
-const CYAN = "var(--stream)";
+const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
+const DECK_LETTERS = ["A", "B", "C", "D"];
 
 export function App() {
-  // Both decks are local/full-DSP for now (the engine supports two local decks). The
-  // `dsp` flag drives the capability-locked treatment; flip a deck to dsp:false in
-  // Phase 2 to render it as a streaming control-only deck.
+  // Four local/full-DSP decks; only two deck panels are shown at a time (switching slots),
+  // while the mixer exposes all four channel strips.
   const deckA = useDeck(0, true);
   const deckB = useDeck(1, true);
+  const deckC = useDeck(2, true);
+  const deckD = useDeck(3, true);
+  const decks = [deckA, deckB, deckC, deckD];
 
   const [sampleRate, setSampleRate] = useState<number | null>(null);
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
   const [showKeys, setShowKeys] = useState(false);
+  // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
+  const [leftSel, setLeftSel] = useState(0);
+  const [rightSel, setRightSel] = useState(1);
+  const leftDeck = decks[leftSel];
+  const rightDeck = decks[rightSel];
 
   const applyCrossfade = useCallback((v: number) => {
     setXfade(v);
     if (inTauri()) setCrossfader(v).catch(() => {});
   }, []);
-  const auto = useAutoMix([deckA, deckB], applyCrossfade);
+  const auto = useAutoMix([leftDeck, rightDeck], applyCrossfade);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -44,52 +51,71 @@ export function App() {
     };
   }, []);
 
-  const masterBpm = deckA.state.meta ? deckA.state.meta.bpm * deckA.state.tempo : null;
-  const loadedPaths = [deckA.state.meta?.path, deckB.state.meta?.path];
+  const masterBpm = leftDeck.state.meta ? leftDeck.state.meta.bpm * leftDeck.state.tempo : null;
+  const loadedPaths = decks.map((d) => d.state.meta?.path);
 
-  const bothReady =
-    !!deckA.state.meta && !!deckB.state.meta && deckA.state.meta.bpm > 0 && deckB.state.meta.bpm > 0;
+  // Two decks are sync-pairable when both visible slots are loaded with a tempo.
+  const pairReady =
+    !!leftDeck.state.meta && !!rightDeck.state.meta && leftDeck.state.meta.bpm > 0 && rightDeck.state.meta.bpm > 0;
 
-  // Continuous beat-sync toggle: `target` follows the other deck (tempo + phase, held by the
-  // engine PLL), or disengages. On engage we also match the displayed tempo; the engine refines
-  // phase on top.
-  const toggleSync = (target: "A" | "B") => {
-    const t = target === "A" ? deckA : deckB;
-    const s = target === "A" ? deckB : deckA;
-    const masterIdx = target === "A" ? 1 : 0; // follow the other deck
-    if (t.state.synced) {
-      t.actions.sync(null);
+  // Continuous beat-sync toggle: `target` follows the other visible deck (engine PLL), or
+  // disengages. On engage we also match the displayed tempo; the engine refines phase on top.
+  const toggleSync = (target: DeckController, source: DeckController) => {
+    if (target.state.synced) {
+      target.actions.sync(null);
       return;
     }
-    if (!t.state.meta || !s.state.meta || t.state.meta.bpm <= 0 || s.state.meta.bpm <= 0) return;
-    t.actions.setTempo((s.state.meta.bpm * s.state.tempo) / t.state.meta.bpm);
-    t.actions.sync(masterIdx);
+    if (!target.state.meta || !source.state.meta || target.state.meta.bpm <= 0 || source.state.meta.bpm <= 0) return;
+    target.actions.setTempo((source.state.meta.bpm * source.state.tempo) / target.state.meta.bpm);
+    target.actions.sync(source.deck);
   };
+
+  const slotLane = (d: DeckController) => ({
+    state: d.state,
+    letter: DECK_LETTERS[d.deck],
+    color: DECK_COLORS[d.deck],
+    onSeek: d.actions.seekFrac,
+    onNudgeGrid: d.actions.nudgeGrid,
+    onResetGrid: d.actions.resetGrid,
+  });
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={bothReady} syncActive={deckB.state.synced} onSync={() => toggleSync("B")} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} />
       <div className="body">
         <NavRail />
         <div className="content">
-          <WaveformZone
-            lanes={[
-              { state: deckA.state, letter: "A", color: MAGENTA, onSeek: deckA.actions.seekFrac, onNudgeGrid: deckA.actions.nudgeGrid, onResetGrid: deckA.actions.resetGrid },
-              { state: deckB.state, letter: "B", color: CYAN, onSeek: deckB.actions.seekFrac, onNudgeGrid: deckB.actions.nudgeGrid, onResetGrid: deckB.actions.resetGrid },
-            ]}
-          />
+          <WaveformZone lanes={[slotLane(leftDeck), slotLane(rightDeck)]} />
           <div className="deck-row">
-            <Deck ctrl={deckA} color={MAGENTA} onSync={() => toggleSync("A")} syncEnabled={bothReady} syncActive={deckA.state.synced} mirror />
-            <Mixer
-              channels={[
-                { ctrl: deckA, letter: "A", color: MAGENTA },
-                { ctrl: deckB, letter: "B", color: CYAN },
+            <Deck
+              ctrl={leftDeck}
+              color={DECK_COLORS[leftDeck.deck]}
+              onSync={() => toggleSync(leftDeck, rightDeck)}
+              syncEnabled={pairReady}
+              syncActive={leftDeck.state.synced}
+              mirror
+              slots={[
+                { label: "A", active: leftSel === 0, onSelect: () => setLeftSel(0) },
+                { label: "C", active: leftSel === 2, onSelect: () => setLeftSel(2) },
               ]}
+            />
+            <Mixer
+              channels={decks.map((d) => ({ ctrl: d, letter: DECK_LETTERS[d.deck], color: DECK_COLORS[d.deck] }))}
               crossfader={xfade}
               onCrossfader={applyCrossfade}
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
             />
-            <Deck ctrl={deckB} color={CYAN} onSync={() => toggleSync("B")} syncEnabled={bothReady} syncActive={deckB.state.synced} />
+            <Deck
+              ctrl={rightDeck}
+              color={DECK_COLORS[rightDeck.deck]}
+              onSync={() => toggleSync(rightDeck, leftDeck)}
+              syncEnabled={pairReady}
+              syncActive={rightDeck.state.synced}
+              slots={[
+                { label: "B", active: rightSel === 1, onSelect: () => setRightSel(1) },
+                { label: "D", active: rightSel === 3, onSelect: () => setRightSel(3) },
+              ]}
+            />
           </div>
           <Library loadedPaths={loadedPaths} />
         </div>

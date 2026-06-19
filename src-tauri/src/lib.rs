@@ -77,6 +77,10 @@ enum EngineMsg {
         deck: usize,
         active: bool,
     },
+    DeckXfaderAssign {
+        deck: usize,
+        assign: u8,
+    },
     DeckSeek {
         deck: usize,
         frame: f64,
@@ -238,6 +242,9 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::DeckKeylock { deck, active } => {
                         AudioCommand::SetDeckKeylock { deck, active }
+                    }
+                    EngineMsg::DeckXfaderAssign { deck, assign } => {
+                        AudioCommand::SetDeckXfaderAssign { deck, assign }
                     }
                     EngineMsg::DeckSeek { deck, frame } => AudioCommand::SeekDeck { deck, frame },
                     EngineMsg::Loop {
@@ -557,6 +564,16 @@ fn set_beatgrid(
         offset: offset_frames,
         interval: interval_frames,
     })
+}
+
+/// Route a deck to a crossfader side for 4-deck mixing: 0 = A, 1 = thru, 2 = B.
+#[tauri::command]
+fn set_deck_xfader_assign(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    assign: u8,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckXfaderAssign { deck, assign })
 }
 
 /// Engage/disengage continuous beat-sync: `master` is the deck to follow, or `null` for off.
@@ -943,7 +960,7 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
     thread::spawn(move || {
         let period = Duration::from_millis(1000 / TELEMETRY_HZ);
         loop {
-            for deck in 0..2 {
+            for deck in 0..4 {
                 if telemetry.is_loaded(deck) {
                     let _ = app.emit(
                         "deck:position",
@@ -1005,6 +1022,7 @@ pub fn run() {
             set_deck_keylock,
             set_beatgrid,
             set_deck_sync,
+            set_deck_xfader_assign,
             set_deck_gain,
             set_deck_eq,
             set_deck_filter,

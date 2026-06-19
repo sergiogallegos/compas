@@ -122,6 +122,9 @@ export const setBeatgrid = (deck: number, offsetFrames: number, intervalFrames: 
 /** Continuous beat-sync: `master` is the deck index to follow, or null to disengage. */
 export const setDeckSync = (deck: number, master: number | null) =>
   invoke("set_deck_sync", { deck, master });
+/** Route a deck to a crossfader side for 4-deck mixing: 0 = A, 1 = thru, 2 = B. */
+export const setDeckXfaderAssign = (deck: number, assign: number) =>
+  invoke("set_deck_xfader_assign", { deck, assign });
 export const setDeckGain = (deck: number, gain: number) => invoke("set_deck_gain", { deck, gain });
 export const setDeckEq = (deck: number, low: number, mid: number, high: number) =>
   invoke("set_deck_eq", { deck, low, mid, high });

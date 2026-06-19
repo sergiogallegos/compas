@@ -11,6 +11,10 @@ All notable changes to compas are documented here. Format follows
   equal-power crossfader, master, lock-free audio thread with reclaim ring.
 - **Analysis:** BPM (spectral-flux onset → autocorrelation), beatgrid (beat phase), and musical
   key (chromagram → Krumhansl–Schmuckler, Camelot).
+- **4-deck mixing:** all four decks are now playable — two on-screen deck panels with **A/C** and
+  **B/D** switching slots (Traktor-style), and a **4-channel mixer** (volume/EQ/filter per deck)
+  with a per-channel **crossfader-assign** switch (A / thru / B). Engine routes each deck to a
+  crossfader side; telemetry now covers all four decks.
 - **Synth instrument + MIDI input:** a polyphonic synth (4 waveforms, ADSR, 16 voices) on the
   master bus, playable from an **on-screen keyboard**, the **computer keyboard**, or a **MIDI
   controller** (via `midir` — connect a device; its notes play the synth, knobs emit `midi:cc`).

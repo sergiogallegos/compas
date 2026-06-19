@@ -31,7 +31,7 @@ export function Mixer({
   return (
     <section className="mixer">
       <div className="mixer-head">
-        <span className="overline">MIXER</span>
+        <span className="overline">MIXER · {channels.length}CH</span>
         {auto && (
           <div className="automix">
             <button
@@ -75,6 +75,8 @@ export function Mixer({
   );
 }
 
+const XF_LABELS = ["A", "│", "B"]; // assign: 0 = A side, 1 = thru, 2 = B side
+
 function ChannelStrip({ ctrl, letter, color }: Channel) {
   const { state, actions } = ctrl;
   const dsp = state.dsp;
@@ -84,6 +86,19 @@ function ChannelStrip({ ctrl, letter, color }: Channel) {
   return (
     <div className="strip">
       <span className="strip-letter display" style={{ color }}>{letter}</span>
+
+      <div className="xf-assign" title="Crossfader assign: A side / thru / B side">
+        {XF_LABELS.map((lbl, i) => (
+          <button
+            key={i}
+            className={`xf-seg ${state.xfaderAssign === i ? "xf-seg--on" : ""}`}
+            style={state.xfaderAssign === i ? { color, borderColor: color } : undefined}
+            onClick={() => actions.setXfaderAssign(i)}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
 
       <div className={`knob-stack ${dsp ? "" : "knob-stack--locked"}`}>
         <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={28} color={color} disabled={!dsp}

@@ -108,6 +108,9 @@
 .deck { flex: 1; min-width: 0; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-top: 2px solid; border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
 .deck-header { display: flex; align-items: center; gap: 10px; }
+.deck-slots { display: flex; gap: 3px; flex: none; }
+.deck-slot { width: 22px; height: 22px; border-radius: 5px; background: var(--surface-control); border: 1px solid var(--border-hairline-strong); color: var(--text-tertiary); font-family: var(--font-display); font-weight: 700; font-size: 11px; }
+.deck-slot--on { color: #fff; }
 .art { width: 46px; height: 46px; flex: none; border: none; padding: 0; border-radius: var(--r-tile); display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer; }
 .deck-header-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .deck-load { background: var(--surface-control); border: 1px solid var(--border-hairline-strong); color: var(--text-secondary); border-radius: var(--r-pad); padding: 5px 10px; font-size: 11px; font-weight: 600; }
@@ -186,7 +189,10 @@
 .pkey-w:active { background: linear-gradient(180deg, #c9c9d2, #b4b4be); }
 .pkey-b { position: absolute; top: 0; height: 60%; background: linear-gradient(180deg, #2a2a33, #0e0e12); border: 1px solid #000; border-radius: 0 0 4px 4px; z-index: 2; }
 .pkey-b:active { background: linear-gradient(180deg, #45454f, #1a1a20); }
-.mixer-strips { flex: 1; display: flex; gap: 16px; justify-content: center; min-height: 0; overflow: hidden; }
+.mixer-strips { flex: 1; display: flex; gap: 12px; justify-content: center; min-height: 0; overflow: hidden; }
+.xf-assign { display: flex; gap: 2px; }
+.xf-seg { width: 16px; height: 16px; border-radius: 4px; background: var(--surface-control); border: 1px solid var(--border-hairline); color: var(--text-tertiary); font-size: 9px; font-weight: 700; line-height: 1; padding: 0; }
+.xf-seg--on { background: rgba(255,255,255,.06); }
 .strip { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 0; }
 .strip-letter { font-size: 15px; font-weight: 600; }
 .knob-stack { display: flex; flex-direction: column; gap: 6px; align-items: center; position: relative; }

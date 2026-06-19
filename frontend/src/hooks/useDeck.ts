@@ -16,6 +16,7 @@ import {
   pickAudioFile,
   setBeatgrid,
   setDeckSync,
+  setDeckXfaderAssign,
   setDeckEcho,
   setDeckReverb,
   setDeckEq,
@@ -79,6 +80,8 @@ export interface DeckState {
   gridOffset: number;
   /** True while this deck is a continuous sync follower. */
   synced: boolean;
+  /** Crossfader routing: 0 = A side, 1 = thru, 2 = B side. */
+  xfaderAssign: number;
   eq: Eq;
   filter: number;
   gain: number;
@@ -108,6 +111,8 @@ export function useDeck(deck: number, dsp = true) {
   const [keylock, setKeylockState] = useState(false);
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
+  // Default routing: deck 0 → A, deck 1 → B, decks C/D → through.
+  const [xfaderAssign, setXfaderAssignState] = useState(deck === 0 ? 0 : deck === 1 ? 2 : 1);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
   const [filter, setFilterState] = useState(0);
   const [gain, setGainState] = useState(1);
@@ -255,6 +260,11 @@ export function useDeck(deck: number, dsp = true) {
         setSyncedState(master !== null);
         setDeckSync(deck, master).catch(swallow);
       },
+      // Crossfader routing (0 = A, 1 = thru, 2 = B).
+      setXfaderAssign: (a: number) => {
+        setXfaderAssignState(a);
+        setDeckXfaderAssign(deck, a).catch(swallow);
+      },
       // Persistent fine tempo trim (the jog wheel handles momentary pitch bend). Reads
       // the ref so rapid clicks accumulate instead of all seeing the same render's tempo.
       trimTempo: (dir: 1 | -1) => {
@@ -355,8 +365,8 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
-  return { state, actions };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  return { state, actions, deck };
 }
 
 export type DeckController = ReturnType<typeof useDeck>;

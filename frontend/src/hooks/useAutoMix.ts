@@ -36,21 +36,24 @@ export function useAutoMix(
     if (!fromMeta || !toMeta || !fromCtrl.state.dsp || !toCtrl.state.dsp) return;
 
     setTransitioning(true);
+    // Force routing so the crossfade always blends these two decks: live → A, incoming → B.
+    fromCtrl.actions.setXfaderAssign(0);
+    toCtrl.actions.setXfaderAssign(2);
     // Cue the incoming deck at its first downbeat, beat-sync it to the live deck, start it.
     const startFrac =
       toMeta.frames > 0
         ? Math.min(0.99, ((toMeta.first_beat_sec || 0) * toMeta.source_rate) / toMeta.frames)
         : 0;
     toCtrl.actions.seekFrac(startFrac);
-    toCtrl.actions.sync(from);
+    toCtrl.actions.sync(fromCtrl.deck); // follow the live deck (real engine index)
     toCtrl.actions.play();
 
     const fromEq = { ...fromCtrl.state.eq };
     const toEq = { ...toCtrl.state.eq };
     const effBpm = Math.max(60, (fromMeta.bpm || 120) * fromCtrl.state.tempo);
     const durMs = ((TRANSITION_BEATS * 60) / effBpm) * 1000;
-    const startXf = to === 1 ? 0 : 1;
-    const endXf = to === 1 ? 1 : 0;
+    const startXf = 0; // full live (A)
+    const endXf = 1; // full incoming (B)
     const t0 = performance.now();
 
     if (timer.current) clearInterval(timer.current);

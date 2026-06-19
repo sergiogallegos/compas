@@ -83,7 +83,7 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 - ✅ Cue points, **beat loops** (manual in/out + 4/8/16-beat, beatgrid-snapped), **hot cues**.
 - ✅ Master-clock **sync engine** — continuous tempo **+ phase** lock (audio-thread PLL).
-- ⬜ The 2→4 deck fader/assign matrix (engine already mixes 4 decks).
+- ✅ **4-deck** — A/C + B/D switching slots, 4-channel mixer, per-deck crossfader assign.
 
 ## Phase 5 — Stems / FX / recording 🔨
 
@@ -125,7 +125,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 ### Gaps vs the field, prioritized
 
 **Tier 1 — core DJ essentials still missing:**
-- ⬜ **4-deck layout** (engine already mixes 4; needs a fader/assign matrix + UI).
+- ✅ **4-deck layout** — A/C + B/D switching slots, 4-channel mixer, per-deck crossfader assign.
 - ⬜ **Headphone / cue monitoring** — pre-listen the next track on a second output. The biggest
   "real DJ" gap; needs a second cpal output stream + a cue bus in the mixer.
 - 🔶 **MIDI-learn / controller mapping** — MIDI *input* + synth done; still need to bind a
@@ -156,7 +156,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ⬜ Video mixing, karaoke, DMX lighting · HID hardware (pro-controller jog wheels).
 
 ### Suggested near-term order (step by step)
-1. **4-deck layout** — engine ready; unlocks 4-deck workflows.
+1. ✅ **4-deck layout** — done.
 2. **MIDI-learn / mapping** (+ Akai profile) — makes the controller useful, builds on MIDI input.
 3. **SQLite track DB + saved cues/loops** — foundation for serious library + persistence.
 4. **Headphone/cue monitoring** — the key "real DJ" essential.

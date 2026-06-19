@@ -31,6 +31,7 @@ export function Deck({
   syncEnabled = false,
   syncActive = false,
   mirror = false,
+  slots,
 }: {
   ctrl: DeckController;
   color: string;
@@ -39,6 +40,8 @@ export function Deck({
   syncActive?: boolean;
   /** Mirror the deck so the platter sits on the inner edge (next to the mixer). */
   mirror?: boolean;
+  /** Deck-select tabs for this slot (e.g. A/C or B/D). */
+  slots?: { label: string; active: boolean; onSelect: () => void }[];
 }) {
   const { state, actions } = ctrl;
   const { meta, frame, playing, tempo, dsp, loading } = state;
@@ -153,6 +156,21 @@ export function Deck({
     <section className={`deck${mirror ? " deck--mirror" : ""}`} style={{ borderTopColor: color }}>
       {/* header */}
       <div className="deck-header">
+        {slots && (
+          <div className="deck-slots">
+            {slots.map((s) => (
+              <button
+                key={s.label}
+                className={`deck-slot ${s.active ? "deck-slot--on" : ""}`}
+                style={s.active ? { color, borderColor: color, background: `${color}22` } : undefined}
+                onClick={s.onSelect}
+                title={`Control deck ${s.label} in this slot`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           className="art"
           style={{ background: `linear-gradient(135deg, ${color}, var(--violet))` }}
