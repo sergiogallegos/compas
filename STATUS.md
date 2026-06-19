@@ -1,15 +1,19 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (sampler pads). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (flanger FX). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **MIDI-mapped sampler pads + headphone CUE** — the MIDI-learn registry now exposes the 8
-sampler pads (a "Sampler" group) + a per-deck PFL **Headphone CUE** toggle; the MPK Mini MK3
-starter profile maps its 8 pads → the 8 sampler pads. Frontend-only (`useMidiMap`/`midiMap.ts`/
-`App.tsx`); builds clean (tsc, vite). **Test (needs MK3):** load the MK3 profile (or LEARN), hit a
-pad → fires the matching sampler pad.
+Latest: **Flanger FX (beat-synced)** — a per-deck **FLANGE** chip in the FX rack: stereo
+LFO-swept comb (`compas-dsp::Flanger`, quadrature L/R), beat-synced rate (1/2/4/8-beat chips) +
+DEPTH knob, inserted after reverb. `set_deck_flanger`. Builds clean (check/clippy/test — 2 flanger
+DSP tests, tsc, vite); ran the app — engine clean @48kHz + the FLANGE chip renders. **Ears check
+pending:** load a track, enable FLANGE, hear the sweep; change the beat chips / DEPTH.
+
+Prior: **MIDI-mapped sampler pads + headphone CUE** — MIDI-learn registry exposes the 8 sampler
+pads (a "Sampler" group) + per-deck PFL Headphone CUE; MPK MK3 starter profile maps its 8 pads →
+the sampler pads. **Test (needs MK3):** load the MK3 profile (or LEARN), hit a pad → fires it.
 
 Prior: **Sampler / performance pads** — 8 pads (pads icon, title bar): click empty → load a file,
 press → fire (one-shots overlap), per-pad ⟳ loop toggle, global LEVEL. RT-safe
@@ -93,6 +97,9 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   time-glide, feedback/mix) and Schroeder/Moorer-style `Reverb` (8 combs → 4 allpass per channel,
   pre-allocated). Per-deck inserts post-EQ (`SetDeckEcho`/`SetDeckReverb`); UI: echo toggle +
   beat chips + DEPTH, reverb toggle + SIZE/MIX. FILTER stays the mixer knob.
+- **FX rack — flanger** — beat-synced stereo `compas-dsp::Flanger` (LFO-swept comb, quadrature
+  L/R, feedback), per-deck insert after reverb; UI: FLANGE toggle + 1/2/4/8-beat rate chips +
+  DEPTH. `SetDeckFlanger`/`set_deck_flanger`. Unit-tested.
 - **Master recording** — record the master mix to a 32-bit-float stereo WAV (audio-thread tap →
   lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
 - **Headphone / cue monitoring (PFL)** — per-channel CUE buttons + a phones bar (device picker,

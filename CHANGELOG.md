@@ -11,6 +11,12 @@ All notable changes to compas are documented here. Format follows
   loaded-as tag recognises all four.
 
 ### Added
+- **Flanger FX (beat-synced):** a new per-deck **FLANGE** insert in the deck FX rack — a stereo
+  LFO-swept comb (quadrature L/R for width) with feedback. The sweep rate is **beat-synced**
+  (1/2/4/8-beat period chips) and a **DEPTH** knob sets sweep width + resonance. RT-safe
+  `compas-dsp::Flanger` (pre-allocated), inserted after reverb in the per-deck chain; new
+  `set_deck_flanger` command. Unit-tested. (Replaces the old disabled FILTER chip — the filter
+  remains the mixer's HPF/LPF knob.)
 - **MIDI-mappable sampler pads + headphone CUE:** the MIDI-learn target list now includes the
   8 **sampler pads** (a "Sampler" group) and a per-deck **headphone CUE (PFL)** toggle — so a
   controller's drum pads fire samples and a button can pre-listen a deck. The Akai MPK Mini MK3

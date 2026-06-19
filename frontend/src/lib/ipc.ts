@@ -220,6 +220,15 @@ export const setDeckEcho = (
 /** Reverb insert. `roomSize` 0..1 sets the tail length; `mix` 0..1 the wet/dry balance. */
 export const setDeckReverb = (deck: number, active: boolean, roomSize: number, mix: number) =>
   invoke("set_deck_reverb", { deck, active, roomSize, mix });
+/** Flanger insert. `rateHz` LFO sweep, `depth` 0..1 sweep width, plus feedback + wet `mix`. */
+export const setDeckFlanger = (
+  deck: number,
+  active: boolean,
+  rateHz: number,
+  depth: number,
+  feedback: number,
+  mix: number,
+) => invoke("set_deck_flanger", { deck, active, rateHz, depth, feedback, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 

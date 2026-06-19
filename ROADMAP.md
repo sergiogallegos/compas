@@ -141,8 +141,8 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ⬜ **Real-time STEM separation** (vocal/drum/bass/melody isolation) — now table-stakes across
   Serato/rekordbox/Traktor/VirtualDJ/djay. Needs an ML model decision (ONNX runtime + a
   Demucs-class model: bundle / optional-download / defer). Biggest single feature gap.
-- ⬜ **More FX + beat-synced timing + FX units/chains** (flanger, phaser, bitcrusher; FX time in
-  beats from the BPM; chain multiple).
+- 🔶 **More FX + beat-synced timing + FX units/chains** — echo, reverb, and now a beat-synced
+  **flanger** ship; phaser/bitcrusher + FX chaining still open. (FX time already in beats.)
 - ✅ **Sampler / performance pads** — 8 pads, one-shots (polyphonic) + per-pad loop toggle, global
   level; RT-safe `compas-audio::sampler` on the master bus (recordable). MIDI-mapping the pads is
   a follow-up.

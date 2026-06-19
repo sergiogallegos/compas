@@ -12,6 +12,14 @@ const ECHO_BEATS: { v: number; label: string }[] = [
   { v: 2, label: "2" },
 ];
 
+/// Flanger LFO sweep period in beats (beat-synced).
+const FLANGER_BEATS: { v: number; label: string }[] = [
+  { v: 1, label: "1" },
+  { v: 2, label: "2" },
+  { v: 4, label: "4" },
+  { v: 8, label: "8" },
+];
+
 /// Loop-roll sizes (held, in beats), with compact labels.
 const ROLLS: { v: number; label: string }[] = [
   { v: 0.125, label: "⅛" },
@@ -377,7 +385,14 @@ export function Deck({
                 >
                   REVERB
                 </button>
-                <button className="chip" disabled title="The filter is the mixer's HPF/LPF knob">FILTER</button>
+                <button
+                  className={`chip ${state.flanger.active ? "chip--on" : ""}`}
+                  onClick={actions.toggleFlanger}
+                  disabled={!meta}
+                  title="Flanger (beat-synced sweep)"
+                >
+                  FLANGE
+                </button>
               </div>
               {state.echo.active && (
                 <div className="fx-detail">
@@ -401,6 +416,23 @@ export function Deck({
                   <span className="overline fx-label">REVERB</span>
                   <Knob value={state.reverb.size} min={0} max={1} onChange={actions.setReverbSize} label="SIZE" color={color} size={34} />
                   <Knob value={state.reverb.mix} min={0} max={1} onChange={actions.setReverbMix} label="MIX" color={color} size={34} />
+                </div>
+              )}
+              {state.flanger.active && (
+                <div className="fx-detail">
+                  <div className="fx-beats">
+                    {FLANGER_BEATS.map((b) => (
+                      <button
+                        key={b.v}
+                        className={`chip ${state.flanger.beats === b.v ? "chip--on" : ""}`}
+                        onClick={() => actions.setFlangerBeats(b.v)}
+                        title={`${b.label}-beat sweep`}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </div>
+                  <Knob value={state.flanger.depth} min={0} max={1} onChange={actions.setFlangerDepth} label="DEPTH" color={color} size={34} />
                 </div>
               )}
             </>

@@ -19,6 +19,7 @@ import {
   setDeckXfaderAssign,
   setDeckEcho,
   setDeckReverb,
+  setDeckFlanger,
   setDeckEq,
   setDeckFilter,
   setDeckGain,
@@ -75,6 +76,14 @@ export interface ReverbState {
   mix: number;
 }
 
+export interface FlangerState {
+  active: boolean;
+  /** LFO sweep period in beats (beat-synced). */
+  beats: number;
+  /** Sweep width 0..1 (also drives feedback/resonance). */
+  depth: number;
+}
+
 /** Fallback echo time (seconds) for one beat when a track has no beatgrid. */
 const NO_GRID_BEAT_SEC = 0.5;
 
@@ -101,6 +110,7 @@ export interface DeckState {
   loop: LoopState;
   echo: EchoState;
   reverb: ReverbState;
+  flanger: FlangerState;
   error: string | null;
   /** True between clicking load and the track being decoded/analyzed. */
   loading: boolean;
@@ -133,6 +143,7 @@ export function useDeck(deck: number, dsp = true) {
   const [loop, setLoopState] = useState<LoopState>({ active: false, beats: null, inFrame: 0, outFrame: 0 });
   const [echo, setEchoState] = useState<EchoState>({ active: false, beats: 0.5, depth: 0.5 });
   const [reverb, setReverbState] = useState<ReverbState>({ active: false, size: 0.6, mix: 0.3 });
+  const [flanger, setFlangerState] = useState<FlangerState>({ active: false, beats: 4, depth: 0.6 });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
@@ -148,6 +159,8 @@ export function useDeck(deck: number, dsp = true) {
   echoRef.current = echo;
   const reverbRef = useRef(reverb);
   reverbRef.current = reverb;
+  const flangerRef = useRef(flanger);
+  flangerRef.current = flanger;
   // Path of the loaded track + a once-per-load guard for recording a play.
   const pathRef = useRef<string | null>(null);
   const playedRef = useRef(false);
@@ -183,6 +196,7 @@ export function useDeck(deck: number, dsp = true) {
         // Engine resets FX on load; mirror that (keep the user's param settings).
         setEchoState((e) => ({ ...e, active: false }));
         setReverbState((r) => ({ ...r, active: false }));
+        setFlangerState((f) => ({ ...f, active: false }));
         setError(null);
         setLoading(false);
         pathRef.current = e.path;
@@ -274,6 +288,15 @@ export function useDeck(deck: number, dsp = true) {
     };
     const pushReverb = (r: ReverbState) => {
       setDeckReverb(deck, r.active, r.size, r.active ? r.mix : 0).catch(swallow);
+    };
+    // Beat-synced flanger: the LFO period is `beats` long; depth drives sweep + resonance.
+    const pushFlanger = (f: FlangerState) => {
+      const beatSec = (meta?.beat_interval_sec ?? 0) > 0 ? meta!.beat_interval_sec : NO_GRID_BEAT_SEC;
+      const period = beatSec * f.beats;
+      const rateHz = period > 0 ? 1 / period : 0.3;
+      const feedback = 0.35 + f.depth * 0.5; // 0.35..0.85
+      const mix = f.active ? 0.5 : 0; // classic 50/50 flange
+      setDeckFlanger(deck, f.active, rateHz, f.depth, feedback, mix).catch(swallow);
     };
     // Current beatgrid in source frames (interval + first-beat offset incl. manual nudge), or
     // null when the track has no grid. Read live so a grid nudge takes effect immediately.
@@ -486,10 +509,25 @@ export function useDeck(deck: number, dsp = true) {
         setReverbState(next);
         if (next.active) pushReverb(next);
       },
+      toggleFlanger: () => {
+        const next = { ...flangerRef.current, active: !flangerRef.current.active };
+        setFlangerState(next);
+        pushFlanger(next);
+      },
+      setFlangerBeats: (beats: number) => {
+        const next = { ...flangerRef.current, beats };
+        setFlangerState(next);
+        if (next.active) pushFlanger(next);
+      },
+      setFlangerDepth: (depth: number) => {
+        const next = { ...flangerRef.current, depth };
+        setFlangerState(next);
+        if (next.active) pushFlanger(next);
+      },
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, error, loading, dsp };
   return { state, actions, deck };
 }
 

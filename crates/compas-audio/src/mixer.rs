@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    Biquad, BiquadCoeffs, Crossfader, Delay, GainSmoother, Reverb, Synth, ThreeBandEq, TimeStretch,
-    Waveform,
+    Biquad, BiquadCoeffs, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth, ThreeBandEq,
+    TimeStretch, Waveform,
 };
 use rtrb::Producer;
 
@@ -100,6 +100,15 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
         room_size: f32,
+        mix: f32,
+    },
+    /// Configure the per-deck flanger insert. Engaging it (false→true) clears the line.
+    SetDeckFlanger {
+        deck: usize,
+        active: bool,
+        rate_hz: f32,
+        depth: f32,
+        feedback: f32,
         mix: f32,
     },
     SetDeckPlaying {
@@ -363,6 +372,9 @@ struct DeckPlayer {
     /// Reverb insert (post-echo). Buffers pre-allocated; toggling flips `reverb_active`.
     reverb: Reverb,
     reverb_active: bool,
+    /// Flanger insert (post-reverb). Pre-allocated; toggling flips `flanger_active`.
+    flanger: Flanger,
+    flanger_active: bool,
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
@@ -406,6 +418,8 @@ impl DeckPlayer {
             echo_active: false,
             reverb: Reverb::new(device_rate),
             reverb_active: false,
+            flanger: Flanger::new(device_rate),
+            flanger_active: false,
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -500,6 +514,11 @@ impl DeckPlayer {
             let (rl, rr) = self.reverb.process(l, r);
             l = rl;
             r = rr;
+        }
+        if self.flanger_active {
+            let (fl, fr) = self.flanger.process(l, r);
+            l = fl;
+            r = fr;
         }
         (l * g, r * g)
     }
@@ -749,6 +768,25 @@ impl Mixer {
                         d.reverb_active = active;
                     }
                 }
+                AudioCommand::SetDeckFlanger {
+                    deck,
+                    active,
+                    rate_hz,
+                    depth,
+                    feedback,
+                    mix,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.flanger.set_rate_hz(rate_hz);
+                        d.flanger.set_depth(depth);
+                        d.flanger.set_feedback(feedback);
+                        d.flanger.set_mix(mix);
+                        if active && !d.flanger_active {
+                            d.flanger.clear(); // fresh sweep on engage
+                        }
+                        d.flanger_active = active;
+                    }
+                }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = playing;
@@ -806,6 +844,8 @@ impl Mixer {
                         d.echo.clear();
                         d.reverb_active = false;
                         d.reverb.clear();
+                        d.flanger_active = false;
+                        d.flanger.clear();
                         d.loop_active = false;
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
@@ -938,6 +978,8 @@ impl Mixer {
                         d.echo.clear();
                         d.reverb_active = false;
                         d.reverb.clear();
+                        d.flanger_active = false;
+                        d.flanger.clear();
                         d.playhead = 0.0;
                         d.loop_active = false;
                         d.sync_master = None;

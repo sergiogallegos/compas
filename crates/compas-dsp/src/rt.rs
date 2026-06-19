@@ -372,6 +372,118 @@ impl Delay {
     }
 }
 
+/// Stereo flanger — a short, LFO-swept delay with feedback, mixed with the dry signal to
+/// give the classic sweeping "jet" comb. The two channels share one LFO but read 90° apart
+/// for stereo width. Like [`Delay`], the buffer is allocated **once at construction**;
+/// [`process`](Self::process) is allocation-free and RT-SAFE.
+pub struct Flanger {
+    left: Vec<f32>,
+    right: Vec<f32>,
+    capacity: usize,
+    write: usize,
+    sample_rate: f32,
+    /// LFO phase in `[0, 1)`.
+    phase: f32,
+    rate_hz: f32,
+    /// Modulation depth 0..1 (how far the delay sweeps).
+    depth: f32,
+    feedback: f32,
+    mix: f32,
+}
+
+impl Flanger {
+    /// Allocate a flanger. The delay line holds ~25 ms — past the flanger sweep range, with
+    /// headroom for interpolation.
+    pub fn new(sample_rate: f32) -> Self {
+        let capacity = ((sample_rate * 0.025).ceil() as usize).max(16);
+        Flanger {
+            left: vec![0.0; capacity],
+            right: vec![0.0; capacity],
+            capacity,
+            write: 0,
+            sample_rate,
+            phase: 0.0,
+            rate_hz: 0.3,
+            depth: 0.7,
+            feedback: 0.5,
+            mix: 0.5,
+        }
+    }
+
+    /// LFO sweep rate in Hz. RT-SAFE.
+    #[inline]
+    pub fn set_rate_hz(&mut self, hz: f32) {
+        self.rate_hz = hz.clamp(0.01, 10.0);
+    }
+
+    /// Sweep depth 0..1. RT-SAFE.
+    #[inline]
+    pub fn set_depth(&mut self, d: f32) {
+        self.depth = d.clamp(0.0, 1.0);
+    }
+
+    /// Feedback/resonance 0..~0.95. RT-SAFE.
+    #[inline]
+    pub fn set_feedback(&mut self, fb: f32) {
+        self.feedback = fb.clamp(0.0, 0.95);
+    }
+
+    /// Wet mix 0..1 (≈0.5 is the classic 50/50 flange). RT-SAFE.
+    #[inline]
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix.clamp(0.0, 1.0);
+    }
+
+    /// Zero the delay line and reset the LFO — call on (re)engage so old audio doesn't burst.
+    pub fn clear(&mut self) {
+        self.left.iter_mut().for_each(|s| *s = 0.0);
+        self.right.iter_mut().for_each(|s| *s = 0.0);
+        self.write = 0;
+        self.phase = 0.0;
+    }
+
+    /// Fractional read `delay` samples behind the write head, on one channel buffer. RT-SAFE.
+    #[inline]
+    fn read(buf: &[f32], capacity: usize, write: usize, delay: f32) -> f32 {
+        let mut read = write as f32 - delay;
+        if read < 0.0 {
+            read += capacity as f32;
+        }
+        let i0 = (read.floor() as usize) % capacity;
+        let frac = read - read.floor();
+        let i1 = if i0 + 1 == capacity { 0 } else { i0 + 1 };
+        buf[i0] + (buf[i1] - buf[i0]) * frac
+    }
+
+    /// Process one stereo frame. RT-SAFE.
+    #[inline]
+    pub fn process(&mut self, in_l: f32, in_r: f32) -> (f32, f32) {
+        use std::f32::consts::TAU;
+        // Two LFO taps 90° apart → the comb notch sweeps oppositely per channel (stereo width).
+        let lfo_l = (self.phase * TAU).sin() * 0.5 + 0.5;
+        let lfo_r = ((self.phase + 0.25) * TAU).sin() * 0.5 + 0.5;
+        self.phase += self.rate_hz / self.sample_rate;
+        if self.phase >= 1.0 {
+            self.phase -= 1.0;
+        }
+        // Delay sweeps from ~1 ms up to ~(1 + depth·6) ms.
+        let span = 1.0 + self.depth * 6.0;
+        let max_d = (self.capacity - 2) as f32;
+        let d_l = ((1.0 + lfo_l * span) * 0.001 * self.sample_rate).clamp(1.0, max_d);
+        let d_r = ((1.0 + lfo_r * span) * 0.001 * self.sample_rate).clamp(1.0, max_d);
+
+        let wet_l = Self::read(&self.left, self.capacity, self.write, d_l);
+        let wet_r = Self::read(&self.right, self.capacity, self.write, d_r);
+
+        self.left[self.write] = in_l + wet_l * self.feedback;
+        self.right[self.write] = in_r + wet_r * self.feedback;
+        self.write = if self.write + 1 == self.capacity { 0 } else { self.write + 1 };
+
+        let dry = 1.0 - self.mix;
+        (in_l * dry + wet_l * self.mix, in_r * dry + wet_r * self.mix)
+    }
+}
+
 // ---------------------------------------------------------------------------------
 // Reverb (Schroeder/Moorer-style: parallel damped combs → series allpass diffusers)
 // ---------------------------------------------------------------------------------
@@ -1044,6 +1156,36 @@ mod tests {
         }
         assert!(early > 1e-6, "no reverb tail (early energy {early})");
         assert!(late < early, "reverb did not decay (early {early}, late {late})");
+    }
+
+    #[test]
+    fn flanger_is_transparent_when_dry() {
+        let mut f = Flanger::new(48_000.0);
+        f.set_mix(0.0);
+        for x in [0.3, -0.5, 0.2, 0.7] {
+            let (l, r) = f.process(x, x);
+            assert!((l - x).abs() < 1e-6 && (r - x).abs() < 1e-6, "not dry: {l}");
+        }
+    }
+
+    #[test]
+    fn flanger_sweep_modulates_the_output() {
+        // A steady DC input through a wet flanger must vary over time as the LFO sweeps the
+        // comb (a static delay would settle to a constant).
+        let mut f = Flanger::new(48_000.0);
+        f.set_mix(0.5);
+        f.set_feedback(0.6);
+        f.set_depth(1.0);
+        f.set_rate_hz(2.0);
+        f.clear();
+        let mut min = f32::MAX;
+        let mut max = f32::MIN;
+        for _ in 0..48_000 {
+            let l = f.process(0.5, 0.5).0;
+            min = min.min(l);
+            max = max.max(l);
+        }
+        assert!(max - min > 0.05, "flanger output should sweep (range {})", max - min);
     }
 
     #[test]

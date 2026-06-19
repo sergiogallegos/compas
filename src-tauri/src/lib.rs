@@ -66,6 +66,14 @@ enum EngineMsg {
         room_size: f32,
         mix: f32,
     },
+    DeckFlanger {
+        deck: usize,
+        active: bool,
+        rate_hz: f32,
+        depth: f32,
+        feedback: f32,
+        mix: f32,
+    },
     DeckPlaying {
         deck: usize,
         playing: bool,
@@ -270,6 +278,21 @@ fn spawn_engine() -> EngineHandle {
                         deck,
                         active,
                         room_size,
+                        mix,
+                    },
+                    EngineMsg::DeckFlanger {
+                        deck,
+                        active,
+                        rate_hz,
+                        depth,
+                        feedback,
+                        mix,
+                    } => AudioCommand::SetDeckFlanger {
+                        deck,
+                        active,
+                        rate_hz,
+                        depth,
+                        feedback,
                         mix,
                     },
                     EngineMsg::DeckPlaying { deck, playing } => {
@@ -907,6 +930,28 @@ fn set_deck_reverb(
     })
 }
 
+/// Configure the per-deck flanger insert. `rate_hz` sweeps the LFO, `depth` (0..1) the sweep
+/// width, plus feedback/resonance and wet `mix`.
+#[tauri::command]
+fn set_deck_flanger(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+    rate_hz: f32,
+    depth: f32,
+    feedback: f32,
+    mix: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckFlanger {
+        deck,
+        active,
+        rate_hz,
+        depth,
+        feedback,
+        mix,
+    })
+}
+
 #[tauri::command]
 fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetCrossfader(value))
@@ -1458,6 +1503,7 @@ pub fn run() {
             set_deck_filter,
             set_deck_echo,
             set_deck_reverb,
+            set_deck_flanger,
             set_crossfader,
             set_master_gain,
             start_recording,
