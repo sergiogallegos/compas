@@ -1,21 +1,32 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-18. See `ROADMAP.md` for the
-> full plan, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-19. See `ROADMAP.md` for the
+> full plan + **competitive feature backlog** (the source of truth for what's next),
+> `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-1. **Auto-update** (`tauri-plugin-updater`) + **release code-signing** — generate the signing
-   keypair (`npm run tauri signer generate`), put pubkey in `tauri.conf.json`, privkey + password
-   as CI secrets, uncomment the signing env in `release.yml`, add a "Check for updates" UI.
-2. **`vergen`** build/git version in the status bar (replaces hardcoded `compas 0.1.0`).
-3. **FFmpeg fallback decode** for formats symphonia can't handle (e.g. MPEG *video* containers) —
-   only if a real format gap shows up.
-4. **P1 remainders:** manual beatgrid-anchor edit, underrun counters in the UI, a
-   decode-a-fixture integration test, 4-deck layout.
-5. **FX/scratch/key-lock polish (optional):** scratch release-throw inertia + configurable
-   platter mapping (360° = 1.8 s); FX param tuning by ear (echo glide/depth curve, reverb
-   `WET_SCALE`); key-lock window size (`STRETCH_WINDOW` 2048 ≈ 43 ms latency — drop for lower
-   latency at some bass-fidelity cost).
+Big push this session: key-lock, continuous tempo+phase **SYNC**, **auto-mix**, master
+**recording**, RT-load meter, manual grid nudge, **synth instrument + MIDI input**, **4-deck**,
+centered-platter UI. All user-tested and confirmed working. Next, from the ROADMAP backlog:
+
+1. **MIDI-learn / mapping** (+ Akai MPK Mini MK3 profile) — bind controller knobs/pads/keys to deck
+   controls (EQ/filter/xfader/transport/cues/loops). Builds on the existing MIDI input (`midir`;
+   `midi:cc` already emitted). User has an **Akai MPK Mini MK3** to test with (not always on hand).
+2. **SQLite track DB + saved cues/loops** — persist cues, loops, beatgrids, gain, history across
+   sessions. Foundation for real library management (`rusqlite`/`sqlx-sqlite`).
+3. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
+   cue bus). Biggest "real DJ" gap.
+4. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
+   runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
+   ethos cleanly — discuss before starting.
+5. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
+   harmonic-mixing assist (we already detect Camelot key).
+6. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
+   `vergen` version string in the status bar.
+
+**Optional polish (tune by ear):** scratch release-inertia + platter mapping; FX curves
+(echo depth, reverb `WET_SCALE`); key-lock `STRETCH_WINDOW` (2048 ≈ 43 ms latency); sync PLL
+gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
 
 ## ✅ Done
 **P0 scaffold** · Tauri 2 workspace, 4 engine crates, CI-green.
@@ -76,8 +87,18 @@ DSP locked) · streaming auth = PKCE (no secret).
 
 ## Run / verify
 ```bash
-cargo test ; cargo clippy --all-targets -- -D warnings    # engine
-cd frontend && npm install && npm run typecheck && npm run build
-cargo tauri dev            # full app (or frontend\node_modules\.bin\tauri.cmd dev)
-node scripts/make-test-audio.mjs    # 120/128 BPM test WAVs -> samples/
+cargo test -p compas-dsp -p compas-audio              # engine unit tests
+cargo clippy --all-targets -- -D warnings             # engine lint
+cargo check --manifest-path src-tauri/Cargo.toml      # the Tauri app crate (separate from default-members)
+cd frontend && npm install && npx tsc --noEmit && npx vite build
+node scripts/make-test-audio.mjs                      # 120/128 BPM test WAVs -> samples/
 ```
+**Launching the app (Windows, this machine):** `cargo tauri dev` is NOT installed; the working
+command is the local Tauri CLI **from the repo root** (so it finds `src-tauri/`, and its
+`beforeDevCommand` runs Vite in `frontend/`):
+```bash
+./frontend/node_modules/.bin/tauri dev
+```
+If it errors with "Port 5173 already in use", a previous Vite lingered — kill the PID listening on
+5173 (and any stray `compas.exe`) first. The legacy-PowerShell-profile `Set-PSReadLineOption` error
+that prints on npm/pwsh calls is harmless noise.
