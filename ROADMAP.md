@@ -107,6 +107,64 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 ---
 
+## Competitive landscape & prioritized backlog (reviewed 2026-06)
+
+How compas stacks up against Serato, rekordbox, Traktor, VirtualDJ, and Ableton Live, and
+what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
+
+### Where compas is already competitive
+- ✅ Dual-deck mixing: equal-power crossfader, per-deck gain, 3-band EQ, HPF/LPF filter.
+- ✅ Analysis: BPM, beatgrid, musical key (Camelot), scrolling + overview waveforms, manual grid nudge.
+- ✅ **Key-lock** (master tempo, in-house WSOLA) · ✅ **continuous tempo+phase SYNC**.
+- ✅ Beat loops + hot cues · ✅ jog-wheel **scratch** · ✅ **echo/reverb FX** (+ filter).
+- ✅ **Auto-mix** with bass-swap transitions (Serato/VirtualDJ-style automix).
+- ✅ **Master recording** · ✅ RT-load meter.
+- ✅ **Synth instrument + MIDI input** — uncommon in DJ apps (Ableton-flavored); a differentiator.
+- ✅ Capability-honest streaming model (parked).
+
+### Gaps vs the field, prioritized
+
+**Tier 1 — core DJ essentials still missing:**
+- ⬜ **4-deck layout** (engine already mixes 4; needs a fader/assign matrix + UI).
+- ⬜ **Headphone / cue monitoring** — pre-listen the next track on a second output. The biggest
+  "real DJ" gap; needs a second cpal output stream + a cue bus in the mixer.
+- 🔶 **MIDI-learn / controller mapping** — MIDI *input* + synth done; still need to bind a
+  controller's knobs/pads/keys to deck controls (EQ/filter/xfader/transport/cues/loops), plus a
+  built-in **Akai MPK Mini MK3** profile.
+- ⬜ **Saved cues/loops + a track database (SQLite)** — persist cues, loops, beatgrids, gain,
+  play history across sessions. Foundation for real library management.
+- 🔶 **Quantize** — snap hot-cue jumps/loops to the grid (loops already snap).
+
+**Tier 2 — modern differentiators (what 2025-26 DJs expect):**
+- ⬜ **Real-time STEM separation** (vocal/drum/bass/melody isolation) — now table-stakes across
+  Serato/rekordbox/Traktor/VirtualDJ/djay. Needs an ML model decision (ONNX runtime + a
+  Demucs-class model: bundle / optional-download / defer). Biggest single feature gap.
+- ⬜ **More FX + beat-synced timing + FX units/chains** (flanger, phaser, bitcrusher; FX time in
+  beats from the BPM; chain multiple).
+- ⬜ **Sampler / performance pads** — trigger one-shots + loops (à la VirtualDJ StemSwap / Traktor
+  Remix Decks). Reuses the synth/voice infrastructure.
+- ⬜ **Beat jump / loop roll / slip mode / reverse-censor** — performance controls over the play-head.
+- ⬜ **Harmonic-mixing assist** — we already detect Camelot key; suggest key-compatible next tracks.
+
+**Tier 3 — library & ecosystem:**
+- ⬜ Playlists/crates, tags/rating, smart playlists, history/session export, metadata edit, folder watch.
+- ⬜ Streaming services (unpark when ready; PKCE auth already built).
+- ⬜ **Ableton Link / MIDI clock** — tempo-sync with Ableton and external gear.
+- ⬜ Auto-gain / loudness normalization on analysis.
+
+**Tier 4 — advanced / niche (later, maybe never):**
+- ⬜ Video mixing, karaoke, DMX lighting · HID hardware (pro-controller jog wheels).
+
+### Suggested near-term order (step by step)
+1. **4-deck layout** — engine ready; unlocks 4-deck workflows.
+2. **MIDI-learn / mapping** (+ Akai profile) — makes the controller useful, builds on MIDI input.
+3. **SQLite track DB + saved cues/loops** — foundation for serious library + persistence.
+4. **Headphone/cue monitoring** — the key "real DJ" essential.
+5. **Stem separation** — marquee feature (needs the model decision first).
+6. **Sampler/pads + more FX + beat-jump/slip + quantize + harmonic assist** — performance layer.
+
+---
+
 ## Infrastructure & distribution (pending)
 
 - 🔨 **Release pipeline** (`.github/workflows/release.yml`, via `tauri-action`): on a `v*` tag,
