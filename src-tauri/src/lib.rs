@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+mod db;
 mod spotify;
 
 use compas_audio::{
@@ -22,7 +23,7 @@ use compas_audio::{
 use midir::{MidiInput, MidiInputConnection};
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tracing_subscriber::EnvFilter;
 
 /// Frames per waveform peak bin (≈10.7 ms at 48 kHz). Tunes overview resolution.
@@ -517,6 +518,116 @@ fn probe_track(path: String) -> Result<ProbedTrack, String> {
         duration_ms: m.duration_ms.unwrap_or(0),
         path,
     })
+}
+
+// ----------------------------------------------------------------------------------
+// Library + per-track state (SQLite)
+// ----------------------------------------------------------------------------------
+
+/// Lock the connection and run `f`, mapping any error to a `String` for the IPC boundary.
+fn with_db<T>(
+    db: &State<'_, db::Db>,
+    f: impl FnOnce(&rusqlite::Connection) -> rusqlite::Result<T>,
+) -> Result<T, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    f(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_tracks(db: State<'_, db::Db>) -> Result<Vec<db::TrackRow>, String> {
+    with_db(&db, db::list_tracks)
+}
+
+/// Probe a file's header, insert it into the library (no-op if already present), return its row.
+#[tauri::command]
+fn db_add_track(db: State<'_, db::Db>, path: String) -> Result<db::TrackRow, String> {
+    let probed = probe_track(path.clone())?;
+    with_db(&db, |c| {
+        db::add_track(c, &probed.path, &probed.title, &probed.artist, probed.duration_ms as i64)
+    })
+}
+
+#[tauri::command]
+fn db_remove_track(db: State<'_, db::Db>, path: String) -> Result<(), String> {
+    with_db(&db, |c| db::remove_track(c, &path))
+}
+
+#[tauri::command]
+fn db_track_state(db: State<'_, db::Db>, path: String) -> Result<db::TrackState, String> {
+    with_db(&db, |c| db::track_state(c, &path))
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn db_upsert_analysis(
+    db: State<'_, db::Db>,
+    path: String,
+    bpm: f64,
+    bpm_confidence: f64,
+    first_beat_sec: f64,
+    beat_interval_sec: f64,
+    key_camelot: String,
+    key_name: String,
+) -> Result<(), String> {
+    with_db(&db, |c| {
+        db::upsert_analysis(
+            c,
+            &path,
+            bpm,
+            bpm_confidence,
+            first_beat_sec,
+            beat_interval_sec,
+            &key_camelot,
+            &key_name,
+        )
+    })
+}
+
+#[tauri::command]
+fn db_set_cue(db: State<'_, db::Db>, path: String, slot: i64, frame: f64) -> Result<(), String> {
+    with_db(&db, |c| db::set_cue(c, &path, slot, frame))
+}
+
+#[tauri::command]
+fn db_clear_cue(db: State<'_, db::Db>, path: String, slot: i64) -> Result<(), String> {
+    with_db(&db, |c| db::clear_cue(c, &path, slot))
+}
+
+#[tauri::command]
+fn db_set_loop(
+    db: State<'_, db::Db>,
+    path: String,
+    slot: i64,
+    in_frame: f64,
+    out_frame: f64,
+    beats: Option<f64>,
+) -> Result<(), String> {
+    with_db(&db, |c| db::set_loop(c, &path, slot, in_frame, out_frame, beats))
+}
+
+#[tauri::command]
+fn db_clear_loop(db: State<'_, db::Db>, path: String, slot: i64) -> Result<(), String> {
+    with_db(&db, |c| db::clear_loop(c, &path, slot))
+}
+
+#[tauri::command]
+fn db_set_grid_offset(db: State<'_, db::Db>, path: String, sec: f64) -> Result<(), String> {
+    with_db(&db, |c| db::set_grid_offset(c, &path, sec))
+}
+
+#[tauri::command]
+fn db_set_gain(db: State<'_, db::Db>, path: String, gain: f64) -> Result<(), String> {
+    with_db(&db, |c| db::set_gain(c, &path, gain))
+}
+
+#[tauri::command]
+fn db_record_play(db: State<'_, db::Db>, path: String) -> Result<(), String> {
+    with_db(&db, |c| db::record_play(c, &path))
+}
+
+#[tauri::command]
+fn db_history(db: State<'_, db::Db>, limit: i64) -> Result<Vec<db::HistoryRow>, String> {
+    with_db(&db, |c| db::history(c, limit))
 }
 
 #[tauri::command]
@@ -1039,11 +1150,38 @@ pub fn run() {
         })
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
+            // Open the library DB in the app-data dir. If it fails, log and carry on —
+            // DB-backed commands will then error and the frontend degrades gracefully.
+            match app.path().app_data_dir() {
+                Ok(dir) => {
+                    let _ = std::fs::create_dir_all(&dir);
+                    match db::open(dir.join("compas.db")) {
+                        Ok(database) => {
+                            app.manage(database);
+                        }
+                        Err(e) => tracing::error!("library DB open failed: {e}"),
+                    }
+                }
+                Err(e) => tracing::error!("no app-data dir for library DB: {e}"),
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             engine_status,
             probe_track,
+            db_list_tracks,
+            db_add_track,
+            db_remove_track,
+            db_track_state,
+            db_upsert_analysis,
+            db_set_cue,
+            db_clear_cue,
+            db_set_loop,
+            db_clear_loop,
+            db_set_grid_offset,
+            db_set_gain,
+            db_record_play,
+            db_history,
             load_track,
             deck_play,
             deck_pause,

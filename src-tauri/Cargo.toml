@@ -32,3 +32,4 @@ compas-dsp = { workspace = true }
 compas-sources = { workspace = true }
 rtrb = { workspace = true }       # recording ring: master tap → WAV writer thread
 midir = "0.10"                    # cross-platform MIDI input (controllers → synth)
+rusqlite = { version = "0.32", features = ["bundled"] }  # library + per-track state (cues/loops/grid/history)

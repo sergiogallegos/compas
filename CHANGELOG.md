@@ -6,6 +6,13 @@ All notable changes to compas are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **SQLite track database + saved cues/loops:** the library and per-track performance state now
+  persist in a real database (`rusqlite`, bundled SQLite, in the app-data dir) instead of
+  localStorage. Hot cues, the last loop, the manual beatgrid nudge, and a gain trim are
+  written through as you set them and **restored when a track is reloaded** onto a deck.
+  Analysis (BPM/key) is cached on load and shown in the library; play count + history are
+  recorded on first play. The old localStorage library is migrated in once on first run. New
+  `db_*` commands wrap a `db.rs` module (schema + WAL + FK cascade), covered by unit tests.
 - **MIDI-learn / control mapping:** bind any controller knob, fader, or pad to a deck or mixer
   control. Open the **MIDI mapping** panel (sliders icon in the title bar), click **LEARN** on a
   target, then move the control — the binding is captured and persisted (localStorage). Continuous

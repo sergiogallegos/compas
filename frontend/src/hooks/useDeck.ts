@@ -25,6 +25,15 @@ import {
   setDeckTempo,
   setLoop as setLoopCmd,
   setLoopActive as setLoopActiveCmd,
+  dbClearCue,
+  dbClearLoop,
+  dbRecordPlay,
+  dbSetCue,
+  dbSetGain,
+  dbSetGridOffset,
+  dbSetLoop,
+  dbTrackState,
+  dbUpsertAnalysis,
   type DeckLoaded,
   type FilterMode,
 } from "../lib/ipc";
@@ -135,6 +144,9 @@ export function useDeck(deck: number, dsp = true) {
   echoRef.current = echo;
   const reverbRef = useRef(reverb);
   reverbRef.current = reverb;
+  // Path of the loaded track + a once-per-load guard for recording a play.
+  const pathRef = useRef<string | null>(null);
+  const playedRef = useRef(false);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -167,6 +179,48 @@ export function useDeck(deck: number, dsp = true) {
         setReverbState((r) => ({ ...r, active: false }));
         setError(null);
         setLoading(false);
+        pathRef.current = e.path;
+        playedRef.current = false;
+
+        if (dsp) {
+          // Cache analysis onto the library row, then restore saved cues/loops/grid/gain.
+          dbUpsertAnalysis(e).catch(() => {});
+          dbTrackState(e.path)
+            .then((st) => {
+              if (pathRef.current !== e.path) return; // a newer track loaded meanwhile
+              if (st.grid_offset_sec) {
+                setGridOffset(st.grid_offset_sec);
+                if ((e.beat_interval_sec ?? 0) > 0) {
+                  const sr = e.source_rate;
+                  setBeatgrid(
+                    deck,
+                    (e.first_beat_sec + st.grid_offset_sec) * sr,
+                    e.beat_interval_sec * sr,
+                  ).catch(() => {});
+                }
+              }
+              if (st.gain !== 1) {
+                setGainState(st.gain);
+                setDeckGain(deck, st.gain).catch(() => {});
+              }
+              if (st.cues.length) {
+                const arr: (number | null)[] = Array(8).fill(null);
+                for (const c of st.cues) if (c.slot >= 0 && c.slot < 8) arr[c.slot] = c.frame;
+                setHotCues(arr);
+              }
+              // Restore the saved loop region, but leave it disarmed (don't jump the play-head).
+              const lp = st.loops.find((l) => l.slot === 0);
+              if (lp) {
+                setLoopState({
+                  active: false,
+                  beats: lp.beats,
+                  inFrame: lp.in_frame,
+                  outFrame: lp.out_frame,
+                });
+              }
+            })
+            .catch(() => {});
+        }
       }),
     );
     track(
@@ -194,6 +248,16 @@ export function useDeck(deck: number, dsp = true) {
 
   const actions = useMemo(() => {
     const swallow = () => {};
+    // Per-track persistence is keyed by file path and only for local (DSP) decks.
+    const path = meta?.path ?? null;
+    const canPersist = dsp && !!path;
+    // Record a play once, the first time this loaded track starts.
+    const markPlayed = () => {
+      if (canPersist && !playedRef.current) {
+        playedRef.current = true;
+        dbRecordPlay(path as string).catch(swallow);
+      }
+    };
     // Translate the UI echo (beat-synced time + single "depth") to engine params.
     const pushEcho = (e: EchoState) => {
       const beatSec = (meta?.beat_interval_sec ?? 0) > 0 ? meta!.beat_interval_sec : NO_GRID_BEAT_SEC;
@@ -225,8 +289,14 @@ export function useDeck(deck: number, dsp = true) {
         setMeta(null);
         setPlaying(false);
       },
-      togglePlay: () => (playing ? deckPause(deck) : deckPlay(deck)).catch(swallow),
-      play: () => deckPlay(deck).catch(swallow),
+      togglePlay: () => {
+        if (!playing) markPlayed();
+        return (playing ? deckPause(deck) : deckPlay(deck)).catch(swallow);
+      },
+      play: () => {
+        markPlayed();
+        return deckPlay(deck).catch(swallow);
+      },
       pause: () => deckPause(deck).catch(swallow),
       cue: () => deckSeek(deck, 0).catch(swallow),
       seekFrac: (f: number) => {
@@ -250,10 +320,12 @@ export function useDeck(deck: number, dsp = true) {
         const next = gridOffsetRef.current + deltaSec;
         setGridOffset(next);
         pushBeatgrid(next);
+        if (canPersist) dbSetGridOffset(path as string, next).catch(swallow);
       },
       resetGrid: () => {
         setGridOffset(0);
         pushBeatgrid(0);
+        if (canPersist) dbSetGridOffset(path as string, 0).catch(swallow);
       },
       // Continuous beat-sync: follow `master` (deck index), or null to disengage.
       sync: (master: number | null) => {
@@ -285,13 +357,18 @@ export function useDeck(deck: number, dsp = true) {
       setGain: (g: number) => {
         setGainState(g);
         setDeckGain(deck, g).catch(swallow);
+        if (canPersist) dbSetGain(path as string, g).catch(swallow);
       },
       setHotCue: (i: number) => {
         setHotCues((cur) => {
           const next = [...cur];
           // Set if empty, else jump to it.
-          if (next[i] == null) next[i] = frameRef.current;
-          else deckSeek(deck, next[i] as number).catch(swallow);
+          if (next[i] == null) {
+            next[i] = frameRef.current;
+            if (canPersist) dbSetCue(path as string, i, frameRef.current).catch(swallow);
+          } else {
+            deckSeek(deck, next[i] as number).catch(swallow);
+          }
           return next;
         });
       },
@@ -301,6 +378,7 @@ export function useDeck(deck: number, dsp = true) {
           next[i] = null;
           return next;
         });
+        if (canPersist) dbClearCue(path as string, i).catch(swallow);
       },
       beatLoop: (beats: number) => {
         if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return;
@@ -317,6 +395,7 @@ export function useDeck(deck: number, dsp = true) {
         } else {
           setLoopCmd(deck, inFrame, outFrame, true).catch(swallow);
           setLoopState({ active: true, beats, inFrame, outFrame });
+          if (canPersist) dbSetLoop(path as string, 0, inFrame, outFrame, beats).catch(swallow);
         }
       },
       loopIn: () => setLoopState((l) => ({ ...l, inFrame: frameRef.current, beats: null })),
@@ -326,11 +405,13 @@ export function useDeck(deck: number, dsp = true) {
         if (out > l.inFrame) {
           setLoopCmd(deck, l.inFrame, out, true).catch(swallow);
           setLoopState({ active: true, beats: null, inFrame: l.inFrame, outFrame: out });
+          if (canPersist) dbSetLoop(path as string, 0, l.inFrame, out, null).catch(swallow);
         }
       },
       clearLoop: () => {
         setLoopActiveCmd(deck, false).catch(swallow);
         setLoopState((l) => ({ ...l, active: false }));
+        if (canPersist) dbClearLoop(path as string, 0).catch(swallow);
       },
       toggleEcho: () => {
         const next = { ...echoRef.current, active: !echoRef.current.active };

@@ -83,7 +83,15 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
                     {loadedAs ? loadedAs.letter : "♪"}
                   </span>
                   <span className="tl-title">{t.title}</span>
-                  <span className="tl-artist">{t.artist}</span>
+                  <span className="tl-artist">
+                    {t.artist}
+                    {(t.bpm || t.key_camelot) && (
+                      <span className="tl-meta mono">
+                        {t.bpm ? ` · ${Math.round(t.bpm)}` : ""}
+                        {t.key_camelot ? ` · ${t.key_camelot}` : ""}
+                      </span>
+                    )}
+                  </span>
                   <span className="mono">{fmtMs(t.duration_ms)}</span>
                   <span className="tl-load">
                     <button style={{ color: MAGENTA, borderColor: `${MAGENTA}66` }} onClick={() => loadTrack(0, t.path).catch(() => {})}>A</button>

@@ -132,8 +132,9 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ✅ **MIDI-learn / controller mapping** — per-target LEARN binds any knob/fader/pad to deck +
   mixer controls (EQ/filter/xfader/transport/sync/key-lock/cues/loops/FX); bindings persist;
   one-click **Akai MPK Mini MK3** starter profile.
-- ⬜ **Saved cues/loops + a track database (SQLite)** — persist cues, loops, beatgrids, gain,
-  play history across sessions. Foundation for real library management.
+- ✅ **Saved cues/loops + a track database (SQLite)** — `rusqlite` store persists cues, the last
+  loop, beatgrid nudge, gain, cached BPM/key, and play history; restored on reload. Foundation
+  for real library management.
 - 🔶 **Quantize** — snap hot-cue jumps/loops to the grid (loops already snap).
 
 **Tier 2 — modern differentiators (what 2025-26 DJs expect):**
@@ -159,7 +160,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 ### Suggested near-term order (step by step)
 1. ✅ **4-deck layout** — done.
 2. ✅ **MIDI-learn / mapping** (+ Akai profile) — done.
-3. **SQLite track DB + saved cues/loops** — foundation for serious library + persistence.
+3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. **Headphone/cue monitoring** — the key "real DJ" essential.
 5. **Stem separation** — marquee feature (needs the model decision first).
 6. **Sampler/pads + more FX + beat-jump/slip + quantize + harmonic assist** — performance layer.

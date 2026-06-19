@@ -1,27 +1,31 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (MIDI-learn landed). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (SQLite track DB landed). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **MIDI-learn / control mapping** landed (per-target LEARN, persisted bindings, Akai MPK
-Mini MK3 starter profile; `midi:note` + `set_midi_synth` gate). Builds clean (tsc/vite/clippy)
-but **not yet hardware-tested** — when the user next has the MPK Mini MK3 on hand, verify: connect
-in the MIDI-mapping panel (sliders icon, title bar), LEARN a knob/pad, confirm it drives the bound
-control, and that pads don't honk the synth while the instrument panel is closed. Next, from the
-ROADMAP backlog:
+Latest: **SQLite track DB + saved cues/loops** landed (`rusqlite` bundled; `db.rs` schema +
+WAL + FK cascade, unit-tested). Hot cues, last loop, grid nudge, gain persist + restore on
+reload; BPM/key cached + shown in library; play count/history recorded. Old localStorage library
+auto-migrates once. Builds clean (cargo check/clippy/test, tsc, vite) but **not yet runtime-tested
+in the app** — when resuming, do a quick manual pass: add tracks, set cues/a loop, reload the
+track, confirm they come back; check the DB at `%APPDATA%/<bundle-id>/compas.db`.
 
-1. **SQLite track DB + saved cues/loops** — persist cues, loops, beatgrids, gain, history across
-   sessions. Foundation for real library management (`rusqlite`/`sqlx-sqlite`).
-2. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
-   cue bus). Biggest "real DJ" gap.
-3. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
+Before MIDI-learn, also still **not hardware-tested**: when the MPK Mini MK3 is on hand, connect
+in the MIDI-mapping panel (sliders icon), LEARN a knob/pad, confirm it drives the bound control
+and pads don't honk the synth while the instrument panel is closed.
+
+Next, from the ROADMAP backlog:
+
+1. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
+   cue bus). Biggest "real DJ" gap; the mixer's headphone button is already stubbed.
+2. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
    runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
    ethos cleanly — discuss before starting.
-4. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
+3. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
    harmonic-mixing assist (we already detect Camelot key).
-5. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
+4. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
    `vergen` version string in the status bar.
 
 **Optional polish (tune by ear):** scratch release-inertia + platter mapping; FX curves
@@ -65,8 +69,11 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering; **manual
   beatgrid-anchor nudge**. **RT-load + xrun meter** in the title bar.
-- **Local library** (add files → persisted; search; load A/B / double-click; remove) + load
-  progress feedback.
+- **Local library + SQLite track DB** (`rusqlite` bundled; `db.rs`) — library persists in
+  `compas.db` (app-data dir); add/search/load A·B/double-click/remove. Per-track state written
+  through and restored on reload: hot cues, last loop, manual grid nudge, gain trim. Analysis
+  (BPM/key) cached on load + shown in the list; play count + history recorded on first play;
+  one-time migration from the old localStorage library. Unit-tested round-trips + FK cascade.
 - Full performance UI (frameless window + traffic-light controls), brand mark + icons.
 
 **P2a — Spotify (built, then parked):** Authorization Code + PKCE auth + catalog search exist in

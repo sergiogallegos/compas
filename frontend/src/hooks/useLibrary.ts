@@ -1,54 +1,79 @@
-import { useCallback, useState } from "react";
-import { pickAudioFiles, probeTrack, type ProbedTrack } from "../lib/ipc";
+import { useCallback, useEffect, useState } from "react";
+import {
+  dbAddTrack,
+  dbListTracks,
+  dbRemoveTrack,
+  inTauri,
+  pickAudioFiles,
+  type DbTrack,
+} from "../lib/ipc";
 
-const KEY = "compas_library";
+const LEGACY_KEY = "compas_library";
 
-function load(): ProbedTrack[] {
+/** One-time import of the old localStorage library into the SQLite DB, then drop the key. */
+async function migrateLegacy(): Promise<void> {
+  let paths: string[] = [];
   try {
-    return JSON.parse(localStorage.getItem(KEY) ?? "[]") as ProbedTrack[];
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as { path?: string }[];
+    paths = parsed.map((t) => t.path).filter((p): p is string => typeof p === "string");
   } catch {
-    return [];
+    localStorage.removeItem(LEGACY_KEY);
+    return;
   }
+  for (const p of paths) {
+    try {
+      await dbAddTrack(p);
+    } catch {
+      /* skip files that no longer probe */
+    }
+  }
+  localStorage.removeItem(LEGACY_KEY);
 }
 
-/** Local track library, persisted in localStorage. Tracks are probed (cheap header
- *  read) on add; full BPM/key analysis happens when a track is loaded onto a deck. */
+/** Local track library, persisted in SQLite. Tracks are probed (cheap header read) on add;
+ *  full BPM/key analysis is cached when a track is loaded onto a deck. */
 export function useLibrary() {
-  const [tracks, setTracks] = useState<ProbedTrack[]>(load);
+  const [tracks, setTracks] = useState<DbTrack[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const persist = useCallback((next: ProbedTrack[]) => {
-    localStorage.setItem(KEY, JSON.stringify(next));
-    setTracks(next);
+  const refresh = useCallback(() => {
+    if (!inTauri()) return;
+    dbListTracks().then(setTracks).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!inTauri()) return;
+    migrateLegacy().finally(refresh);
+  }, [refresh]);
 
   const add = useCallback(async () => {
     const paths = await pickAudioFiles();
     if (paths.length === 0) return;
     setBusy(true);
     try {
-      const existing = new Set(tracks.map((t) => t.path));
-      const probed: ProbedTrack[] = [];
       for (const p of paths) {
-        if (existing.has(p)) continue;
         try {
-          probed.push(await probeTrack(p));
+          await dbAddTrack(p);
         } catch {
           /* skip files that fail to probe */
         }
       }
-      if (probed.length > 0) persist([...tracks, ...probed]);
+      refresh();
     } finally {
       setBusy(false);
     }
-  }, [tracks, persist]);
+  }, [refresh]);
 
   const remove = useCallback(
-    (path: string) => persist(tracks.filter((t) => t.path !== path)),
-    [tracks, persist],
+    (path: string) => {
+      dbRemoveTrack(path)
+        .then(refresh)
+        .catch(() => {});
+    },
+    [refresh],
   );
 
-  const clear = useCallback(() => persist([]), [persist]);
-
-  return { tracks, add, remove, clear, busy };
+  return { tracks, add, remove, busy, refresh };
 }

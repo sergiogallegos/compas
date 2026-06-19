@@ -290,6 +290,7 @@ button.src-row:hover { background: rgba(255, 255, 255, 0.04); }
 .tl-tag { font-family: var(--font-display); font-weight: 700; }
 .tl-title { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-artist { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tl-meta { color: var(--text-tertiary); font-size: 10px; }
 .tl-src { font-size: 9px; font-weight: 600; letter-spacing: 0.08em; color: var(--status-ok); }
 
 /* ===== status bar ===== */

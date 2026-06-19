@@ -99,6 +99,77 @@ export interface ProbedTrack {
 /** Cheap header probe for adding a file to the library (no full decode). */
 export const probeTrack = (path: string) => invoke<ProbedTrack>("probe_track", { path });
 
+// ---- Library + per-track state (SQLite) -------------------------------------------
+
+/** A library track row, including cached analysis + persisted gain/grid/play stats. */
+export interface DbTrack {
+  path: string;
+  title: string;
+  artist: string;
+  duration_ms: number;
+  bpm: number | null;
+  key_camelot: string | null;
+  key_name: string | null;
+  grid_offset_sec: number;
+  gain: number;
+  play_count: number;
+  last_played_at: number | null;
+}
+export interface DbCue {
+  slot: number;
+  frame: number;
+}
+export interface DbLoop {
+  slot: number;
+  in_frame: number;
+  out_frame: number;
+  beats: number | null;
+}
+/** Saved per-track performance state, restored when a track is reloaded onto a deck. */
+export interface DbTrackState {
+  grid_offset_sec: number;
+  gain: number;
+  cues: DbCue[];
+  loops: DbLoop[];
+}
+export interface DbHistory {
+  track_path: string;
+  title: string;
+  artist: string;
+  played_at: number;
+}
+
+export const dbListTracks = () => invoke<DbTrack[]>("db_list_tracks");
+export const dbAddTrack = (path: string) => invoke<DbTrack>("db_add_track", { path });
+export const dbRemoveTrack = (path: string) => invoke("db_remove_track", { path });
+export const dbTrackState = (path: string) => invoke<DbTrackState>("db_track_state", { path });
+export const dbSetCue = (path: string, slot: number, frame: number) =>
+  invoke("db_set_cue", { path, slot, frame });
+export const dbClearCue = (path: string, slot: number) => invoke("db_clear_cue", { path, slot });
+export const dbSetLoop = (
+  path: string,
+  slot: number,
+  inFrame: number,
+  outFrame: number,
+  beats: number | null,
+) => invoke("db_set_loop", { path, slot, inFrame, outFrame, beats });
+export const dbClearLoop = (path: string, slot: number) => invoke("db_clear_loop", { path, slot });
+export const dbSetGridOffset = (path: string, sec: number) =>
+  invoke("db_set_grid_offset", { path, sec });
+export const dbSetGain = (path: string, gain: number) => invoke("db_set_gain", { path, gain });
+export const dbUpsertAnalysis = (t: DeckLoaded) =>
+  invoke("db_upsert_analysis", {
+    path: t.path,
+    bpm: t.bpm,
+    bpmConfidence: t.bpm_confidence,
+    firstBeatSec: t.first_beat_sec,
+    beatIntervalSec: t.beat_interval_sec,
+    keyCamelot: t.key_camelot,
+    keyName: t.key_name,
+  });
+export const dbRecordPlay = (path: string) => invoke("db_record_play", { path });
+export const dbHistory = (limit: number) => invoke<DbHistory[]>("db_history", { limit });
+
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });
 export const deckPause = (deck: number) => invoke("deck_pause", { deck });
