@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    Biquad, BiquadCoeffs, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth, ThreeBandEq,
-    TimeStretch, Waveform,
+    Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth,
+    ThreeBandEq, TimeStretch, Waveform,
 };
 use rtrb::Producer;
 
@@ -109,6 +109,14 @@ pub enum AudioCommand {
         rate_hz: f32,
         depth: f32,
         feedback: f32,
+        mix: f32,
+    },
+    /// Configure the per-deck bitcrusher insert. Engaging it (false→true) resets the hold.
+    SetDeckCrusher {
+        deck: usize,
+        active: bool,
+        bits: f32,
+        downsample: u32,
         mix: f32,
     },
     SetDeckPlaying {
@@ -375,6 +383,9 @@ struct DeckPlayer {
     /// Flanger insert (post-reverb). Pre-allocated; toggling flips `flanger_active`.
     flanger: Flanger,
     flanger_active: bool,
+    /// Bitcrusher insert (post-flanger). Toggling flips `crusher_active`.
+    crusher: Bitcrusher,
+    crusher_active: bool,
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
@@ -420,6 +431,8 @@ impl DeckPlayer {
             reverb_active: false,
             flanger: Flanger::new(device_rate),
             flanger_active: false,
+            crusher: Bitcrusher::new(),
+            crusher_active: false,
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -519,6 +532,11 @@ impl DeckPlayer {
             let (fl, fr) = self.flanger.process(l, r);
             l = fl;
             r = fr;
+        }
+        if self.crusher_active {
+            let (cl, cr) = self.crusher.process(l, r);
+            l = cl;
+            r = cr;
         }
         (l * g, r * g)
     }
@@ -787,6 +805,23 @@ impl Mixer {
                         d.flanger_active = active;
                     }
                 }
+                AudioCommand::SetDeckCrusher {
+                    deck,
+                    active,
+                    bits,
+                    downsample,
+                    mix,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.crusher.set_bits(bits);
+                        d.crusher.set_downsample(downsample);
+                        d.crusher.set_mix(mix);
+                        if active && !d.crusher_active {
+                            d.crusher.clear();
+                        }
+                        d.crusher_active = active;
+                    }
+                }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = playing;
@@ -846,6 +881,8 @@ impl Mixer {
                         d.reverb.clear();
                         d.flanger_active = false;
                         d.flanger.clear();
+                        d.crusher_active = false;
+                        d.crusher.clear();
                         d.loop_active = false;
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
@@ -980,6 +1017,8 @@ impl Mixer {
                         d.reverb.clear();
                         d.flanger_active = false;
                         d.flanger.clear();
+                        d.crusher_active = false;
+                        d.crusher.clear();
                         d.playhead = 0.0;
                         d.loop_active = false;
                         d.sync_master = None;

@@ -393,6 +393,14 @@ export function Deck({
                 >
                   FLANGE
                 </button>
+                <button
+                  className={`chip ${state.crusher.active ? "chip--on" : ""}`}
+                  onClick={actions.toggleCrusher}
+                  disabled={!meta}
+                  title="Bitcrusher (bit-depth + sample-rate reduction)"
+                >
+                  CRUSH
+                </button>
               </div>
               {state.echo.active && (
                 <div className="fx-detail">
@@ -433,6 +441,13 @@ export function Deck({
                     ))}
                   </div>
                   <Knob value={state.flanger.depth} min={0} max={1} onChange={actions.setFlangerDepth} label="DEPTH" color={color} size={34} />
+                </div>
+              )}
+              {state.crusher.active && (
+                <div className="fx-detail">
+                  <span className="overline fx-label">CRUSH</span>
+                  <Knob value={state.crusher.crush} min={0} max={1} onChange={actions.setCrusherCrush} label="BITS" color={color} size={34} />
+                  <Knob value={state.crusher.down} min={0} max={1} onChange={actions.setCrusherDown} label="RATE" color={color} size={34} />
                 </div>
               )}
             </>

@@ -1,15 +1,19 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (flanger FX). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (bitcrusher FX). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **Flanger FX (beat-synced)** — a per-deck **FLANGE** chip in the FX rack: stereo
-LFO-swept comb (`compas-dsp::Flanger`, quadrature L/R), beat-synced rate (1/2/4/8-beat chips) +
-DEPTH knob, inserted after reverb. `set_deck_flanger`. Builds clean (check/clippy/test — 2 flanger
-DSP tests, tsc, vite); ran the app — engine clean @48kHz + the FLANGE chip renders. **Ears check
-pending:** load a track, enable FLANGE, hear the sweep; change the beat chips / DEPTH.
+Latest: **Bitcrusher FX** — a per-deck **CRUSH** chip in the FX rack: bit-depth + sample-rate
+reduction (`compas-dsp::Bitcrusher`), BITS + RATE knobs, inserted after the flanger.
+`set_deck_crusher`. The deck FX row is now ECHO · REVERB · FLANGE · CRUSH (renders cleanly).
+Builds clean (check/clippy/test — 3 crusher DSP tests, tsc, vite); ran the app — engine clean
+@48kHz + the CRUSH chip renders. **Ears check pending:** enable CRUSH on a playing track, sweep
+BITS/RATE → grittier.
+
+Prior: **Flanger FX (beat-synced)** — FLANGE chip: `compas-dsp::Flanger` (quadrature L/R), 1/2/4/8
+-beat rate chips + DEPTH, after reverb. Ears check: enable FLANGE, hear the sweep.
 
 Prior: **MIDI-mapped sampler pads + headphone CUE** — MIDI-learn registry exposes the 8 sampler
 pads (a "Sampler" group) + per-deck PFL Headphone CUE; MPK MK3 starter profile maps its 8 pads →
@@ -100,6 +104,9 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
 - **FX rack — flanger** — beat-synced stereo `compas-dsp::Flanger` (LFO-swept comb, quadrature
   L/R, feedback), per-deck insert after reverb; UI: FLANGE toggle + 1/2/4/8-beat rate chips +
   DEPTH. `SetDeckFlanger`/`set_deck_flanger`. Unit-tested.
+- **FX rack — bitcrusher** — `compas-dsp::Bitcrusher` (bit-depth quantise + sample-and-hold
+  rate reduction, no allocation), per-deck insert after flanger; UI: CRUSH toggle + BITS/RATE
+  knobs. `SetDeckCrusher`/`set_deck_crusher`. Unit-tested.
 - **Master recording** — record the master mix to a 32-bit-float stereo WAV (audio-thread tap →
   lock-free ring → writer thread; `start_recording`/`stop_recording`), title-bar REC toggle.
 - **Headphone / cue monitoring (PFL)** — per-channel CUE buttons + a phones bar (device picker,

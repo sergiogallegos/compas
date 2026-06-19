@@ -20,6 +20,7 @@ import {
   setDeckEcho,
   setDeckReverb,
   setDeckFlanger,
+  setDeckCrusher,
   setDeckEq,
   setDeckFilter,
   setDeckGain,
@@ -84,6 +85,14 @@ export interface FlangerState {
   depth: number;
 }
 
+export interface CrusherState {
+  active: boolean;
+  /** Crush amount 0..1 (0 = clean ~16-bit, 1 = ~2-bit). */
+  crush: number;
+  /** Sample-rate reduction 0..1 (0 = off, 1 = heavy decimation). */
+  down: number;
+}
+
 /** Fallback echo time (seconds) for one beat when a track has no beatgrid. */
 const NO_GRID_BEAT_SEC = 0.5;
 
@@ -111,6 +120,7 @@ export interface DeckState {
   echo: EchoState;
   reverb: ReverbState;
   flanger: FlangerState;
+  crusher: CrusherState;
   error: string | null;
   /** True between clicking load and the track being decoded/analyzed. */
   loading: boolean;
@@ -144,6 +154,7 @@ export function useDeck(deck: number, dsp = true) {
   const [echo, setEchoState] = useState<EchoState>({ active: false, beats: 0.5, depth: 0.5 });
   const [reverb, setReverbState] = useState<ReverbState>({ active: false, size: 0.6, mix: 0.3 });
   const [flanger, setFlangerState] = useState<FlangerState>({ active: false, beats: 4, depth: 0.6 });
+  const [crusher, setCrusherState] = useState<CrusherState>({ active: false, crush: 0.5, down: 0.3 });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const frameRef = useRef(0);
@@ -161,6 +172,8 @@ export function useDeck(deck: number, dsp = true) {
   reverbRef.current = reverb;
   const flangerRef = useRef(flanger);
   flangerRef.current = flanger;
+  const crusherRef = useRef(crusher);
+  crusherRef.current = crusher;
   // Path of the loaded track + a once-per-load guard for recording a play.
   const pathRef = useRef<string | null>(null);
   const playedRef = useRef(false);
@@ -197,6 +210,7 @@ export function useDeck(deck: number, dsp = true) {
         setEchoState((e) => ({ ...e, active: false }));
         setReverbState((r) => ({ ...r, active: false }));
         setFlangerState((f) => ({ ...f, active: false }));
+        setCrusherState((c) => ({ ...c, active: false }));
         setError(null);
         setLoading(false);
         pathRef.current = e.path;
@@ -297,6 +311,12 @@ export function useDeck(deck: number, dsp = true) {
       const feedback = 0.35 + f.depth * 0.5; // 0.35..0.85
       const mix = f.active ? 0.5 : 0; // classic 50/50 flange
       setDeckFlanger(deck, f.active, rateHz, f.depth, feedback, mix).catch(swallow);
+    };
+    // Bitcrusher: crush 0..1 → 16..2 bits; down 0..1 → 1..32× sample-and-hold. Full wet.
+    const pushCrusher = (c: CrusherState) => {
+      const bits = Math.round(16 - c.crush * 14);
+      const downsample = 1 + Math.round(c.down * 31);
+      setDeckCrusher(deck, c.active, bits, downsample, c.active ? 1 : 0).catch(swallow);
     };
     // Current beatgrid in source frames (interval + first-beat offset incl. manual nudge), or
     // null when the track has no grid. Read live so a grid nudge takes effect immediately.
@@ -524,10 +544,25 @@ export function useDeck(deck: number, dsp = true) {
         setFlangerState(next);
         if (next.active) pushFlanger(next);
       },
+      toggleCrusher: () => {
+        const next = { ...crusherRef.current, active: !crusherRef.current.active };
+        setCrusherState(next);
+        pushCrusher(next);
+      },
+      setCrusherCrush: (crush: number) => {
+        const next = { ...crusherRef.current, crush };
+        setCrusherState(next);
+        if (next.active) pushCrusher(next);
+      },
+      setCrusherDown: (down: number) => {
+        const next = { ...crusherRef.current, down };
+        setCrusherState(next);
+        if (next.active) pushCrusher(next);
+      },
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
   return { state, actions, deck };
 }
 

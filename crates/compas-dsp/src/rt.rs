@@ -484,6 +484,91 @@ impl Flanger {
     }
 }
 
+/// Bitcrusher — lo-fi "crunch" from two classic digital degradations: **bit-depth reduction**
+/// (quantising each sample to a coarse set of levels) and **sample-rate reduction** (a
+/// sample-and-hold that repeats each captured sample for several output frames). No buffer is
+/// needed, so nothing allocates; [`process`](Self::process) is RT-SAFE.
+pub struct Bitcrusher {
+    /// Effective bit depth (1 = brutal, 16 ≈ transparent). May be fractional.
+    bits: f32,
+    /// Hold each captured sample for this many output frames (1 = no rate reduction).
+    downsample: u32,
+    mix: f32,
+    counter: u32,
+    hold_l: f32,
+    hold_r: f32,
+}
+
+impl Bitcrusher {
+    pub fn new() -> Self {
+        Bitcrusher {
+            bits: 8.0,
+            downsample: 1,
+            mix: 1.0,
+            counter: 0,
+            hold_l: 0.0,
+            hold_r: 0.0,
+        }
+    }
+
+    /// Bit depth 1..16. RT-SAFE.
+    #[inline]
+    pub fn set_bits(&mut self, bits: f32) {
+        self.bits = bits.clamp(1.0, 16.0);
+    }
+
+    /// Sample-and-hold factor 1..64 (1 = off). RT-SAFE.
+    #[inline]
+    pub fn set_downsample(&mut self, d: u32) {
+        self.downsample = d.clamp(1, 64);
+    }
+
+    /// Wet mix 0..1. RT-SAFE.
+    #[inline]
+    pub fn set_mix(&mut self, mix: f32) {
+        self.mix = mix.clamp(0.0, 1.0);
+    }
+
+    /// Reset the sample-and-hold state. Call on (re)engage.
+    pub fn clear(&mut self) {
+        self.counter = 0;
+        self.hold_l = 0.0;
+        self.hold_r = 0.0;
+    }
+
+    /// Quantise `x` (in roughly [-1, 1]) to `2^bits` levels.
+    #[inline]
+    fn quantize(x: f32, bits: f32) -> f32 {
+        let half = 0.5 * (2.0f32).powf(bits); // half the level count
+        if half < 0.5 {
+            return 0.0;
+        }
+        (x * half).round() / half
+    }
+
+    /// Process one stereo frame. RT-SAFE.
+    #[inline]
+    pub fn process(&mut self, in_l: f32, in_r: f32) -> (f32, f32) {
+        // Capture + quantise a fresh sample only every `downsample` frames; hold otherwise.
+        if self.counter == 0 {
+            self.hold_l = Self::quantize(in_l, self.bits);
+            self.hold_r = Self::quantize(in_r, self.bits);
+        }
+        self.counter += 1;
+        if self.counter >= self.downsample {
+            self.counter = 0;
+        }
+        let dry = 1.0 - self.mix;
+        (in_l * dry + self.hold_l * self.mix, in_r * dry + self.hold_r * self.mix)
+    }
+}
+
+impl Default for Bitcrusher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ---------------------------------------------------------------------------------
 // Reverb (Schroeder/Moorer-style: parallel damped combs → series allpass diffusers)
 // ---------------------------------------------------------------------------------
@@ -1186,6 +1271,45 @@ mod tests {
             max = max.max(l);
         }
         assert!(max - min > 0.05, "flanger output should sweep (range {})", max - min);
+    }
+
+    #[test]
+    fn bitcrusher_dry_is_transparent() {
+        let mut c = Bitcrusher::new();
+        c.set_mix(0.0);
+        c.set_bits(1.0);
+        c.set_downsample(8);
+        for x in [0.37, -0.62, 0.11] {
+            let (l, r) = c.process(x, x);
+            assert!((l - x).abs() < 1e-6 && (r - x).abs() < 1e-6, "not dry: {l}");
+        }
+    }
+
+    #[test]
+    fn bitcrusher_low_bits_quantizes() {
+        let mut c = Bitcrusher::new();
+        c.set_mix(1.0);
+        c.set_bits(1.0); // levels = 2 → snap to {-1, 0, 1}
+        c.set_downsample(1);
+        assert_eq!(c.process(0.3, 0.3).0, 0.0, "0.3 should crush to 0 at 1 bit");
+        assert_eq!(c.process(0.8, 0.8).0, 1.0, "0.8 should crush to 1 at 1 bit");
+    }
+
+    #[test]
+    fn bitcrusher_downsample_holds_samples() {
+        let mut c = Bitcrusher::new();
+        c.set_mix(1.0);
+        c.set_bits(16.0); // ~transparent quantisation
+        c.set_downsample(4);
+        c.clear();
+        // First frame captures 1.0; the next three hold it regardless of new input.
+        let first = c.process(1.0, 1.0).0;
+        assert!((first - 1.0).abs() < 1e-3);
+        for _ in 0..3 {
+            assert!((c.process(0.0, 0.0).0 - 1.0).abs() < 1e-3, "should hold the captured 1.0");
+        }
+        // 5th frame captures fresh input again.
+        assert!(c.process(-0.5, -0.5).0 < 0.0, "hold window elapsed → new sample");
     }
 
     #[test]

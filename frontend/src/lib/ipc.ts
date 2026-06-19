@@ -229,6 +229,14 @@ export const setDeckFlanger = (
   feedback: number,
   mix: number,
 ) => invoke("set_deck_flanger", { deck, active, rateHz, depth, feedback, mix });
+/** Bitcrusher insert. `bits` 1..16 quantisation, `downsample` 1..64 sample-and-hold, wet `mix`. */
+export const setDeckCrusher = (
+  deck: number,
+  active: boolean,
+  bits: number,
+  downsample: number,
+  mix: number,
+) => invoke("set_deck_crusher", { deck, active, bits, downsample, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 

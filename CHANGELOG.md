@@ -11,6 +11,10 @@ All notable changes to compas are documented here. Format follows
   loaded-as tag recognises all four.
 
 ### Added
+- **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
+  (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
+  with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted
+  after the flanger in the per-deck chain; `set_deck_crusher`. Unit-tested.
 - **Flanger FX (beat-synced):** a new per-deck **FLANGE** insert in the deck FX rack — a stereo
   LFO-swept comb (quadrature L/R for width) with feedback. The sweep rate is **beat-synced**
   (1/2/4/8-beat period chips) and a **DEPTH** knob sets sweep width + resonance. RT-safe

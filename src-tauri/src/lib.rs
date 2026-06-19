@@ -74,6 +74,13 @@ enum EngineMsg {
         feedback: f32,
         mix: f32,
     },
+    DeckCrusher {
+        deck: usize,
+        active: bool,
+        bits: f32,
+        downsample: u32,
+        mix: f32,
+    },
     DeckPlaying {
         deck: usize,
         playing: bool,
@@ -293,6 +300,19 @@ fn spawn_engine() -> EngineHandle {
                         rate_hz,
                         depth,
                         feedback,
+                        mix,
+                    },
+                    EngineMsg::DeckCrusher {
+                        deck,
+                        active,
+                        bits,
+                        downsample,
+                        mix,
+                    } => AudioCommand::SetDeckCrusher {
+                        deck,
+                        active,
+                        bits,
+                        downsample,
                         mix,
                     },
                     EngineMsg::DeckPlaying { deck, playing } => {
@@ -952,6 +972,26 @@ fn set_deck_flanger(
     })
 }
 
+/// Configure the per-deck bitcrusher insert. `bits` (1..16) sets quantisation, `downsample`
+/// (1..64) the sample-and-hold factor, plus wet `mix`.
+#[tauri::command]
+fn set_deck_crusher(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+    bits: f32,
+    downsample: u32,
+    mix: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckCrusher {
+        deck,
+        active,
+        bits,
+        downsample,
+        mix,
+    })
+}
+
 #[tauri::command]
 fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetCrossfader(value))
@@ -1504,6 +1544,7 @@ pub fn run() {
             set_deck_echo,
             set_deck_reverb,
             set_deck_flanger,
+            set_deck_crusher,
             set_crossfader,
             set_master_gain,
             start_recording,
