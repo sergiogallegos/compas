@@ -47,7 +47,8 @@ export function saveBindings(b: MidiBindings): void {
 /**
  * Starter profile for the Akai MPK Mini MK3 (factory Program 1): the 8 knobs send CC 70–77
  * and the 8 pads (Bank A) send notes 36–43. These are the commonly-documented defaults — if a
- * unit differs, re-learn any control to rebind it. Two-deck focus (decks A & B).
+ * unit differs, re-learn any control to rebind it. Knobs drive the two-deck mixer (EQ/filter);
+ * the pads finger-drum the sampler — the natural split for an MPK.
  */
 export function mpkMiniMk3Profile(): MidiBindings {
   return {
@@ -60,14 +61,14 @@ export function mpkMiniMk3Profile(): MidiBindings {
     [ccKey(75)]: deckTarget(1, "mid"),
     [ccKey(76)]: deckTarget(1, "low"),
     [ccKey(77)]: deckTarget(1, "filter"),
-    // Pads 1–8 → transport + first hot cues for both decks.
-    [noteKey(36)]: deckTarget(0, "play"),
-    [noteKey(37)]: deckTarget(0, "cue"),
-    [noteKey(38)]: deckTarget(0, "hotcue1"),
-    [noteKey(39)]: deckTarget(0, "hotcue2"),
-    [noteKey(40)]: deckTarget(1, "play"),
-    [noteKey(41)]: deckTarget(1, "cue"),
-    [noteKey(42)]: deckTarget(1, "hotcue1"),
-    [noteKey(43)]: deckTarget(1, "hotcue2"),
+    // Pads 1–8 → sampler pads 1–8.
+    [noteKey(36)]: "sampler:pad:0",
+    [noteKey(37)]: "sampler:pad:1",
+    [noteKey(38)]: "sampler:pad:2",
+    [noteKey(39)]: "sampler:pad:3",
+    [noteKey(40)]: "sampler:pad:4",
+    [noteKey(41)]: "sampler:pad:5",
+    [noteKey(42)]: "sampler:pad:6",
+    [noteKey(43)]: "sampler:pad:7",
   };
 }

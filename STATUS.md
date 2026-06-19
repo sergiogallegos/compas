@@ -5,12 +5,16 @@
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **Sampler / performance pads** — 8 pads (pads icon, title bar): click empty → load a
-file, press → fire (one-shots overlap), per-pad ⟳ loop toggle, global LEVEL. RT-safe
-`compas-audio::sampler` (16-voice pool) on the master bus, recordable. Builds clean
-(check/clippy/test — 4 sampler tests, tsc, vite); runtime-checked the app launches clean with the
-sampler in the mixer + the pads toggle renders. **Ears check pending:** open the panel, load a
-short WAV onto a pad, press it → hear it; toggle ⟳ → press loops/stops; LEVEL sets volume.
+Latest: **MIDI-mapped sampler pads + headphone CUE** — the MIDI-learn registry now exposes the 8
+sampler pads (a "Sampler" group) + a per-deck PFL **Headphone CUE** toggle; the MPK Mini MK3
+starter profile maps its 8 pads → the 8 sampler pads. Frontend-only (`useMidiMap`/`midiMap.ts`/
+`App.tsx`); builds clean (tsc, vite). **Test (needs MK3):** load the MK3 profile (or LEARN), hit a
+pad → fires the matching sampler pad.
+
+Prior: **Sampler / performance pads** — 8 pads (pads icon, title bar): click empty → load a file,
+press → fire (one-shots overlap), per-pad ⟳ loop toggle, global LEVEL. RT-safe
+`compas-audio::sampler` (16-voice pool) on the master bus, recordable. **Ears check pending:**
+open the panel, load a short WAV onto a pad, press → hear it; ⟳ → press loops/stops.
 
 **Runtime verification done earlier** (2026-06-19, real `tauri dev`; window captured via
 PrintWindow, DB queried live). **PASS** for everything observable without ears:

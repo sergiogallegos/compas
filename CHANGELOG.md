@@ -11,6 +11,10 @@ All notable changes to compas are documented here. Format follows
   loaded-as tag recognises all four.
 
 ### Added
+- **MIDI-mappable sampler pads + headphone CUE:** the MIDI-learn target list now includes the
+  8 **sampler pads** (a "Sampler" group) and a per-deck **headphone CUE (PFL)** toggle — so a
+  controller's drum pads fire samples and a button can pre-listen a deck. The Akai MPK Mini MK3
+  starter profile now maps its 8 pads to the 8 sampler pads (knobs stay on the mixer EQ/filter).
 - **Sampler / performance pads:** an 8-pad sampler (pads icon in the title bar). Click an empty
   pad to load a short audio file; press a loaded pad to fire it — one-shots overlap
   (polyphonic), and a per-pad ⟳ makes it a loop that toggles play/stop on press. A global LEVEL

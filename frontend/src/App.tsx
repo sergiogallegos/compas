@@ -86,7 +86,12 @@ export function App() {
     if (i === leftSel) toggleSync(leftDeck, rightDeck);
     else if (i === rightSel) toggleSync(rightDeck, leftDeck);
   };
-  const midiMap = useMidiMap(decks, { crossfader: applyCrossfade, syncDeck: syncDeckByIndex });
+  const midiMap = useMidiMap(decks, {
+    crossfader: applyCrossfade,
+    syncDeck: syncDeckByIndex,
+    deckCue: cue.toggleDeckCue,
+    samplerPad: sampler.trigger,
+  });
 
   const slotLane = (d: DeckController) => ({
     state: d.state,

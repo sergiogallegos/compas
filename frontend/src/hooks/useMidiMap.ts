@@ -28,12 +28,18 @@ export interface MidiTarget {
 }
 
 const DECK_LETTERS = ["A", "B", "C", "D"];
+/** Sampler pad count exposed as mapping targets (matches `compas-audio` NUM_SAMPLER_PADS). */
+const SAMPLER_PADS = 8;
 
 /** App-level handlers the per-deck registry can't express on its own. */
 export interface MidiMapExtras {
   crossfader: (v: number) => void;
   /** Toggle continuous beat-sync for a deck against its on-screen partner. */
   syncDeck: (deck: number) => void;
+  /** Toggle headphone pre-fader-listen for a deck. */
+  deckCue: (deck: number) => void;
+  /** Fire a sampler pad (0-based). */
+  samplerPad: (pad: number) => void;
 }
 
 function buildTargets(decks: DeckController[], extra: MidiMapExtras): MidiTarget[] {
@@ -55,6 +61,7 @@ function buildTargets(decks: DeckController[], extra: MidiMapExtras): MidiTarget
 
     trig("play", "Play / Pause", () => a.togglePlay());
     trig("cue", "Cue (to start)", () => a.cue());
+    trig("pfl", "Headphone CUE", () => extra.deckCue(i));
     trig("sync", "Sync", () => extra.syncDeck(i));
     trig("keylock", "Key-lock", () => a.toggleKeylock());
     for (let c = 0; c < 4; c++) trig(`hotcue${c + 1}`, `Hot cue ${c + 1}`, () => a.setHotCue(c));
@@ -63,6 +70,16 @@ function buildTargets(decks: DeckController[], extra: MidiMapExtras): MidiTarget
     trig("echo", "Echo", () => a.toggleEcho());
     trig("reverb", "Reverb", () => a.toggleReverb());
   });
+  // Sampler pads — trigger one per pad (great for a controller's drum pads).
+  for (let p = 0; p < SAMPLER_PADS; p++) {
+    out.push({
+      id: `sampler:pad:${p}`,
+      label: `Pad ${p + 1}`,
+      group: "Sampler",
+      kind: "trigger",
+      apply: () => extra.samplerPad(p),
+    });
+  }
   out.push({
     id: GLOBAL_XFADER,
     label: "Crossfader",
