@@ -6,6 +6,16 @@ All notable changes to compas are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **MIDI-learn / control mapping:** bind any controller knob, fader, or pad to a deck or mixer
+  control. Open the **MIDI mapping** panel (sliders icon in the title bar), click **LEARN** on a
+  target, then move the control — the binding is captured and persisted (localStorage). Continuous
+  sources (CCs) scale onto each target's range; pads/notes (and knobs past half-travel) fire
+  triggers on the rising edge. Targets cover all four decks (gain, 3-band EQ, filter, tempo,
+  play/cue/sync/key-lock, hot cues 1–4, 4/8/16 loops + loop-off, echo, reverb) plus the
+  crossfader. Ships a one-click **Akai MPK Mini MK3** starter profile (knobs CC 70–77, pads
+  notes 36–43; re-learn to match a specific unit). Engine now emits `midi:note` alongside
+  `midi:cc`, and a `set_midi_synth` flag gates note→synth routing so a controller can drive deck
+  controls without honking the synth (the instrument panel owns the synth path while open).
 - **Local dual-deck engine (Phase 1):** in-RAM decode (symphonia), cubic-interpolated
   fractional play-head (instant seek + varispeed), per-deck 3-band EQ, HPF/LPF filter, gain,
   equal-power crossfader, master, lock-free audio thread with reclaim ring.

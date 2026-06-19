@@ -1,27 +1,27 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19. See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (MIDI-learn landed). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Big push this session: key-lock, continuous tempo+phase **SYNC**, **auto-mix**, master
-**recording**, RT-load meter, manual grid nudge, **synth instrument + MIDI input**, **4-deck**,
-centered-platter UI. All user-tested and confirmed working. Next, from the ROADMAP backlog:
+Latest: **MIDI-learn / control mapping** landed (per-target LEARN, persisted bindings, Akai MPK
+Mini MK3 starter profile; `midi:note` + `set_midi_synth` gate). Builds clean (tsc/vite/clippy)
+but **not yet hardware-tested** — when the user next has the MPK Mini MK3 on hand, verify: connect
+in the MIDI-mapping panel (sliders icon, title bar), LEARN a knob/pad, confirm it drives the bound
+control, and that pads don't honk the synth while the instrument panel is closed. Next, from the
+ROADMAP backlog:
 
-1. **MIDI-learn / mapping** (+ Akai MPK Mini MK3 profile) — bind controller knobs/pads/keys to deck
-   controls (EQ/filter/xfader/transport/cues/loops). Builds on the existing MIDI input (`midir`;
-   `midi:cc` already emitted). User has an **Akai MPK Mini MK3** to test with (not always on hand).
-2. **SQLite track DB + saved cues/loops** — persist cues, loops, beatgrids, gain, history across
+1. **SQLite track DB + saved cues/loops** — persist cues, loops, beatgrids, gain, history across
    sessions. Foundation for real library management (`rusqlite`/`sqlx-sqlite`).
-3. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
+2. **Headphone / cue monitoring** — pre-listen the next track on a 2nd output (2nd cpal stream +
    cue bus). Biggest "real DJ" gap.
-4. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
+3. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
    runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
    ethos cleanly — discuss before starting.
-5. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
+4. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
    harmonic-mixing assist (we already detect Camelot key).
-6. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
+5. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
    `vergen` version string in the status bar.
 
 **Optional polish (tune by ear):** scratch release-inertia + platter mapping; FX curves
@@ -40,7 +40,13 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   with bass swap→stop outgoing. Frontend orchestration (`useAutoMix`) over sync/crossfader/EQ.
 - **Synth instrument + MIDI** — polyphonic synth (`Synth`: 4 waveforms, ADSR, 16 voices) on the
   master bus; on-screen keyboard + computer keyboard + MIDI controller input (`midir`; notes →
-  synth, knobs → `midi:cc`). Recordable. MIDI-learn / control mapping is the next step.
+  synth, knobs → `midi:cc`). Recordable.
+- **MIDI-learn / control mapping** — per-target LEARN binds any CC/note to deck + mixer controls
+  (gain/EQ/filter/tempo/play/cue/sync/key-lock/hot-cues/loops/FX + crossfader); bindings persist
+  to localStorage. Frontend mapping layer (`lib/midiMap.ts`, `hooks/useMidi.ts` +
+  `hooks/useMidiMap.ts`, `components/MidiMap.tsx`) over engine `midi:note` events; `set_midi_synth`
+  gates note→synth routing (instrument panel owns it). One-click **Akai MPK Mini MK3** starter
+  profile (knobs CC 70–77, pads notes 36–43 — re-learn to match a specific unit).
 - **4-deck mixing** — A/C + B/D switching slots, 4-channel mixer with per-deck crossfader-assign
   (A/thru/B); engine routes each deck to a crossfader side (`SetDeckXfaderAssign`).
 - **Key-lock (master tempo)** — hand-rolled RT-safe WSOLA stretcher in `compas-dsp` (Hann grains

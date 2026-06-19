@@ -7,8 +7,11 @@ import { Deck } from "./components/Deck";
 import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { Instrument } from "./components/Instrument";
+import { MidiMap } from "./components/MidiMap";
 import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
+import { useMidi } from "./hooks/useMidi";
+import { useMidiMap } from "./hooks/useMidiMap";
 import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
@@ -28,6 +31,8 @@ export function App() {
   const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
   const [showKeys, setShowKeys] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const midi = useMidi();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);
   const [rightSel, setRightSel] = useState(1);
@@ -70,6 +75,13 @@ export function App() {
     target.actions.sync(source.deck);
   };
 
+  // MIDI SYNC binds per deck index; only the two on-screen decks have a defined partner.
+  const syncDeckByIndex = (i: number) => {
+    if (i === leftSel) toggleSync(leftDeck, rightDeck);
+    else if (i === rightSel) toggleSync(rightDeck, leftDeck);
+  };
+  const midiMap = useMidiMap(decks, { crossfader: applyCrossfade, syncDeck: syncDeckByIndex });
+
   const slotLane = (d: DeckController) => ({
     state: d.state,
     letter: DECK_LETTERS[d.deck],
@@ -81,7 +93,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -121,7 +133,8 @@ export function App() {
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} />
-      {showKeys && <Instrument onClose={() => setShowKeys(false)} />}
+      {showKeys && <Instrument midi={midi} onClose={() => setShowKeys(false)} />}
+      {showMap && <MidiMap midi={midi} map={midiMap} onClose={() => setShowMap(false)} />}
     </div>
   );
 }

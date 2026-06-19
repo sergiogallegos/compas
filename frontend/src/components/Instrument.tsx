@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import {
   allNotesOff,
-  midiConnect,
-  midiDisconnect,
-  midiListPorts,
   noteOff,
   noteOn,
   onMidiCc,
+  setMidiSynth,
   setSynthGain,
   setSynthWaveform,
   type MidiCc,
 } from "../lib/ipc";
+import type { MidiApi } from "../hooks/useMidi";
 import { Knob } from "./Knob";
 
 const WAVES = ["SINE", "TRI", "SAW", "SQR"];
@@ -25,14 +24,11 @@ const KEYMAP: Record<string, number> = {
 
 const isBlack = (semitone: number) => BLACK.includes(((semitone % 12) + 12) % 12);
 
-export function Instrument({ onClose }: { onClose: () => void }) {
+export function Instrument({ midi, onClose }: { midi: MidiApi; onClose: () => void }) {
   const [octave, setOctave] = useState(4); // C of this octave is the leftmost key
   const baseNote = octave * 12 + 12; // octave 4 → MIDI 60 (C4)
   const [wave, setWave] = useState(1);
   const [gain, setGain] = useState(0.6);
-  const [ports, setPorts] = useState<string[]>([]);
-  const [portIdx, setPortIdx] = useState(0);
-  const [connected, setConnected] = useState<string | null>(null);
   const [cc, setCc] = useState<MidiCc | null>(null);
   const held = useRef<Set<number>>(new Set());
 
@@ -66,12 +62,14 @@ export function Instrument({ onClose }: { onClose: () => void }) {
     };
   }, [baseNote]);
 
-  // MIDI ports + knob (CC) feedback. Release everything on unmount.
+  // Route incoming MIDI notes to the synth while the instrument is open; show knob (CC)
+  // feedback. Release everything (and stop synth routing) on unmount.
   useEffect(() => {
-    midiListPorts().then(setPorts).catch(() => {});
+    setMidiSynth(true).catch(() => {});
     const un = onMidiCc(setCc);
     return () => {
       un.then((u) => u());
+      setMidiSynth(false).catch(() => {});
       allNotesOff().catch(() => {});
     };
   }, []);
@@ -83,20 +81,6 @@ export function Instrument({ onClose }: { onClose: () => void }) {
   const pickGain = (g: number) => {
     setGain(g);
     setSynthGain(g).catch(() => {});
-  };
-  const toggleMidi = async () => {
-    try {
-      if (connected) {
-        await midiDisconnect();
-        setConnected(null);
-      } else if (ports.length) {
-        setConnected(await midiConnect(portIdx));
-      } else {
-        setPorts(await midiListPorts());
-      }
-    } catch {
-      setConnected(null);
-    }
   };
 
   const semis = Array.from({ length: KEY_COUNT }, (_, i) => i);
@@ -118,11 +102,11 @@ export function Instrument({ onClose }: { onClose: () => void }) {
           <button className="chip" onClick={() => setOctave((o) => Math.min(7, o + 1))}>OCT +</button>
         </div>
         <div className="inst-midi">
-          <select value={portIdx} onChange={(e) => setPortIdx(Number(e.target.value))} disabled={!!connected}>
-            {ports.length ? ports.map((p, i) => <option key={i} value={i}>{p}</option>) : <option>No MIDI devices</option>}
+          <select value={midi.portIdx} onChange={(e) => midi.setPortIdx(Number(e.target.value))} disabled={!!midi.connected}>
+            {midi.ports.length ? midi.ports.map((p, i) => <option key={i} value={i}>{p}</option>) : <option>No MIDI devices</option>}
           </select>
-          <button className={`chip ${connected ? "chip--on" : ""}`} onClick={toggleMidi}>
-            {connected ? "MIDI ✓" : ports.length ? "CONNECT" : "RESCAN"}
+          <button className={`chip ${midi.connected ? "chip--on" : ""}`} onClick={midi.toggle}>
+            {midi.connected ? "MIDI ✓" : midi.ports.length ? "CONNECT" : "RESCAN"}
           </button>
           {cc && <span className="mono inst-cc">CC{cc.controller}:{cc.value}</span>}
         </div>

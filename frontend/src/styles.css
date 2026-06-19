@@ -183,6 +183,25 @@
 .inst-midi select { background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 4px 6px; font-size: 11px; max-width: 200px; }
 .inst-cc { color: var(--text-tertiary); font-size: 10px; }
 .inst-close { margin-left: auto; }
+/* MIDI mapping panel — shares the bottom-sheet look with the instrument */
+.midimap { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--surface-1-bot); border-top: 1px solid var(--border-hairline-strong); box-shadow: 0 -8px 24px rgba(0,0,0,.5); padding: 10px 14px 14px; display: flex; flex-direction: column; gap: 10px; max-height: 60vh; }
+.midimap-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mm-device, .mm-actions { display: flex; align-items: center; gap: 5px; }
+.midimap .chip { flex: none; padding: 4px 8px; font-size: 9px; }
+.mm-device select { background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 4px 6px; font-size: 11px; max-width: 200px; }
+.mm-last { color: var(--text-tertiary); font-size: 10px; min-width: 56px; }
+.mm-actions { margin-left: auto; }
+.mm-close { margin-left: 4px; }
+.midimap-body { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.mm-group { border: 1px solid var(--border-hairline); border-radius: var(--r-pad); padding: 4px 8px; }
+.mm-group-head { cursor: pointer; padding: 3px 0; color: var(--text-secondary); }
+.mm-rows { display: grid; grid-template-columns: repeat(2, minmax(260px, 1fr)); gap: 2px 18px; padding: 4px 0 6px; }
+.mm-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.mm-row--learn { background: rgba(255, 46, 126, 0.08); border-radius: 4px; }
+.mm-label { flex: 1; font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.mm-binding { flex: none; width: 96px; text-align: right; font-size: 10px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-learn { width: 52px; }
+.mm-clear { width: 22px; padding: 4px 0; }
 .piano { position: relative; height: 96px; display: flex; gap: 2px; user-select: none; touch-action: none; }
 .pkey { padding: 0; border: none; cursor: pointer; }
 .pkey-w { flex: 1; background: linear-gradient(180deg, #f4f4f6, #d6d6dc); border: 1px solid #25252c; border-top: none; border-radius: 0 0 5px 5px; }

@@ -96,8 +96,9 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 - ✅ **Jog-wheel scratch** (draggable platter; drag velocity drives the audio-thread read rate).
 - ✅ **MIDI input** (`midir`): connect a controller; notes drive the synth, CC emits `midi:cc`.
 - ✅ **Synth instrument** (polyphonic, master bus, recordable) — on-screen + computer + MIDI keys.
-- ⬜ **MIDI-learn / mapping engine**: bind controller knobs/pads/keys to deck controls (EQ, filter,
-  crossfader, transport, hot cues, loops). Built-in profile for the Akai MPK Mini MK3.
+- ✅ **MIDI-learn / mapping engine**: bind controller knobs/pads/keys to deck controls (EQ, filter,
+  crossfader, transport, sync, key-lock, hot cues, loops, FX). Per-target LEARN + persisted
+  bindings; one-click Akai MPK Mini MK3 starter profile. `midi:note` events + `set_midi_synth` gate.
 - ⬜ Sampled/instrument upgrades (a real piano sample set); scratch latency tuning.
 
 > **Note:** features were pulled forward out of phase order. Beyond P1, what's *actually* shipped
@@ -128,9 +129,9 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ✅ **4-deck layout** — A/C + B/D switching slots, 4-channel mixer, per-deck crossfader assign.
 - ⬜ **Headphone / cue monitoring** — pre-listen the next track on a second output. The biggest
   "real DJ" gap; needs a second cpal output stream + a cue bus in the mixer.
-- 🔶 **MIDI-learn / controller mapping** — MIDI *input* + synth done; still need to bind a
-  controller's knobs/pads/keys to deck controls (EQ/filter/xfader/transport/cues/loops), plus a
-  built-in **Akai MPK Mini MK3** profile.
+- ✅ **MIDI-learn / controller mapping** — per-target LEARN binds any knob/fader/pad to deck +
+  mixer controls (EQ/filter/xfader/transport/sync/key-lock/cues/loops/FX); bindings persist;
+  one-click **Akai MPK Mini MK3** starter profile.
 - ⬜ **Saved cues/loops + a track database (SQLite)** — persist cues, loops, beatgrids, gain,
   play history across sessions. Foundation for real library management.
 - 🔶 **Quantize** — snap hot-cue jumps/loops to the grid (loops already snap).
@@ -157,7 +158,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 
 ### Suggested near-term order (step by step)
 1. ✅ **4-deck layout** — done.
-2. **MIDI-learn / mapping** (+ Akai profile) — makes the controller useful, builds on MIDI input.
+2. ✅ **MIDI-learn / mapping** (+ Akai profile) — done.
 3. **SQLite track DB + saved cues/loops** — foundation for serious library + persistence.
 4. **Headphone/cue monitoring** — the key "real DJ" essential.
 5. **Stem separation** — marquee feature (needs the model decision first).

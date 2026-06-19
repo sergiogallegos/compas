@@ -153,9 +153,13 @@ export const setSynthWaveform = (index: number) => invoke("set_synth_waveform", 
 export const setSynthGain = (gain: number) => invoke("set_synth_gain", { gain });
 /** List connected MIDI input ports (index = position in the returned list). */
 export const midiListPorts = () => invoke<string[]>("midi_list_ports");
-/** Open a MIDI port; returns its name. Its notes drive the synth, knobs emit `midi:cc`. */
+/** Open a MIDI port; returns its name. Notes emit `midi:note` (+ drive the synth when
+ *  enabled), CCs emit `midi:cc`. */
 export const midiConnect = (index: number) => invoke<string>("midi_connect", { index });
 export const midiDisconnect = () => invoke("midi_disconnect");
+/** Whether incoming MIDI notes drive the synth. Off lets a controller map to deck controls
+ *  (via `midi:note`) without honking the synth. */
+export const setMidiSynth = (enabled: boolean) => invoke("set_midi_synth", { enabled });
 
 export interface MidiCc {
   controller: number;
@@ -163,6 +167,14 @@ export interface MidiCc {
 }
 export const onMidiCc = (cb: (e: MidiCc) => void): Promise<UnlistenFn> =>
   listen<MidiCc>("midi:cc", (e) => cb(e.payload));
+
+export interface MidiNote {
+  note: number;
+  velocity: number;
+  on: boolean;
+}
+export const onMidiNote = (cb: (e: MidiNote) => void): Promise<UnlistenFn> =>
+  listen<MidiNote>("midi:note", (e) => cb(e.payload));
 
 // ---- Master recording -------------------------------------------------------------
 

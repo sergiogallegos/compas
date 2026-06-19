@@ -841,13 +841,25 @@ fn finalize_wav(w: BufWriter<File>, data_bytes: u32) -> std::io::Result<()> {
 // Synth instrument + MIDI input
 // ----------------------------------------------------------------------------------
 
-/// Holds the live MIDI input connection (kept alive so its callback keeps firing).
-struct MidiState(Mutex<Option<MidiInputConnection<()>>>);
+/// Holds the live MIDI input connection (kept alive so its callback keeps firing) plus a
+/// shared flag deciding whether incoming notes drive the synth. With it off, a controller's
+/// pads/keys can be mapped to deck controls (via `midi:note`) without honking the synth.
+struct MidiState {
+    conn: Mutex<Option<MidiInputConnection<()>>>,
+    synth: Arc<AtomicBool>,
+}
 
 #[derive(Serialize, Clone)]
 struct MidiCcEvent {
     controller: u8,
     value: u8,
+}
+
+#[derive(Serialize, Clone)]
+struct MidiNoteEvent {
+    note: u8,
+    velocity: u8,
+    on: bool,
 }
 
 #[tauri::command]
@@ -901,6 +913,7 @@ fn midi_connect(
 
     let tx = engine.tx.clone();
     let app_cc = app.clone();
+    let synth = midi.synth.clone();
     let conn = midi_in
         .connect(
             &port,
@@ -909,17 +922,28 @@ fn midi_connect(
                 if message.len() < 2 {
                     return;
                 }
+                // Every note/CC is forwarded to the frontend so the MIDI-mapping layer can
+                // bind any source to a deck control; notes additionally drive the synth when
+                // its routing flag is on (the instrument panel owns that toggle).
                 match message[0] & 0xF0 {
                     0x90 => {
                         let (note, vel) = (message[1], *message.get(2).unwrap_or(&0));
-                        let _ = if vel > 0 {
-                            tx.send(EngineMsg::NoteOn { note, velocity: vel })
-                        } else {
-                            tx.send(EngineMsg::NoteOff { note })
-                        };
+                        let on = vel > 0;
+                        let _ = app_cc.emit("midi:note", MidiNoteEvent { note, velocity: vel, on });
+                        if synth.load(Ordering::Relaxed) {
+                            let _ = if on {
+                                tx.send(EngineMsg::NoteOn { note, velocity: vel })
+                            } else {
+                                tx.send(EngineMsg::NoteOff { note })
+                            };
+                        }
                     }
                     0x80 => {
-                        let _ = tx.send(EngineMsg::NoteOff { note: message[1] });
+                        let note = message[1];
+                        let _ = app_cc.emit("midi:note", MidiNoteEvent { note, velocity: 0, on: false });
+                        if synth.load(Ordering::Relaxed) {
+                            let _ = tx.send(EngineMsg::NoteOff { note });
+                        }
                     }
                     0xB0 => {
                         let _ = app_cc.emit(
@@ -937,9 +961,16 @@ fn midi_connect(
         )
         .map_err(|e| e.to_string())?;
 
-    *midi.0.lock().map_err(|e| e.to_string())? = Some(conn);
+    *midi.conn.lock().map_err(|e| e.to_string())? = Some(conn);
     tracing::info!("MIDI connected: {name}");
     Ok(name)
+}
+
+/// Toggle whether incoming MIDI notes drive the synth. The instrument panel enables this
+/// while it is open; otherwise notes only surface as `midi:note` for control mapping.
+#[tauri::command]
+fn set_midi_synth(midi: State<'_, MidiState>, enabled: bool) {
+    midi.synth.store(enabled, Ordering::Relaxed);
 }
 
 /// Close the MIDI input connection (releases all held notes).
@@ -948,7 +979,7 @@ fn midi_disconnect(
     state: State<'_, EngineHandle>,
     midi: State<'_, MidiState>,
 ) -> Result<(), String> {
-    if let Ok(mut guard) = midi.0.lock() {
+    if let Ok(mut guard) = midi.conn.lock() {
         guard.take(); // dropping the connection closes the port
     }
     let _ = state.send(EngineMsg::AllNotesOff);
@@ -1002,7 +1033,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(engine)
-        .manage(MidiState(Mutex::new(None)))
+        .manage(MidiState {
+            conn: Mutex::new(None),
+            synth: Arc::new(AtomicBool::new(false)),
+        })
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             Ok(())
@@ -1040,6 +1074,7 @@ pub fn run() {
             midi_list_ports,
             midi_connect,
             midi_disconnect,
+            set_midi_synth,
             spotify::spotify_listen
         ])
         .run(tauri::generate_context!());

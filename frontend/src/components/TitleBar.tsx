@@ -13,6 +13,8 @@ export function TitleBar({
   onSync,
   keysOpen = false,
   onToggleKeys,
+  mapOpen = false,
+  onToggleMap,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -22,6 +24,8 @@ export function TitleBar({
   onSync?: () => void;
   keysOpen?: boolean;
   onToggleKeys?: () => void;
+  mapOpen?: boolean;
+  onToggleMap?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
@@ -93,6 +97,13 @@ export function TitleBar({
             title="Synth instrument keyboard"
           >
             <Icon name="music" size={13} />
+          </button>
+          <button
+            className={`mt-btn ${mapOpen ? "mt-rec--on" : ""}`}
+            onClick={onToggleMap}
+            title="MIDI controller mapping (learn)"
+          >
+            <Icon name="sliders" size={13} />
           </button>
           <button
             className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}
