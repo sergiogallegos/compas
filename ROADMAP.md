@@ -135,7 +135,7 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ✅ **Saved cues/loops + a track database (SQLite)** — `rusqlite` store persists cues, the last
   loop, beatgrid nudge, gain, cached BPM/key, and play history; restored on reload. Foundation
   for real library management.
-- 🔶 **Quantize** — snap hot-cue jumps/loops to the grid (loops already snap).
+- ✅ **Quantize** — per-deck Q snaps hot-cue jumps + beat-jumps to the grid (loops already snap).
 
 **Tier 2 — modern differentiators (what 2025-26 DJs expect):**
 - ⬜ **Real-time STEM separation** (vocal/drum/bass/melody isolation) — now table-stakes across
@@ -145,7 +145,8 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
   beats from the BPM; chain multiple).
 - ⬜ **Sampler / performance pads** — trigger one-shots + loops (à la VirtualDJ StemSwap / Traktor
   Remix Decks). Reuses the synth/voice infrastructure.
-- ⬜ **Beat jump / loop roll / slip mode / reverse-censor** — performance controls over the play-head.
+- 🔶 **Beat jump / loop roll / slip mode / reverse-censor** — beat-jump (±bar) + held loop-roll
+  *with slip* shipped; full global slip mode + reverse/censor still to do.
 - ⬜ **Harmonic-mixing assist** — we already detect Camelot key; suggest key-compatible next tracks.
 
 **Tier 3 — library & ecosystem:**
@@ -163,7 +164,8 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. ✅ **Headphone/cue monitoring** — done.
 5. **Stem separation** — marquee feature (needs the model decision first).
-6. **Sampler/pads + more FX + beat-jump/slip + quantize + harmonic assist** — performance layer.
+6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) done; sampler/pads, more
+   beat-synced FX, full slip mode, harmonic-mixing assist still open.
 
 ---
 

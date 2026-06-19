@@ -96,6 +96,12 @@ enum EngineMsg {
         deck: usize,
         active: bool,
     },
+    LoopRoll {
+        deck: usize,
+        in_frame: f64,
+        out_frame: f64,
+        active: bool,
+    },
     Scratch {
         deck: usize,
         active: bool,
@@ -272,6 +278,17 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::LoopActive { deck, active } => {
                         AudioCommand::SetLoopActive { deck, active }
                     }
+                    EngineMsg::LoopRoll {
+                        deck,
+                        in_frame,
+                        out_frame,
+                        active,
+                    } => AudioCommand::SetLoopRoll {
+                        deck,
+                        in_frame,
+                        out_frame,
+                        active,
+                    },
                     EngineMsg::Scratch {
                         deck,
                         active,
@@ -741,6 +758,24 @@ fn set_loop(
 #[tauri::command]
 fn set_loop_active(state: State<'_, EngineHandle>, deck: usize, active: bool) -> Result<(), String> {
     state.send(EngineMsg::LoopActive { deck, active })
+}
+
+/// Momentary loop-roll with slip. Engage with `active = true` and a grid-snapped region;
+/// release with `active = false` to drop back in where the track would be.
+#[tauri::command]
+fn set_loop_roll(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    in_frame: f64,
+    out_frame: f64,
+    active: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::LoopRoll {
+        deck,
+        in_frame,
+        out_frame,
+        active,
+    })
 }
 
 /// Jog-wheel scratch: `active` engages the gesture; `speed` is the read rate (1.0 =
@@ -1312,6 +1347,7 @@ pub fn run() {
             deck_unload,
             set_loop,
             set_loop_active,
+            set_loop_roll,
             deck_scratch,
             set_deck_tempo,
             set_deck_keylock,

@@ -179,6 +179,14 @@ export const setLoop = (deck: number, inFrame: number, outFrame: number, active:
   invoke("set_loop", { deck, inFrame, outFrame, active });
 export const setLoopActive = (deck: number, active: boolean) =>
   invoke("set_loop_active", { deck, active });
+/** Momentary loop-roll with slip. Engage with a grid-snapped region; release (active=false)
+ *  drops back in where the track would be. */
+export const setLoopRoll = (
+  deck: number,
+  inFrame: number,
+  outFrame: number,
+  active: boolean,
+) => invoke("set_loop_roll", { deck, inFrame, outFrame, active });
 /** Jog-wheel scratch: speed 1.0 = natural play rate, negative = reverse, 0 = held. */
 export const deckScratch = (deck: number, active: boolean, speed: number) =>
   invoke("deck_scratch", { deck, active, speed });

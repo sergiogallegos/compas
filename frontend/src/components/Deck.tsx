@@ -12,6 +12,13 @@ const ECHO_BEATS: { v: number; label: string }[] = [
   { v: 2, label: "2" },
 ];
 
+/// Loop-roll sizes (held, in beats), with compact labels.
+const ROLLS: { v: number; label: string }[] = [
+  { v: 0.125, label: "⅛" },
+  { v: 0.25, label: "¼" },
+  { v: 0.5, label: "½" },
+];
+
 const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 
 /// Degrees of platter rotation per second of audio (≈33⅓ RPM). Matches the play-head
@@ -47,6 +54,22 @@ export function Deck({
   const { meta, frame, playing, tempo, dsp, loading } = state;
   const rate = meta?.source_rate ?? 1;
   const frames = meta?.frames ?? 0;
+  const noGrid = !meta || (meta.beat_interval_sec ?? 0) <= 0;
+
+  // Loop-roll is momentary: held while the pad is pressed, released on pointer up/leave.
+  const [rollBeats, setRollBeats] = useState<number | null>(null);
+  const rollRef = useRef<number | null>(null);
+  const startRoll = (b: number) => {
+    rollRef.current = b;
+    setRollBeats(b);
+    actions.loopRoll(b, true);
+  };
+  const endRoll = () => {
+    if (rollRef.current == null) return;
+    rollRef.current = null;
+    setRollBeats(null);
+    actions.loopRoll(0, false);
+  };
   const frac = frames > 0 ? Math.min(1, frame / frames) : 0;
   const effBpm = meta ? meta.bpm * tempo : 0;
   const spin = (((frame / rate) * 200) % 360 + 360) % 360;
@@ -138,7 +161,7 @@ export function Deck({
     actions.scratch(false, 0);
   };
 
-  // Stop the loop and release scratch if the deck unmounts mid-gesture.
+  // Release scratch and any held loop-roll if the deck unmounts mid-gesture.
   useEffect(() => {
     return () => {
       const j = jog.current;
@@ -146,6 +169,10 @@ export function Deck({
         j.active = false;
         if (j.rafId) cancelAnimationFrame(j.rafId);
         actions.scratch(false, 0);
+      }
+      if (rollRef.current != null) {
+        rollRef.current = null;
+        actions.loopRoll(0, false);
       }
     };
     // actions is stable for the lifetime of the deck; run cleanup only on unmount.
@@ -302,6 +329,36 @@ export function Deck({
                 <button className="chip" onClick={actions.clearLoop} disabled={!state.loop.active} title="Exit loop">
                   ✕
                 </button>
+              </div>
+              <div className="chip-row">
+                <button
+                  className={`chip ${state.quantize ? "chip--on" : ""}`}
+                  onClick={actions.toggleQuantize}
+                  disabled={!meta}
+                  title="Quantize: snap cue jumps & beat-jumps to the grid"
+                >
+                  Q
+                </button>
+                <button className="chip" onClick={() => actions.beatJump(-4)} disabled={noGrid} title="Jump back 4 beats">
+                  ◀4
+                </button>
+                <button className="chip" onClick={() => actions.beatJump(4)} disabled={noGrid} title="Jump forward 4 beats">
+                  4▶
+                </button>
+                {ROLLS.map((r) => (
+                  <button
+                    key={r.v}
+                    className={`chip ${rollBeats === r.v ? "chip--on" : ""}`}
+                    onPointerDown={(e) => { e.preventDefault(); startRoll(r.v); }}
+                    onPointerUp={endRoll}
+                    onPointerLeave={endRoll}
+                    onPointerCancel={endRoll}
+                    disabled={noGrid}
+                    title={`${r.label}-beat loop roll (hold)`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
               </div>
               <div className="chip-row">
                 <button

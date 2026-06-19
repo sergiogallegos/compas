@@ -1,30 +1,30 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (headphone cue landed). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-19 (perf layer: beat-jump/quantize/roll). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
-Latest: **Headphone / cue monitoring** landed. Per-channel CUE (PFL) buttons + a phones bar under
-the crossfader (device picker, ON/OFF, CUE◁▷MASTER blend, PHONES level). The master mixer sums
-cued decks into a cue bus → ring → **2nd cpal output stream** (`compas-audio::cue`) on its own
-thread; primes a small buffer + re-primes on underrun for clock drift. Builds clean
-(check/clippy/test, tsc, vite) but **not yet runtime-tested with real hardware** — when resuming,
-enable cue on a 2nd output device (or even the default), arm a deck's CUE, confirm you hear only
-cued decks in the phones and the master is unaffected; sweep the CUE◁▷MASTER blend.
+Latest: **Performance layer (round 1)** landed — each deck has a perf row: **Q** (quantize cue
+jumps + beat-jumps to the grid), **◀4 / 4▶** (beat-jump a bar), **⅛/¼/½** held loop **rolls with
+true slip** (engine tracks a shadow play-head; release drops back in where the track would be).
+Engine `SetLoopRoll` + unit-tested slip. Builds clean (check/clippy/test, tsc, vite) but **not yet
+runtime-tested** — when resuming, hold a roll while playing and confirm release continues in time
+(not where the roll looped); check Q snaps cue jumps; check ◀4/4▶ land on the beat.
 
-**Still unverified from prior sessions** (do opportunistically): SQLite cue/loop/grid restore
-(add tracks → set cues/loop → reload → confirm restored; DB at `%APPDATA%/<bundle-id>/compas.db`);
-MIDI-learn with the MPK Mini MK3 (LEARN a knob/pad → drives the bound control; pads don't honk
-the synth while the instrument panel is closed).
+**Still unverified from prior sessions** (do opportunistically, all need the running app/hardware):
+headphone cue (2nd device → arm CUE → hear only cued decks, master unaffected, sweep blend);
+SQLite cue/loop/grid restore (set cues/loop → reload → restored; DB at
+`%APPDATA%/<bundle-id>/compas.db`); MIDI-learn with the MPK Mini MK3 (LEARN → drives control;
+pads don't honk the synth while the instrument panel is closed).
 
 Next, from the ROADMAP backlog:
 
 1. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
    runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
    ethos cleanly — discuss before starting.
-2. **Performance layer:** sampler/pads, more + beat-synced FX, beat-jump/loop-roll/slip, quantize,
-   harmonic-mixing assist (we already detect Camelot key).
+2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,
+   full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
 3. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
    `vergen` version string in the status bar.
 
@@ -57,6 +57,9 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   + similarity search, reads from the in-RAM buffer, ~4%/core/deck); per-deck `KEY` toggle.
 - **BPM + beatgrid + musical key** (Camelot) analysis on load.
 - **Beat loops** (IN/OUT manual + 4/8/16 grid-snapped; waveform loop band).
+- **Performance layer (round 1)** — per-deck **quantize** (snaps cue jumps + beat-jumps),
+  **beat-jump** (±4 beats, grid-aligned), and **loop-roll** (held ⅛/¼/½) with **true slip**:
+  engine `SetLoopRoll` keeps a shadow play-head advancing so release catches up to real time.
 - **Hot cues** (set/jump/clear).
 - **Jog-wheel scratch** — draggable spinning platter drives the audio-thread read-rate from drag
   velocity (forward/reverse scrub + hold), engine `SetScratch`/`deck_scratch`, disc tracks the

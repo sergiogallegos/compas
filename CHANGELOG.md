@@ -6,6 +6,12 @@ All notable changes to compas are documented here. Format follows
 ## [Unreleased]
 
 ### Added
+- **Performance layer — beat jump, quantize, loop roll:** each deck gains a performance row.
+  **Q** quantizes hot-cue jumps and beat-jumps to the beatgrid. **◀4 / 4▶** jump the play-head a
+  bar back/forward (grid-aligned). **⅛ / ¼ / ½** are held loop **rolls** with true **slip** — the
+  engine keeps a shadow play-head advancing underneath while you roll, so releasing drops back in
+  exactly where the track would be, as if the roll never happened. New `SetLoopRoll` command +
+  `set_loop_roll`; unit-tested slip catch-up.
 - **Headphone / cue monitoring (pre-fader listen):** pre-listen any deck on a second output
   device without touching the master. Each mixer channel has a **CUE** (PFL) button; a
   headphone bar under the crossfader picks the **output device**, toggles cue **ON/OFF**, and

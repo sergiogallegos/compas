@@ -25,6 +25,7 @@ import {
   setDeckTempo,
   setLoop as setLoopCmd,
   setLoopActive as setLoopActiveCmd,
+  setLoopRoll as setLoopRollCmd,
   dbClearCue,
   dbClearLoop,
   dbRecordPlay,
@@ -89,6 +90,8 @@ export interface DeckState {
   gridOffset: number;
   /** True while this deck is a continuous sync follower. */
   synced: boolean;
+  /** Quantize: snap hot-cue jumps and beat-jumps to the beatgrid. */
+  quantize: boolean;
   /** Crossfader routing: 0 = A side, 1 = thru, 2 = B side. */
   xfaderAssign: number;
   eq: Eq;
@@ -120,6 +123,7 @@ export function useDeck(deck: number, dsp = true) {
   const [keylock, setKeylockState] = useState(false);
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
+  const [quantize, setQuantize] = useState(false);
   // Default routing: deck 0 → A, deck 1 → B, decks C/D → through.
   const [xfaderAssign, setXfaderAssignState] = useState(deck === 0 ? 0 : deck === 1 ? 2 : 1);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
@@ -147,6 +151,8 @@ export function useDeck(deck: number, dsp = true) {
   // Path of the loaded track + a once-per-load guard for recording a play.
   const pathRef = useRef<string | null>(null);
   const playedRef = useRef(false);
+  const quantizeRef = useRef(quantize);
+  quantizeRef.current = quantize;
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -269,6 +275,20 @@ export function useDeck(deck: number, dsp = true) {
     const pushReverb = (r: ReverbState) => {
       setDeckReverb(deck, r.active, r.size, r.active ? r.mix : 0).catch(swallow);
     };
+    // Current beatgrid in source frames (interval + first-beat offset incl. manual nudge), or
+    // null when the track has no grid. Read live so a grid nudge takes effect immediately.
+    const grid = (): { interval: number; offset: number } | null => {
+      if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return null;
+      const sr = meta.source_rate;
+      return {
+        interval: meta.beat_interval_sec * sr,
+        offset: (meta.first_beat_sec + gridOffsetRef.current) * sr,
+      };
+    };
+    const snapBeat = (f: number) => {
+      const g = grid();
+      return g ? g.offset + Math.round((f - g.offset) / g.interval) * g.interval : f;
+    };
     // Push the (possibly nudged) beatgrid to the engine in source frames, for the sync PLL.
     const pushBeatgrid = (gridOff: number) => {
       if (!meta || (meta.beat_interval_sec ?? 0) <= 0) return;
@@ -367,7 +387,8 @@ export function useDeck(deck: number, dsp = true) {
             next[i] = frameRef.current;
             if (canPersist) dbSetCue(path as string, i, frameRef.current).catch(swallow);
           } else {
-            deckSeek(deck, next[i] as number).catch(swallow);
+            const target = quantizeRef.current ? snapBeat(next[i] as number) : (next[i] as number);
+            deckSeek(deck, target).catch(swallow);
           }
           return next;
         });
@@ -413,6 +434,28 @@ export function useDeck(deck: number, dsp = true) {
         setLoopState((l) => ({ ...l, active: false }));
         if (canPersist) dbClearLoop(path as string, 0).catch(swallow);
       },
+      toggleQuantize: () => setQuantize((q) => !q),
+      // Jump the play-head by whole beats (negative = back). When quantize is on, the jump
+      // starts from the nearest beat so repeated jumps stay grid-aligned.
+      beatJump: (beats: number) => {
+        const g = grid();
+        if (!g) return;
+        const base = quantizeRef.current ? snapBeat(frameRef.current) : frameRef.current;
+        deckSeek(deck, Math.max(0, base + beats * g.interval)).catch(swallow);
+      },
+      // Momentary loop-roll with slip. Engaging loops the sub-beat region at the play-head;
+      // releasing drops back in where the track would be (the engine tracks the shadow head).
+      loopRoll: (beats: number, active: boolean) => {
+        if (!active) {
+          setLoopRollCmd(deck, 0, 0, false).catch(swallow);
+          return;
+        }
+        const g = grid();
+        if (!g) return;
+        const step = g.interval * beats;
+        const inFrame = Math.max(0, g.offset + Math.floor((frameRef.current - g.offset) / step) * step);
+        setLoopRollCmd(deck, inFrame, inFrame + step, true).catch(swallow);
+      },
       toggleEcho: () => {
         const next = { ...echoRef.current, active: !echoRef.current.active };
         setEchoState(next);
@@ -446,7 +489,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, error, loading, dsp };
   return { state, actions, deck };
 }
 

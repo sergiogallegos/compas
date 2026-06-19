@@ -152,6 +152,15 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
     },
+    /// Momentary loop "roll" with slip: while `active`, loop `[in_frame, out_frame)` but keep
+    /// a shadow play-head advancing underneath; on release, jump to it so the track plays on
+    /// as if the roll never happened. `in/out_frame` are read only on the engaging edge.
+    SetLoopRoll {
+        deck: usize,
+        in_frame: f64,
+        out_frame: f64,
+        active: bool,
+    },
     /// Drive the play-head from a jog-wheel/scratch gesture. While `active`, the deck
     /// reads at `speed` (1.0 = natural play rate; negative = reverse) regardless of the
     /// transport state, and the play-head clamps to the track instead of auto-stopping.
@@ -332,6 +341,10 @@ struct DeckPlayer {
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
+    /// Loop-roll (momentary loop with slip): while active, `slip_playhead` advances at the
+    /// normal play rate without looping; releasing the roll snaps `playhead` to it.
+    roll_active: bool,
+    slip_playhead: f64,
     device_rate: f32,
     /// Beatgrid in source frames: phase of the first beat, and frames per beat. Used by the
     /// continuous sync PLL; 0 interval means "no grid" (sync disabled for this deck).
@@ -371,6 +384,8 @@ impl DeckPlayer {
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
+            roll_active: false,
+            slip_playhead: 0.0,
             device_rate,
             beat_offset: 0.0,
             beat_interval: 0.0,
@@ -429,7 +444,13 @@ impl DeckPlayer {
         } else {
             // Sync (when engaged) overrides the user tempo with the PLL's read rate.
             let rate = self.sync_tempo.unwrap_or(self.tempo);
-            self.playhead += self.base_ratio * rate;
+            let advance = self.base_ratio * rate;
+            self.playhead += advance;
+            // Loop-roll slip: the shadow play-head advances unlooped, so a release lands
+            // exactly where the track would be had the roll never happened.
+            if self.roll_active {
+                self.slip_playhead += advance;
+            }
             // Beat loop: wrap the play-head back to loop-in once it passes loop-out.
             if self.loop_active && self.loop_out > self.loop_in {
                 let len = self.loop_out - self.loop_in;
@@ -810,6 +831,30 @@ impl Mixer {
                         d.loop_active = active && d.loop_out > d.loop_in;
                     }
                 }
+                AudioCommand::SetLoopRoll {
+                    deck,
+                    in_frame,
+                    out_frame,
+                    active,
+                } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        if active && out_frame > in_frame {
+                            if !d.roll_active {
+                                d.slip_playhead = d.playhead; // start the shadow from here
+                            }
+                            d.roll_active = true;
+                            d.loop_in = in_frame.max(0.0);
+                            d.loop_out = out_frame.max(0.0);
+                            d.loop_active = true;
+                        } else if d.roll_active {
+                            // Release: catch up to where the track would be, exit the loop.
+                            d.roll_active = false;
+                            d.loop_active = false;
+                            d.playhead = d.slip_playhead;
+                            d.stretch_engaged = false; // play-head jumped — re-prime the stretcher
+                        }
+                    }
+                }
                 AudioCommand::SetScratch {
                     deck,
                     active,
@@ -1035,6 +1080,40 @@ mod tests {
         let mut err = mp - fp;
         err -= err.round();
         assert!(err.abs() < 0.02, "follower not phase-locked: err={err}");
+    }
+
+    #[test]
+    fn loop_roll_slips_and_catches_up_on_release() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        let buf = Arc::new(DeckBuffer::new(vec![0.2; 2 * 10_000], 48_000));
+        let d = &mut mixer.decks[0];
+        d.buffer = Some(buf);
+        d.base_ratio = 1.0;
+        d.playing = true;
+        d.playhead = 1_000.0;
+
+        // Engage a 100-frame roll at the current position.
+        let start = mixer.decks[0].playhead;
+        mixer.decks[0].roll_active = true;
+        mixer.decks[0].slip_playhead = start;
+        mixer.decks[0].loop_in = start;
+        mixer.decks[0].loop_out = start + 100.0;
+        mixer.decks[0].loop_active = true;
+
+        for _ in 0..500 {
+            mixer.next_frame();
+        }
+        // The audible play-head stayed inside the loop region…
+        assert!(mixer.decks[0].playhead < start + 100.0);
+        // …while the shadow advanced ~500 frames. Release and confirm we jump to it.
+        let slip = mixer.decks[0].slip_playhead;
+        assert!((slip - (start + 500.0)).abs() < 1.0, "slip should track real time");
+        mixer.decks[0].roll_active = false;
+        mixer.decks[0].loop_active = false;
+        mixer.decks[0].playhead = mixer.decks[0].slip_playhead; // mirrors the release path
+        assert!((mixer.decks[0].playhead - slip).abs() < 1e-9);
     }
 
     #[test]
