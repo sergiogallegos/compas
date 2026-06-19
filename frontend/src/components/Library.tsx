@@ -4,7 +4,13 @@ import { useLibrary } from "../hooks/useLibrary";
 import { Icon } from "./icons";
 
 const MAGENTA = "var(--accent)";
-const CYAN = "var(--stream)";
+// Per-deck load targets (must match App's DECK_COLORS / DECK_LETTERS).
+const DECKS = [
+  { letter: "A", color: "var(--accent)" },
+  { letter: "B", color: "var(--stream)" },
+  { letter: "C", color: "var(--status-warn)" },
+  { letter: "D", color: "var(--status-ok)" },
+];
 
 function fmtMs(ms: number): string {
   const s = Math.round(ms / 1000);
@@ -64,12 +70,8 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
             </div>
           ) : (
             filtered.map((t) => {
-              const loadedAs =
-                t.path === loadedPaths[0]
-                  ? { letter: "A", color: MAGENTA }
-                  : t.path === loadedPaths[1]
-                    ? { letter: "B", color: CYAN }
-                    : null;
+              const di = loadedPaths.findIndex((p) => p === t.path);
+              const loadedAs = di >= 0 ? DECKS[di] : null;
               return (
                 <div
                   key={t.path}
@@ -94,8 +96,16 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
                   </span>
                   <span className="mono">{fmtMs(t.duration_ms)}</span>
                   <span className="tl-load">
-                    <button style={{ color: MAGENTA, borderColor: `${MAGENTA}66` }} onClick={() => loadTrack(0, t.path).catch(() => {})}>A</button>
-                    <button style={{ color: CYAN, borderColor: `${CYAN}66` }} onClick={() => loadTrack(1, t.path).catch(() => {})}>B</button>
+                    {DECKS.map((d, i) => (
+                      <button
+                        key={d.letter}
+                        style={{ color: d.color, borderColor: `${d.color}66` }}
+                        onClick={() => loadTrack(i, t.path).catch(() => {})}
+                        title={`Load onto Deck ${d.letter}`}
+                      >
+                        {d.letter}
+                      </button>
+                    ))}
                   </span>
                 </div>
               );
