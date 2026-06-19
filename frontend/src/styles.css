@@ -62,7 +62,7 @@
 @keyframes rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
 .titlebar-right { display: flex; align-items: center; gap: 14px; }
-.cpu { font-size: 11px; color: var(--text-tertiary); }
+.cpu { font-size: 11px; color: var(--text-tertiary); display: inline-block; min-width: 58px; text-align: right; }
 .icon-btn { width: 34px; height: 34px; border-radius: 8px; background: var(--surface-control); border: 1px solid var(--border-hairline-strong); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--violet)); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 600; font-size: 12px; color: #fff; }
 
