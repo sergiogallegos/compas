@@ -36,6 +36,7 @@ const TELEMETRY_HZ: u64 = 30;
 /// Coarse, `Send` control messages from Tauri commands to the audio thread.
 enum EngineMsg {
     SetCrossfader(f32),
+    SetCrossfaderConfig { curve: f32, mode: u8, reverse: bool },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -239,6 +240,15 @@ fn spawn_engine() -> EngineHandle {
                 };
                 let cmd = match msg {
                     EngineMsg::SetCrossfader(p) => AudioCommand::SetCrossfader(p),
+                    EngineMsg::SetCrossfaderConfig {
+                        curve,
+                        mode,
+                        reverse,
+                    } => AudioCommand::SetCrossfaderConfig {
+                        curve,
+                        mode,
+                        reverse,
+                    },
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
                     EngineMsg::DeckEq {
@@ -1018,6 +1028,21 @@ fn set_crossfader(state: State<'_, EngineHandle>, value: f32) -> Result<(), Stri
     state.send(EngineMsg::SetCrossfader(value))
 }
 
+/// Configure the crossfader response. `mode`: 0 = constant-power (smooth), 1 = additive (cut).
+#[tauri::command]
+fn set_crossfader_config(
+    state: State<'_, EngineHandle>,
+    curve: f32,
+    mode: u8,
+    reverse: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::SetCrossfaderConfig {
+        curve,
+        mode,
+        reverse,
+    })
+}
+
 #[tauri::command]
 fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetMasterGain(value))
@@ -1570,6 +1595,7 @@ pub fn run() {
             set_deck_flanger,
             set_deck_crusher,
             set_crossfader,
+            set_crossfader_config,
             set_master_gain,
             start_recording,
             stop_recording,

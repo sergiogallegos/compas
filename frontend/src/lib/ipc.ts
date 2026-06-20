@@ -286,6 +286,9 @@ export const setDeckCrusher = (
   mix: number,
 ) => invoke("set_deck_crusher", { deck, active, bits, downsample, mix });
 export const setCrossfader = (value: number) => invoke("set_crossfader", { value });
+/** Crossfader response: `curve` (steepness, >=0.25), `mode` (0 = constant-power, 1 = additive/cut), `reverse`. */
+export const setCrossfaderConfig = (curve: number, mode: 0 | 1, reverse: boolean) =>
+  invoke("set_crossfader_config", { curve, mode, reverse });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
 // ---- Synth instrument + MIDI ------------------------------------------------------

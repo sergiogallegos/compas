@@ -240,18 +240,50 @@ impl GainSmoother {
     }
 }
 
-/// Equal-power crossfader. `position` in `[0, 1]`: 0 = full A, 1 = full B.
-/// Equal-power (cosine/sine) law keeps perceived loudness constant through the blend,
-/// which is what DJs expect — a linear fade dips ~3 dB in the middle.
+/// Crossfader response law.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum XfaderMode {
+    /// Equal-power (cosine/sine): constant perceived loudness through the blend — a smooth mix
+    /// fade. A linear fade would dip ~3 dB in the middle; this doesn't.
+    ConstantPower,
+    /// Additive ("slow-fade / fast-cut"): both sides stay open through the center and only cut
+    /// near the extremes. With a steep `curve` this becomes the classic scratch "cut" fader where
+    /// a hair of travel at the edge kills the channel.
+    Additive,
+}
+
+impl XfaderMode {
+    /// Map a small integer (from the UI/IPC) to a mode.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            1 => XfaderMode::Additive,
+            _ => XfaderMode::ConstantPower,
+        }
+    }
+}
+
+/// Crossfader. `position` in `[0, 1]`: 0 = full A, 1 = full B.
+///
+/// Beyond the equal-power default it supports a **curve** (transition steepness), an **additive**
+/// mode (slow-fade/fast-cut for scratching), and **reverse** (swap which end is A/B — "hamster"
+/// switch). Defaults — `ConstantPower`, `curve = 1.0`, `reverse = false` — reproduce the original
+/// equal-power fader exactly.
 #[derive(Debug, Clone, Copy)]
 pub struct Crossfader {
     gain: GainSmoother,
+    mode: XfaderMode,
+    /// Transition steepness `>= 0.25`; `1.0` is neutral, larger sharpens toward a hard cut.
+    curve: f32,
+    reverse: bool,
 }
 
 impl Crossfader {
     pub fn new(sample_rate: f32) -> Self {
         Crossfader {
             gain: GainSmoother::new(0.5, sample_rate, 5.0),
+            mode: XfaderMode::ConstantPower,
+            curve: 1.0,
+            reverse: false,
         }
     }
 
@@ -261,13 +293,51 @@ impl Crossfader {
         self.gain.set_target(position.clamp(0.0, 1.0));
     }
 
+    /// Set the response law. RT-SAFE.
+    #[inline(always)]
+    pub fn set_mode(&mut self, mode: XfaderMode) {
+        self.mode = mode;
+    }
+
+    /// Set the transition steepness (clamped to `>= 0.25`). RT-SAFE.
+    #[inline(always)]
+    pub fn set_curve(&mut self, curve: f32) {
+        self.curve = curve.max(0.25);
+    }
+
+    /// Swap which end of the fader is the A vs B side ("hamster" reverse). RT-SAFE.
+    #[inline(always)]
+    pub fn set_reverse(&mut self, reverse: bool) {
+        self.reverse = reverse;
+    }
+
     /// Returns `(gain_a, gain_b)` for the next sample. RT-SAFE.
     #[inline(always)]
     pub fn next_gains(&mut self) -> (f32, f32) {
-        let p = self.gain.next_gain();
-        let angle = p * (PI / 2.0);
-        let (sin, cos) = angle.sin_cos();
-        (cos, sin)
+        let mut p = self.gain.next_gain();
+        if self.reverse {
+            p = 1.0 - p;
+        }
+        let c = self.curve;
+        match self.mode {
+            XfaderMode::ConstantPower => {
+                let angle = p * (PI / 2.0);
+                let (sin, cos) = angle.sin_cos();
+                // Sharpen with the curve exponent, then renormalize so a² + b² stays ~1
+                // (constant power is preserved regardless of curve).
+                let a = cos.powf(c);
+                let b = sin.powf(c);
+                let n = (a * a + b * b).sqrt().max(1e-9);
+                (a / n, b / n)
+            }
+            XfaderMode::Additive => {
+                // Both sides full through the center; each cuts to 0 toward the far edge. The
+                // curve exponent holds the gain near 1 longer, then drops fast — the cut feel.
+                let a = (2.0 * (1.0 - p)).clamp(0.0, 1.0).powf(c);
+                let b = (2.0 * p).clamp(0.0, 1.0).powf(c);
+                (a, b)
+            }
+        }
     }
 }
 
@@ -1136,6 +1206,49 @@ mod tests {
         }
         let power = gains.0 * gains.0 + gains.1 * gains.1;
         assert!((power - 1.0).abs() < 1e-3, "power was {power}");
+    }
+
+    fn settled_gains(xf: &mut Crossfader, pos: f32) -> (f32, f32) {
+        xf.set_position(pos);
+        let mut g = (0.0, 0.0);
+        for _ in 0..8192 {
+            g = xf.next_gains();
+        }
+        g
+    }
+
+    #[test]
+    fn constant_power_curve_preserves_unity_power() {
+        let mut xf = Crossfader::new(48_000.0);
+        xf.set_curve(4.0); // steep, but constant-power renormalization must hold
+        for &p in &[0.1, 0.5, 0.9] {
+            let (a, b) = settled_gains(&mut xf, p);
+            let power = a * a + b * b;
+            assert!((power - 1.0).abs() < 1e-3, "power at {p} was {power}");
+        }
+    }
+
+    #[test]
+    fn additive_keeps_both_open_in_center_and_kills_at_edges() {
+        let mut xf = Crossfader::new(48_000.0);
+        xf.set_mode(XfaderMode::Additive);
+        let (ac, bc) = settled_gains(&mut xf, 0.5);
+        assert!(ac > 0.99 && bc > 0.99, "additive center should keep both open: {ac},{bc}");
+        let (a0, b0) = settled_gains(&mut xf, 0.0);
+        assert!(a0 > 0.99 && b0 < 1e-3, "full A: {a0},{b0}");
+        let (a1, b1) = settled_gains(&mut xf, 1.0);
+        assert!(a1 < 1e-3 && b1 > 0.99, "full B: {a1},{b1}");
+    }
+
+    #[test]
+    fn reverse_swaps_the_sides() {
+        let mut xf = Crossfader::new(48_000.0);
+        xf.set_reverse(true);
+        // With reverse, position 0 should now favor B, position 1 favor A.
+        let (a0, b0) = settled_gains(&mut xf, 0.0);
+        assert!(b0 > a0, "reversed pos 0 should favor B: {a0},{b0}");
+        let (a1, b1) = settled_gains(&mut xf, 1.0);
+        assert!(a1 > b1, "reversed pos 1 should favor A: {a1},{b1}");
     }
 
     #[test]

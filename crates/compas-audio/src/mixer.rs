@@ -6,7 +6,7 @@ use std::sync::Arc;
 use compas_core::DeckBuffer;
 use compas_dsp::{
     Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth,
-    ThreeBandEq, TimeStretch, Waveform,
+    ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };
 use rtrb::Producer;
 
@@ -69,6 +69,13 @@ impl XfaderAssign {
 /// ring so it is dropped on the control thread, never freed on the RT path.
 pub enum AudioCommand {
     SetCrossfader(f32),
+    /// Configure the crossfader response: `curve` (steepness, ≥0.25), `mode` (0 = constant-power,
+    /// 1 = additive/cut), and `reverse` (swap A/B sides).
+    SetCrossfaderConfig {
+        curve: f32,
+        mode: u8,
+        reverse: bool,
+    },
     SetMasterGain(f32),
     SetDeckGain {
         deck: usize,
@@ -726,6 +733,15 @@ impl Mixer {
         while let Ok(cmd) = self.commands.pop() {
             match cmd {
                 AudioCommand::SetCrossfader(p) => self.crossfader.set_position(p),
+                AudioCommand::SetCrossfaderConfig {
+                    curve,
+                    mode,
+                    reverse,
+                } => {
+                    self.crossfader.set_curve(curve);
+                    self.crossfader.set_mode(XfaderMode::from_index(mode));
+                    self.crossfader.set_reverse(reverse);
+                }
                 AudioCommand::SetMasterGain(g) => self.master.set_target(g),
                 AudioCommand::SetDeckGain { deck, gain } => {
                     if let Some(d) = self.decks.get_mut(deck) {
