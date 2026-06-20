@@ -825,6 +825,42 @@ fn db_history(db: State<'_, db::Db>, limit: i64) -> Result<Vec<db::HistoryRow>, 
     with_db(&db, |c| db::history(c, limit))
 }
 
+/// Search the library with the query grammar (`bpm:120-128 key:8A artist:foo -live`).
+#[tauri::command]
+fn db_search(db: State<'_, db::Db>, query: String) -> Result<Vec<db::TrackRow>, String> {
+    with_db(&db, |c| db::search_tracks(c, &query))
+}
+
+#[tauri::command]
+fn db_create_crate(db: State<'_, db::Db>, name: String, is_playlist: bool) -> Result<i64, String> {
+    with_db(&db, |c| db::create_crate(c, &name, is_playlist))
+}
+
+#[tauri::command]
+fn db_delete_crate(db: State<'_, db::Db>, id: i64) -> Result<(), String> {
+    with_db(&db, |c| db::delete_crate(c, id))
+}
+
+#[tauri::command]
+fn db_list_crates(db: State<'_, db::Db>) -> Result<Vec<db::CrateRow>, String> {
+    with_db(&db, db::list_crates)
+}
+
+#[tauri::command]
+fn db_add_to_crate(db: State<'_, db::Db>, crate_id: i64, path: String) -> Result<(), String> {
+    with_db(&db, |c| db::add_to_crate(c, crate_id, &path))
+}
+
+#[tauri::command]
+fn db_remove_from_crate(db: State<'_, db::Db>, crate_id: i64, path: String) -> Result<(), String> {
+    with_db(&db, |c| db::remove_from_crate(c, crate_id, &path))
+}
+
+#[tauri::command]
+fn db_crate_tracks(db: State<'_, db::Db>, crate_id: i64) -> Result<Vec<db::TrackRow>, String> {
+    with_db(&db, |c| db::crate_tracks(c, crate_id))
+}
+
 #[tauri::command]
 fn deck_play(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
     state.send(EngineMsg::DeckPlaying {
@@ -1692,6 +1728,13 @@ pub fn run() {
             db_set_gain,
             db_record_play,
             db_history,
+            db_search,
+            db_create_crate,
+            db_delete_crate,
+            db_list_crates,
+            db_add_to_crate,
+            db_remove_from_crate,
+            db_crate_tracks,
             load_track,
             deck_play,
             deck_pause,

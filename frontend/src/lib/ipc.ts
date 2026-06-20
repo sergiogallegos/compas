@@ -244,6 +244,25 @@ export const dbUpsertAnalysis = (t: DeckLoaded) =>
   });
 export const dbRecordPlay = (path: string) => invoke("db_record_play", { path });
 export const dbHistory = (limit: number) => invoke<DbHistory[]>("db_history", { limit });
+// ---- Library: search + crates/playlists -------------------------------------------
+export interface DbCrate {
+  id: number;
+  name: string;
+  is_playlist: boolean;
+  track_count: number;
+}
+/** Search with the grammar: `bpm:120-128 key:8A artist:foo title:bar -live` (terms AND-ed). */
+export const dbSearch = (query: string) => invoke<DbTrack[]>("db_search", { query });
+export const dbCreateCrate = (name: string, isPlaylist: boolean) =>
+  invoke<number>("db_create_crate", { name, isPlaylist });
+export const dbDeleteCrate = (id: number) => invoke("db_delete_crate", { id });
+export const dbListCrates = () => invoke<DbCrate[]>("db_list_crates");
+export const dbAddToCrate = (crateId: number, path: string) =>
+  invoke("db_add_to_crate", { crateId, path });
+export const dbRemoveFromCrate = (crateId: number, path: string) =>
+  invoke("db_remove_from_crate", { crateId, path });
+export const dbCrateTracks = (crateId: number) =>
+  invoke<DbTrack[]>("db_crate_tracks", { crateId });
 
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });
