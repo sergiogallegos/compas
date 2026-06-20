@@ -1,0 +1,18 @@
+[package]
+name = "compas-stems"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Offline htdemucs stem separation via ONNX Runtime (ort). Quarantines the native onnxruntime dependency out of the core engine crates; NOT real-time."
+
+[dependencies]
+# Native ONNX Runtime bindings — the one quarantined non-pure-Rust dependency,
+# justified the same way as the FFmpeg decode fallback (see ROADMAP "Decisions made 2026-06-20").
+# Default features pull a prebuilt onnxruntime at build time; a later release pass switches to
+# `load-dynamic` so the runtime ships via the optional-download path instead of being linked.
+ort = "2.0.0-rc.12"
+thiserror = { workspace = true }
+tracing = { workspace = true }

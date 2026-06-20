@@ -21,9 +21,38 @@ and that pads don't honk the synth while the instrument panel is closed.
 
 Next, from the ROADMAP backlog:
 
-1. **Stem separation** — marquee 2025-26 feature, **needs an architecture decision first** (ONNX
-   runtime + a Demucs-class model: bundle / optional-download / defer). Doesn't fit the pure-Rust
-   ethos cleanly — discuss before starting.
+1. **Stem separation** — marquee 2025-26 feature. **Architecture decided 2026-06-20** (see
+   `ROADMAP.md` § "Decisions made (2026-06-20)"): offline pre-computed stems (4 buffers/deck,
+   mixed at playback) · `ort` (ONNX Runtime) in a new quarantined `compas-stems` crate · htdemucs
+   model · optional-download on first use. **Implementation is next, in three slices:**
+   - **✅ ONNX-export spike (2026-06-20) — PASSED.** Single-file **htdemucs** ONNX exists and
+     auto-downloads from HF (`StemSplitio/htdemucs-onnx`, **301 MB fp32**, fp16-weights variant ~half).
+     STFT is **inside** the model → IO is trivial: input `mix` `[1,2,343980]` f32 (a **fixed 7.8 s**
+     segment @ 44.1 k), output `stems` `[1,4,2,343980]` f32 (drums/bass/other/vocals). Verified on the
+     synthetic test WAV (kick+bass, no vocals): RMS landed in drums(.17)+bass(.08), vocals(.0002)+
+     other(.002) ~silent — correct routing. Tooling: `demucs-onnx` PyPI (0.3.4) for export+ref
+     inference; `sevagh/demucs.onnx` is the C++/ORT reference for segmentation + overlap-add + the
+     mean/std normalization to port. Rust runtime = **`ort` 2.0.0-rc.12** (wraps the same ONNX Runtime;
+     DirectML/CoreML/CUDA EPs available). Spike artifacts in `~/stem-spike` (outside the repo).
+   - **🔨 S1 — offline pipeline (first slice DONE 2026-06-20).** New **`compas-stems`** crate
+     (deps: `ort` 2.0.0-rc.12 + `thiserror`/`tracing`; a workspace member but **not** in
+     `default-members`, so core CI stays pure). Implemented: `StemSeparator::{load,separate}`,
+     the **segmented overlap-add** core (7.8 s / `N_SAMPLES=343980` segments, ¼ overlap, triangular
+     window, weight-normalized), interleave/deinterleave. Note: the single-file htdemucs graph bakes
+     STFT **and** mean/std normalization inside, so the host does **no** normalization — just chunk +
+     window + overlap-add. **Verified:** `cargo test`+`clippy` green; the live `ort` smoke test
+     (`-- --ignored` with `COMPAS_HTDEMUCS_ONNX=<cached htdemucs.onnx>`) loads the real 301 MB model
+     and runs a `[1,2,343980]`→`[1,4,2,343980]` frame in ~4.6 s — **Rust path proven**.
+     **Remaining S1 follow-ups:** rubato resampling for non-44.1 kHz sources (today `separate` errors
+     on a rate mismatch via `StemError::UnsupportedRate`); checksum'd optional-download of the model
+     (HF `StemSplitio/htdemucs-onnx` or our own mirror) into the app-data dir; switch `ort` to
+     `load-dynamic` so the runtime ships via that download path.
+   - **S2 — engine integration:** deck holds `Option<[Arc<DeckBuffer>; 4]>`; mixer reads 4
+     play-heads × 4 gains (RT-safe, same play-head math); `AudioCommand::SetDeckStemGain` +
+     `separate_stems`/`set_deck_stem` IPC (separation job emits progress, results cached to disk +
+     referenced from the SQLite DB so reload is instant).
+   - **S3 — UI:** per-deck STEMS panel (DRUMS/BASS/OTHER/VOCALS faders + mutes), a separate button
+     with progress, and the first-use model-download prompt.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,
    full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
 3. **Release infra — wiring done, secrets pending (2026-06-20).** Auto-update plugin, manual
