@@ -19,6 +19,9 @@ frontend/node_modules/
 # Generated test audio (regenerate via scripts/make-test-audio.mjs)
 /samples
 
+# Internal design-study notes — kept local, not published (learnings are folded into ROADMAP.md)
+/analysis
+
 # OS / editor
 .DS_Store
 Thumbs.db

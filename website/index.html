@@ -45,11 +45,14 @@
           <a class="btn btn-primary" href="https://github.com/sergiogallegos/compas/releases/latest" data-os="macos">
             <span class="os"></span> Download for macOS
           </a>
+          <a class="btn btn-primary" href="https://github.com/sergiogallegos/compas/releases/latest" data-os="linux">
+            <span class="os">🐧</span> Download for Linux
+          </a>
           <a class="btn btn-ghost" href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">
             View source
           </a>
         </div>
-        <p class="note mono">Open-source · MIT · Windows &amp; macOS installers via GitHub Releases</p>
+        <p class="note mono" id="dl-note">Open-source · MIT · Windows, macOS &amp; Linux installers via GitHub Releases</p>
       </section>
 
       <section class="shot">
@@ -97,12 +100,56 @@
     </footer>
 
     <script>
-      // Highlight the installer matching the visitor's OS.
-      const isMac = navigator.platform.toUpperCase().includes("MAC");
+      // --- Highlight the installer matching the visitor's OS -------------------------------
+      const ua = navigator.userAgent.toUpperCase();
+      const platform = (navigator.platform || "").toUpperCase();
+      const detectedOS = /MAC/.test(platform) || /MAC OS X/.test(ua)
+        ? "macos"
+        : /LINUX|X11/.test(platform) || /LINUX/.test(ua)
+        ? "linux"
+        : "windows";
       document.querySelectorAll(".btn-primary").forEach((b) => {
-        const wanted = isMac ? "macos" : "windows";
-        if (b.dataset.os !== wanted) b.classList.add("btn-secondary");
+        if (b.dataset.os !== detectedOS) b.classList.add("btn-secondary");
       });
+
+      // --- Resolve direct installer links from the latest GitHub Release -------------------
+      // Each release publishes a Windows (.msi/.exe), macOS (.dmg) and Linux (.AppImage/.deb)
+      // asset via tauri-action. We point each button straight at its asset so it's a true
+      // one-click download; if the API call fails or no asset matches, the button keeps its
+      // fallback href (the releases/latest page).
+      const REPO = "sergiogallegos/compas";
+      const ASSET_PATTERNS = {
+        windows: [/\.msi$/i, /-setup\.exe$/i, /\.exe$/i],
+        macos: [/\.dmg$/i, /\.app\.tar\.gz$/i],
+        linux: [/\.AppImage$/i, /\.deb$/i, /\.rpm$/i],
+      };
+      fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
+        headers: { Accept: "application/vnd.github+json" },
+      })
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((rel) => {
+          const assets = rel.assets || [];
+          let wired = 0;
+          for (const [os, patterns] of Object.entries(ASSET_PATTERNS)) {
+            const asset = assets.find((a) => patterns.some((p) => p.test(a.name)));
+            const btn = document.querySelector(`.btn-primary[data-os="${os}"]`);
+            if (asset && btn) {
+              btn.href = asset.browser_download_url;
+              btn.setAttribute("download", "");
+              wired++;
+            }
+          }
+          const note = document.getElementById("dl-note");
+          if (note && rel.tag_name) {
+            note.textContent = `Open-source · MIT · ${rel.tag_name} · Windows, macOS & Linux installers`;
+          }
+          if (!wired) {
+            // No release assets yet — leave buttons pointing at the releases page.
+          }
+        })
+        .catch(() => {
+          /* offline or no release yet — fallback hrefs already point at releases/latest */
+        });
     </script>
   </body>
 </html>

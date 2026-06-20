@@ -12,9 +12,33 @@ A cross-platform, real-time professional DJ application. Rust audio core + TypeS
 > roadmap; since services expose **playback control, not decoded audio**, any such deck would be
 > control-only by design and the UI would disable the DSP it can't perform. See `ARCHITECTURE.md` §1.
 
-Status: **Phase 1 — local-file dual-deck engine** (in progress). Two local decks decode, play, mix
-through a crossfader + 3-band EQ + filter, with BPM detection, waveforms, and varispeed beatmatch.
-See `ROADMAP.md`.
+Status: **active development.** The local DJ engine is functionally complete and self-reported
+working in the app; work now is on stem separation, a richer performance/library layer, and a
+signed public release. See `ROADMAP.md` for the full plan and `STATUS.md` for the live resume point.
+
+### What it does today
+
+- **4 decks**, in-RAM decode with a cubic-Hermite play-head (instant seek/varispeed/scratch/loops).
+- **Mixer:** equal-power crossfader (per-deck assign), per-deck gain, full-kill 3-band EQ, HPF/LPF filter.
+- **Analysis:** BPM + beatgrid + musical key (Camelot), scrolling zoom + overview waveforms, manual grid nudge.
+- **Tempo:** varispeed + fine trim, **continuous tempo+phase SYNC** (audio-thread PLL), **key-lock** (in-house WSOLA).
+- **Performance:** beat loops, hot cues, **jog-wheel scratch**, beat-jump, loop-roll w/ true slip, quantize.
+- **FX rack** (per-deck inserts): echo/delay, reverb, beat-synced flanger, bitcrusher.
+- **Sampler:** 8 performance pads (one-shots + per-pad loops) on the master bus.
+- **MIDI:** controller input + per-target MIDI-learn mapping; one-click Akai MPK Mini MK3 profile.
+- **Headphone/cue (PFL)** monitoring on a 2nd output, **master WAV recording**, **auto-mix** transitions.
+- **Library:** local SQLite track DB (cues/loops/grid/gain/play-history persisted), search, A/B/C/D load.
+- **Release:** in-app auto-update + a manual "check for updates" version chip.
+
+> Coming next: real-time **stem separation** (offline htdemucs via ONNX Runtime), playlists/crates,
+> harmonic-mixing assist, and an expanded FX/controller-scripting layer. See `ROADMAP.md`.
+
+## Download
+
+Prebuilt installers for **Windows, macOS, and Linux** are published on the
+[**Releases**](https://github.com/sergiogallegos/compas/releases/latest) page (built and attached by
+CI on each `v*` tag). The project landing page in `website/` links directly to the latest per-OS
+installer. The app then keeps itself current via the built-in updater.
 
 ![compas performance screen](docs/assets/screenshot.png)
 
@@ -87,3 +111,20 @@ App icons are generated from the "Needle & Rose" brand mark via `npm run icons` 
 - **Error handling:** `Result`-based; no `unwrap()`/`expect()` in non-test code.
 - **Cross-platform from commit one:** gate any platform-specific code and document it.
 - Keep `ARCHITECTURE.md` and `ROADMAP.md` updated alongside code changes.
+
+See `CONTRIBUTING.md` for the full workflow and `CODE_OF_CONDUCT.md` for community expectations.
+Good first issues: widening loops/cue modes, library crates/playlists, and FX additions — see
+`ROADMAP.md`.
+
+## License
+
+compas is **open-source under the [MIT License](LICENSE)** — permissive: use, modify, and
+redistribute, including commercially, with attribution. The engine implements time-stretch/key-lock
+and beat/key detection **in-house** (no copyleft DSP dependency); the optional FFmpeg decode fallback
+is dynamically linked and documented. See `ROADMAP.md` for the full dependency-licensing table.
+
+## Acknowledgements
+
+compas is an independent project. Thanks to the Rust audio ecosystem it builds on — `cpal`,
+`symphonia`, `rubato`, `rtrb`, `rustfft`, and `tauri` — and to the broader DJ-software community
+whose decades of established UX conventions informed the feature set.

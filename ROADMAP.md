@@ -87,7 +87,8 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 ## Phase 5 — Stems / FX / recording 🔨
 
-- ⬜ Stem separation (evaluate permissive models; licensing + latency review before committing).
+- 🔨 **Stem separation** — **decided 2026-06-20** (see "Decisions made"): offline pre-computed
+  stems via `ort` (ONNX Runtime) + htdemucs, optional-download model. Not yet started.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 
@@ -138,9 +139,11 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ✅ **Quantize** — per-deck Q snaps hot-cue jumps + beat-jumps to the grid (loops already snap).
 
 **Tier 2 — modern differentiators (what 2025-26 DJs expect):**
-- ⬜ **Real-time STEM separation** (vocal/drum/bass/melody isolation) — now table-stakes across
-  Serato/rekordbox/Traktor/VirtualDJ/djay. Needs an ML model decision (ONNX runtime + a
-  Demucs-class model: bundle / optional-download / defer). Biggest single feature gap.
+- 🔨 **STEM separation** (vocal/drum/bass/melody isolation) — table-stakes across
+  Serato/rekordbox/Traktor/VirtualDJ/djay; biggest single feature gap. **Model decision made
+  2026-06-20:** offline pre-computed stems (4 buffers/deck, mixed at playback) via `ort`
+  (ONNX Runtime, quarantined native dep) + **htdemucs**, model fetched on first use
+  (optional-download). True real-time separation deferred. See "Decisions made".
 - 🔶 **More FX + beat-synced timing + FX units/chains** — echo, reverb, beat-synced flanger, and
   bitcrusher ship; phaser + FX chaining still open. (FX time already in beats.)
 - ✅ **Sampler / performance pads** — 8 pads, one-shots (polyphonic) + per-pad loop toggle, global
@@ -159,14 +162,74 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 **Tier 4 — advanced / niche (later, maybe never):**
 - ⬜ Video mixing, karaoke, DMX lighting · HID hardware (pro-controller jog wheels).
 
+### Feature deep-dive backlog (design study, 2026-06-20)
+
+A focused study of how mature desktop DJ software implements its engine, mixer, sync, effects,
+waveforms, library, and controller layers surfaced the items below. They are framed as compas
+features (clean-room — behaviors and concepts only, independently designed). Detailed write-ups,
+KEEP/IMPROVE/DROP calls, and the full Rust-core ↔ TS-UI mapping were captured in internal design
+notes.
+
+**Near-term (the control bus enables much of the rest):**
+1. ⬜ **Typed control bus** — a named `(group, param)` registry where every tweakable engine value
+   is one shared, lock-free cell carrying a value↔normalized↔MIDI behavior curve. This is the seam
+   that MIDI-learn, controller scripting, a skinnable UI, and batched UI telemetry all hang off;
+   building it first unlocks several later items. *Rust core: registry + atomics/seqlock; UI: a
+   single batched `controls:changed` event instead of many per-param events.*
+2. ⬜ **FX chains + meta/super-knob** — move past fixed per-deck inserts to chainable effect units
+   with a manifest-driven parameter model and a macro knob that drives many params via link types
+   (linked / left / right / left-right / inverted / neutral-split). *Rust: `trait Effect` +
+   state/processor split (allocation off the audio thread); UI: chain rack + macro mapping.*
+3. ⬜ **Frequency-band RGB waveforms** — color the waveform by band energy (low/mid/high → RGB,
+   normalized by the max component), with live EQ-gain color feedback. *Rust: band-split peak texels
+   in the offline waveform pass; UI: one-draw-call WebGL shader.*
+4. ⬜ **DAC-latency-aware playhead** — extrapolate the scrolling playhead against output latency +
+   VSync so motion stays smooth and decoupled from buffer size. *UI render loop + engine latency clock.*
+5. ⬜ **Crossfader curve + additive mode + reverse** — an adjustable transform curve, additive
+   ("slow-fade / fast-cut") vs constant-power modes, and reverse; plus an anti-zipper ramp audit on
+   every gain stage. *Rust core (mixer summing stage).*
+6. ⬜ **Configurable main-cue modes** — selectable cue behaviors (preview-while-held,
+   release-to-play, and other hardware-faithful modes) for muscle-memory parity. *Rust transport + UI setting.*
+7. ⬜ **Full loop toolkit** — widen the beat-loop range (1/32…512), add a roll stack, loop
+   move/scale/halve-double, live in/out drag with quantized snap, saved loops on hot cues, and
+   seek-on-load modes. *Rust loop engine; UI waveform interactions.*
+8. ⬜ **Sync coordinator hardening** — a central coordinator with soft (auto, reassignable) vs
+   explicit (pinned) leaders, a virtual internal-clock leader, a pure ranking-based leader picker,
+   and separate tempo-only / phase-only triggers. Refines today's PLL sync. *Rust core; unit-tested.*
+9. ⬜ **ReplayGain / loudness normalization** — compute per-track gain on analysis and apply it in a
+   pregain stage for consistent deck levels. *Rust analysis + pregain.*
+
+**Mid-term:**
+10. ⬜ **Library platform** — crates + ordered playlists, a real query language (fielded + fuzzy +
+    bpm/key ranges + negation/OR), smart crates, free-form tags, typed/colored cue rows, and
+    incremental directory-hash scanning. Builds on the existing SQLite store. *Rust: schema + query
+    compiler (`rusqlite`), `notify` for folder watch; UI: browser + smart-crate builder.*
+11. ⬜ **Agentic auto-mix / set construction** — a planner that picks in/out points, harmonically
+    compatible next tracks (Camelot already detected), tempo ramps, and EQ curves, plus an AutoDJ
+    queue for unattended track→track chaining. The headline differentiator. *Rust planner over
+    analysis; UI queue + override.*
+12. ⬜ **Sandboxed scripting layer** — a JS/TS controller-scripting runtime over the control bus
+    (an `engine.*` API, declarative input + output/LED bindings, soft-takeover, a small std library,
+    and an in-app guided-learn editor). Turns compas into an extensible platform. *Rust: embed an
+    `rquickjs`/`boa` sandbox bound to the control bus; UI: mapping editor.*
+
+**Later tiers:** compressed recording (FLAC/Opus) + a live cue-sheet; read-only library import from
+other DJ apps; split-cue (mono cue / mono master) monitoring; fold EQ + filter into the chain
+abstraction; Ableton Link / MIDI-clock sync.
+
 ### Suggested near-term order (step by step)
 1. ✅ **4-deck layout** — done.
 2. ✅ **MIDI-learn / mapping** (+ Akai profile) — done.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. ✅ **Headphone/cue monitoring** — done.
-5. **Stem separation** — marquee feature (needs the model decision first).
+5. 🔨 **Stem separation** — model decision made (offline stems · `ort` · htdemucs ·
+   optional-download); implementation next. See "Decisions made (2026-06-20)".
 6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) + sampler/pads done; more
    beat-synced FX, full slip mode, harmonic-mixing assist, MIDI-mapped pads still open.
+7. ⬜ **Typed control bus** — the extensibility enabler (see the deep-dive backlog); unlocks FX
+   chains, controller scripting, and a skinnable UI, so it comes before them.
+8. ⬜ **Engine/UX deep-dive items** — FX chains + meta-knob, band-RGB waveforms, crossfader curve,
+   configurable cue modes, the wider loop toolkit, and sync-coordinator hardening (deep-dive backlog).
 
 ---
 
@@ -207,6 +270,25 @@ RT-safe WSOLA stretcher and our own analysis), so they add no third-party DSP de
 
 **Patent note:** MP3 patents have expired. AAC patents may still apply to the *codec*; symphonia's
 AAC/ALAC coverage is also partial — another reason the FFmpeg fallback decision is documented.
+
+## Decisions made (2026-06-20) — stem separation
+
+- **Mode: offline pre-computed stems, not true real-time.** On load/on-demand, run the model
+  once on the existing analysis worker thread and produce 4 stem buffers (drums/bass/other/vocals);
+  a deck then holds `[Arc<DeckBuffer>; 4]` and the audio callback mixes 4 frames with 4 per-stem
+  gains. Zero model inference on the RT thread — fits the in-RAM play-head model and adds no new
+  RT hazard. Live stem control = per-stem gain/mute. True real-time (causal in-path) separation is
+  **deferred indefinitely** (GPU/latency cost, worse quality-per-effort).
+- **Runtime: `ort` (ONNX Runtime).** A quarantined native dependency, justified the same way as
+  the FFmpeg fallback: pure-Rust everywhere except one well-contained, well-supported native lib.
+  Chosen over pure-Rust `candle`/`tract` for best model fidelity (runs htdemucs as-is) and the only
+  path to DirectML/CoreML/CUDA acceleration (Demucs on plain CPU is ~slower than realtime). Lives in
+  a dedicated **`compas-stems`** crate so the native dep stays out of the core engine crates and CI.
+- **Model: htdemucs** (Meta, MIT) — hybrid-transformer 4-stem, state-of-the-art quality.
+- **Distribution: optional-download.** Installer ships without the ~hundreds-of-MB model + the
+  onnxruntime lib; both are fetched (checksum-verified) into the app-data dir on first stem use.
+  Keeps the installer lean and makes stems opt-in. (Bundle/defer rejected.)
+- **Licensing: clear.** htdemucs, ONNX Runtime all MIT/Apache — no blocker (unlike streaming).
 
 ## Decisions made (2026-06-17)
 
