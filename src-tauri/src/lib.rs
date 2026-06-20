@@ -46,6 +46,7 @@ enum EngineMsg {
     SetSyncLeader { deck: usize, explicit: bool },
     SyncToLeader { deck: usize },
     SetDeckReplayGain { deck: usize, gain: f32 },
+    SetDeckFxMacro { deck: usize, value: f32 },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -282,6 +283,9 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::SyncToLeader { deck } => AudioCommand::SyncToLeader { deck },
                     EngineMsg::SetDeckReplayGain { deck, gain } => {
                         AudioCommand::SetDeckReplayGain { deck, gain }
+                    }
+                    EngineMsg::SetDeckFxMacro { deck, value } => {
+                        AudioCommand::SetDeckFxMacro { deck, value }
                     }
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
@@ -1141,6 +1145,12 @@ fn set_deck_replay_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) 
     state.send(EngineMsg::SetDeckReplayGain { deck, gain })
 }
 
+/// Drive a deck's FX macro (super-knob), `value` 0..1.
+#[tauri::command]
+fn set_deck_fx_macro(state: State<'_, EngineHandle>, deck: usize, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckFxMacro { deck, value })
+}
+
 #[tauri::command]
 fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetMasterGain(value))
@@ -1703,6 +1713,7 @@ pub fn run() {
             set_sync_leader,
             sync_to_leader,
             set_deck_replay_gain,
+            set_deck_fx_macro,
             set_master_gain,
             start_recording,
             stop_recording,

@@ -15,6 +15,6 @@ pub mod analysis;
 pub mod rt;
 
 pub use rt::{
-    Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth,
-    ThreeBandEq, TimeStretch, Waveform, XfaderMode,
+    meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,
+    Reverb, Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };

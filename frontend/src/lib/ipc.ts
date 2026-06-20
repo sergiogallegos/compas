@@ -314,6 +314,10 @@ export const syncToLeader = (deck: number) => invoke("sync_to_leader", { deck })
 /** Override a deck's loudness-normalization factor (1.0 = off). Auto-applied on load. */
 export const setDeckReplayGain = (deck: number, gain: number) =>
   invoke("set_deck_replay_gain", { deck, gain });
+// ---- FX macro (super-knob) --------------------------------------------------------
+/** Drive a deck's FX macro: one knob (0..1) brings in reverb then echo across the sweep. */
+export const setDeckFxMacro = (deck: number, value: number) =>
+  invoke("set_deck_fx_macro", { deck, value });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
 // ---- Synth instrument + MIDI ------------------------------------------------------

@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, Reverb, Synth,
-    ThreeBandEq, TimeStretch, Waveform, XfaderMode,
+    meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,
+    Reverb, Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };
 use rtrb::Producer;
 
@@ -172,6 +172,12 @@ pub enum AudioCommand {
         bits: f32,
         downsample: u32,
         mix: f32,
+    },
+    /// Per-deck FX **macro** (super-knob): one `value` 0..1 drives multiple inserts at once through
+    /// their link curves — reverb across the whole sweep, echo brought in over the upper half.
+    SetDeckFxMacro {
+        deck: usize,
+        value: f32,
     },
     SetDeckPlaying {
         deck: usize,
@@ -1040,6 +1046,27 @@ impl Mixer {
                             d.crusher.clear();
                         }
                         d.crusher_active = active;
+                    }
+                }
+                AudioCommand::SetDeckFxMacro { deck, value } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        // Reverb rides the whole sweep; echo comes in over the upper half. Each
+                        // insert clears on its engage edge (matches the manual FX commands).
+                        let rev_mix = meta_map(value, LinkType::Linked) * 0.6;
+                        d.reverb.set_mix(rev_mix);
+                        let want_rev = rev_mix > 0.001;
+                        if want_rev && !d.reverb_active {
+                            d.reverb.clear();
+                        }
+                        d.reverb_active = want_rev;
+
+                        let echo_mix = meta_map(value, LinkType::LinkedRight);
+                        d.echo.set_mix(echo_mix);
+                        let want_echo = echo_mix > 0.001;
+                        if want_echo && !d.echo_active {
+                            d.echo.clear();
+                        }
+                        d.echo_active = want_echo;
                     }
                 }
                 AudioCommand::SetDeckPlaying { deck, playing } => {

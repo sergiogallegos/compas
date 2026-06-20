@@ -341,6 +341,48 @@ impl Crossfader {
     }
 }
 
+/// How a meta/super-knob value drives one target parameter. A single macro knob can move many
+/// parameters at once, each through its own link curve — the basis of an expressive FX macro.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkType {
+    /// Tracks the macro `0→1` directly.
+    Linked,
+    /// Tracks inverted (`1→0`).
+    Inverted,
+    /// Active only over the lower half: `0..0.5` sweeps `0→1`, then holds at 1.
+    LinkedLeft,
+    /// Active only over the upper half: holds at 0 until `0.5`, then `0.5..1` sweeps `0→1`.
+    LinkedRight,
+    /// Split at the neutral center: `1` at both extremes, `0` at the middle (a V).
+    LinkedLeftRight,
+}
+
+impl LinkType {
+    /// Map a small integer (from the UI/IPC) to a link type.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            1 => LinkType::Inverted,
+            2 => LinkType::LinkedLeft,
+            3 => LinkType::LinkedRight,
+            4 => LinkType::LinkedLeftRight,
+            _ => LinkType::Linked,
+        }
+    }
+}
+
+/// Map a macro/super-knob value `0..=1` to a target's `0..=1` contribution through `link`. RT-SAFE.
+#[inline]
+pub fn meta_map(value: f32, link: LinkType) -> f32 {
+    let v = value.clamp(0.0, 1.0);
+    match link {
+        LinkType::Linked => v,
+        LinkType::Inverted => 1.0 - v,
+        LinkType::LinkedLeft => (v * 2.0).min(1.0),
+        LinkType::LinkedRight => ((v - 0.5) * 2.0).max(0.0),
+        LinkType::LinkedLeftRight => (2.0 * v - 1.0).abs(),
+    }
+}
+
 /// Stereo delay line with feedback — the core of an echo/delay FX.
 ///
 /// The ring buffer is allocated **once at construction** (control/setup thread, e.g.
@@ -1238,6 +1280,28 @@ mod tests {
         assert!(a0 > 0.99 && b0 < 1e-3, "full A: {a0},{b0}");
         let (a1, b1) = settled_gains(&mut xf, 1.0);
         assert!(a1 < 1e-3 && b1 > 0.99, "full B: {a1},{b1}");
+    }
+
+    #[test]
+    fn meta_map_link_types() {
+        // Linked / inverted endpoints.
+        assert!((meta_map(0.0, LinkType::Linked) - 0.0).abs() < 1e-6);
+        assert!((meta_map(1.0, LinkType::Linked) - 1.0).abs() < 1e-6);
+        assert!((meta_map(0.0, LinkType::Inverted) - 1.0).abs() < 1e-6);
+        // LinkedLeft active in lower half, then held.
+        assert!((meta_map(0.25, LinkType::LinkedLeft) - 0.5).abs() < 1e-6);
+        assert!((meta_map(0.5, LinkType::LinkedLeft) - 1.0).abs() < 1e-6);
+        assert!((meta_map(1.0, LinkType::LinkedLeft) - 1.0).abs() < 1e-6);
+        // LinkedRight inactive until center.
+        assert!((meta_map(0.25, LinkType::LinkedRight) - 0.0).abs() < 1e-6);
+        assert!((meta_map(0.75, LinkType::LinkedRight) - 0.5).abs() < 1e-6);
+        // LinkedLeftRight: V — 1 at edges, 0 at center.
+        assert!((meta_map(0.0, LinkType::LinkedLeftRight) - 1.0).abs() < 1e-6);
+        assert!((meta_map(0.5, LinkType::LinkedLeftRight) - 0.0).abs() < 1e-6);
+        assert!((meta_map(1.0, LinkType::LinkedLeftRight) - 1.0).abs() < 1e-6);
+        // Clamps.
+        assert!((meta_map(-1.0, LinkType::Linked) - 0.0).abs() < 1e-6);
+        assert!((meta_map(2.0, LinkType::Linked) - 1.0).abs() < 1e-6);
     }
 
     #[test]
