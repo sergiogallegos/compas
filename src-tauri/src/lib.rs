@@ -507,6 +507,8 @@ struct DeckLoadedEvent {
     key_name: String,
     /// Max-abs amplitude per `WAVEFORM_BIN_FRAMES` frames; used to draw the overview.
     peaks: Vec<f32>,
+    /// Per-bin `[low, mid, high]` band energy (0..1) for frequency-colored waveforms.
+    band_peaks: Vec<[f32; 3]>,
     /// Loudness-normalization (ReplayGain) factor the engine applied on load.
     replay_gain: f32,
 }
@@ -624,6 +626,8 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
         };
 
         let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
+        let band_peaks =
+            compas_dsp::analysis::band_peaks(&buffer.samples, buffer.source_rate, WAVEFORM_BIN_FRAMES);
         let (grid, key) = analyze_track(&buffer);
         let replay_gain = compas_dsp::analysis::replaygain_linear(&buffer.samples);
 
@@ -644,6 +648,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
                 key_camelot: key.camelot,
                 key_name: key.name,
                 peaks,
+                band_peaks,
                 replay_gain,
             },
         );

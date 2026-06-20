@@ -28,7 +28,21 @@ export interface DeckLoaded {
   key_camelot: string;
   key_name: string;
   peaks: number[];
+  /** Per-bin `[low, mid, high]` band energy (0..1) for frequency-colored waveforms. */
+  band_peaks: [number, number, number][];
+  /** Loudness-normalization factor applied on load (1.0 = none). */
+  replay_gain: number;
 }
+
+/** Convert a `[low, mid, high]` band-energy triple into a CSS rgb() string for waveform coloring
+ *  (low→red, mid→green, high→blue), brightened so quiet bins stay visible. */
+export const bandColor = ([low, mid, high]: [number, number, number]): string => {
+  const max = Math.max(low, mid, high, 1e-4);
+  const r = Math.round((low / max) * 255);
+  const g = Math.round((mid / max) * 255);
+  const b = Math.round((high / max) * 255);
+  return `rgb(${r}, ${g}, ${b})`;
+};
 
 export interface DeckPosition {
   deck: number;

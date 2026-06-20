@@ -386,9 +386,85 @@ pub fn replaygain_linear(samples: &[f32]) -> f32 {
     ((TARGET_RMS / rms) as f32).clamp(0.25, 4.0)
 }
 
+/// Per-waveform-bin energy split into three frequency bands (low / mid / high), for drawing
+/// frequency-colored waveforms (low→red, mid→green, high→blue). `samples` is interleaved stereo;
+/// each output entry is `[low, mid, high]` RMS for one `bin_frames`-sized bin, globally normalized
+/// to `0..=1` by the largest single-band value so colors are comparable across the track. Offline.
+pub fn band_peaks(samples: &[f32], sample_rate: u32, bin_frames: usize) -> Vec<[f32; 3]> {
+    let frames = samples.len() / 2;
+    if frames == 0 || bin_frames == 0 || sample_rate == 0 {
+        return Vec::new();
+    }
+    let sr = sample_rate as f32;
+    // Three bands: low (<250 Hz), mid (250 Hz–2.5 kHz, an HPF→LPF cascade), high (>2.5 kHz).
+    let mut low = crate::Biquad::new(crate::BiquadCoeffs::low_pass(250.0, sr, 0.707));
+    let mut mid_hp = crate::Biquad::new(crate::BiquadCoeffs::high_pass(250.0, sr, 0.707));
+    let mut mid_lp = crate::Biquad::new(crate::BiquadCoeffs::low_pass(2500.0, sr, 0.707));
+    let mut high = crate::Biquad::new(crate::BiquadCoeffs::high_pass(2500.0, sr, 0.707));
+
+    let nbins = frames.div_ceil(bin_frames);
+    let mut sums = vec![[0.0f64; 3]; nbins];
+    let mut counts = vec![0u32; nbins];
+
+    for i in 0..frames {
+        let mono = 0.5 * (samples[i * 2] + samples[i * 2 + 1]);
+        let l = low.process(mono);
+        let m = mid_lp.process(mid_hp.process(mono));
+        let h = high.process(mono);
+        let bin = i / bin_frames;
+        sums[bin][0] += (l as f64) * (l as f64);
+        sums[bin][1] += (m as f64) * (m as f64);
+        sums[bin][2] += (h as f64) * (h as f64);
+        counts[bin] += 1;
+    }
+
+    let mut out = vec![[0.0f32; 3]; nbins];
+    let mut peak = 0.0f32;
+    for (bin, (s, &c)) in sums.iter().zip(counts.iter()).enumerate() {
+        if c == 0 {
+            continue;
+        }
+        for b in 0..3 {
+            let rms = (s[b] / c as f64).sqrt() as f32;
+            out[bin][b] = rms;
+            peak = peak.max(rms);
+        }
+    }
+    if peak > 1e-9 {
+        for bin in out.iter_mut() {
+            for b in bin.iter_mut() {
+                *b /= peak;
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn band_peaks_route_energy_by_frequency() {
+        let sr = 44_100u32;
+        let secs = 1.0;
+        let n = (sr as f32 * secs) as usize;
+        let sine = |hz: f32| -> Vec<f32> {
+            (0..n)
+                .flat_map(|i| {
+                    let s = (2.0 * std::f32::consts::PI * hz * i as f32 / sr as f32).sin() * 0.5;
+                    [s, s]
+                })
+                .collect()
+        };
+        let bins_low = band_peaks(&sine(60.0), sr, 4096);
+        let avg = |v: &[[f32; 3]], b: usize| v.iter().map(|x| x[b]).sum::<f32>() / v.len() as f32;
+        // A 60 Hz tone lands mostly in the low band.
+        assert!(avg(&bins_low, 0) > avg(&bins_low, 2), "low tone should be low-band heavy");
+        let bins_high = band_peaks(&sine(8000.0), sr, 4096);
+        assert!(avg(&bins_high, 2) > avg(&bins_high, 0), "high tone should be high-band heavy");
+        assert!(band_peaks(&[], sr, 4096).is_empty());
+    }
 
     #[test]
     fn replaygain_boosts_quiet_and_attenuates_loud() {
