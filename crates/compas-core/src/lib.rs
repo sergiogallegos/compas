@@ -7,11 +7,13 @@
 
 mod buffer;
 mod capabilities;
+pub mod control;
 mod error;
 mod track;
 
 pub use buffer::DeckBuffer;
 pub use capabilities::{SourceCapabilities, SourceKind};
+pub use control::{Behavior, ControlId, ControlSpec, Registry, Unit};
 pub use error::{CompasError, Result};
 pub use track::{MusicProvider, TrackMetadata};
 
