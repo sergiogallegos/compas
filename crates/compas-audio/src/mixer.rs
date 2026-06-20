@@ -372,6 +372,13 @@ pub struct DeckTelemetry {
     rt_load_bits: AtomicU64,
     /// Count of blocks that overran their real-time budget (potential underruns).
     xruns: AtomicU64,
+    /// Per-deck effective play-head advance in **source frames per second** (signed; negative when
+    /// scratching backward, 0 when stopped). Lets the UI extrapolate the play-head smoothly between
+    /// telemetry updates instead of stepping at the 30 Hz event rate.
+    rate_bits: [AtomicU64; NUM_DECKS],
+    /// Measured output (DAC) latency in seconds, so the UI can offset the visual play-head to match
+    /// what's actually being heard.
+    output_latency_bits: AtomicU64,
 }
 
 impl DeckTelemetry {
@@ -385,7 +392,22 @@ impl DeckTelemetry {
             master_r_bits: AtomicU64::new(0),
             rt_load_bits: AtomicU64::new(0),
             xruns: AtomicU64::new(0),
+            rate_bits: std::array::from_fn(|_| AtomicU64::new(0)),
+            output_latency_bits: AtomicU64::new(0),
         }
+    }
+
+    /// Per-deck effective advance in source frames/sec (signed; 0 when stopped).
+    pub fn deck_rate(&self, deck: usize) -> f64 {
+        self.rate_bits
+            .get(deck)
+            .map(|a| f64::from_bits(a.load(Ordering::Relaxed)))
+            .unwrap_or(0.0)
+    }
+
+    /// Measured output (DAC) latency in seconds (0 if unknown).
+    pub fn output_latency_secs(&self) -> f32 {
+        f64::from_bits(self.output_latency_bits.load(Ordering::Relaxed)) as f32
     }
 
     /// Audio-thread CPU load, 0..~1 (≥1 means the callback is overrunning its budget).
@@ -860,6 +882,14 @@ impl Mixer {
         self.telemetry
             .xruns
             .store(self.xrun_count, Ordering::Relaxed);
+    }
+
+    /// Publish the measured output (DAC) latency in seconds. RT-SAFE.
+    #[inline]
+    pub fn publish_latency(&self, secs: f32) {
+        self.telemetry
+            .output_latency_bits
+            .store((secs as f64).to_bits(), Ordering::Relaxed);
     }
 
     /// Retire a deck's old buffer to the control thread for dropping (RT-safe: if the
@@ -1401,6 +1431,16 @@ impl Mixer {
             self.telemetry.loaded[i].store(d.buffer.is_some(), Ordering::Relaxed);
             self.telemetry.level_bits[i]
                 .store((self.peak_deck[i] as f64).to_bits(), Ordering::Relaxed);
+            // Effective advance in source frames/sec for UI play-head extrapolation.
+            // base_ratio * device_rate == source_rate, so this is source_rate * effective_rate.
+            let rate_fps = if d.scratching {
+                d.base_ratio * d.scratch_speed * self.device_rate as f64
+            } else if d.playing {
+                d.base_ratio * d.sync_tempo.unwrap_or(d.tempo) * self.device_rate as f64
+            } else {
+                0.0
+            };
+            self.telemetry.rate_bits[i].store(rate_fps.to_bits(), Ordering::Relaxed);
         }
         self.telemetry
             .master_l_bits

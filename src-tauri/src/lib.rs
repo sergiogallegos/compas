@@ -520,6 +520,10 @@ struct DeckPositionEvent {
     playing: bool,
     /// Output peak (linear 0..~1) for the deck's VU meter.
     level: f32,
+    /// Effective advance in source frames/sec — the UI extrapolates the play-head with this.
+    rate: f64,
+    /// Measured output (DAC) latency in seconds, for play-head offset.
+    latency_secs: f32,
 }
 
 #[derive(Serialize, Clone)]
@@ -1609,6 +1613,8 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
                             frame: telemetry.playhead_frames(deck),
                             playing: telemetry.is_playing(deck),
                             level: telemetry.deck_level(deck),
+                            rate: telemetry.deck_rate(deck),
+                            latency_secs: telemetry.output_latency_secs(),
                         },
                     );
                 }

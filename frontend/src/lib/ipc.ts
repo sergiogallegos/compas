@@ -49,7 +49,20 @@ export interface DeckPosition {
   frame: number;
   playing: boolean;
   level: number;
+  /** Effective advance in source frames/sec — use to extrapolate the play-head between events. */
+  rate: number;
+  /** Measured output (DAC) latency in seconds. */
+  latency_secs: number;
 }
+
+/** Extrapolate the visual play-head from the last telemetry sample so it scrolls smoothly at the
+ *  display refresh rate (decoupled from the 30 Hz event rate and the audio buffer size), offset by
+ *  the DAC latency so the marker matches what's being heard.
+ *  `dtSeconds` is wall-clock time elapsed since the position event arrived. */
+export const extrapolateFrame = (p: DeckPosition, dtSeconds: number): number => {
+  if (!p.playing) return p.frame;
+  return p.frame + p.rate * (dtSeconds - p.latency_secs);
+};
 
 export interface MasterMeter {
   l: number;

@@ -120,8 +120,13 @@ where
     let stream = device
         .build_output_stream(
             config,
-            move |out: &mut [T], _: &cpal::OutputCallbackInfo| {
+            move |out: &mut [T], info: &cpal::OutputCallbackInfo| {
                 let t0 = std::time::Instant::now();
+                // Measured DAC latency: time from this callback to when the audio is heard.
+                let ts = info.timestamp();
+                if let Some(d) = ts.playback.duration_since(&ts.callback) {
+                    mixer.publish_latency(d.as_secs_f32());
+                }
                 mixer.drain_commands();
                 for frame in out.chunks_mut(channels) {
                     let (l, r) = mixer.next_frame();
