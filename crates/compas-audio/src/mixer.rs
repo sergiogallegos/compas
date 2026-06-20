@@ -123,6 +123,11 @@ pub enum AudioCommand {
         deck: usize,
         gain: f32,
     },
+    /// Per-deck loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 disables it.
+    SetDeckReplayGain {
+        deck: usize,
+        gain: f32,
+    },
     SetDeckEq {
         deck: usize,
         low_db: f32,
@@ -501,6 +506,8 @@ struct DeckPlayer {
     cue_mode: CueMode,
     /// True while a CDJ-style preview (play-while-held) is active, so release snaps back.
     cue_previewing: bool,
+    /// Loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 = off.
+    replay_gain: f32,
 }
 
 impl DeckPlayer {
@@ -547,6 +554,7 @@ impl DeckPlayer {
             cue_point: 0.0,
             cue_mode: CueMode::Cdj,
             cue_previewing: false,
+            replay_gain: 1.0,
         }
     }
 
@@ -707,6 +715,7 @@ impl DeckPlayer {
             l = cl;
             r = cr;
         }
+        let g = g * self.replay_gain; // loudness normalization, pre-fader
         (l * g, r * g)
     }
 
@@ -938,6 +947,11 @@ impl Mixer {
                         d.gain.set_target(gain);
                     }
                 }
+                AudioCommand::SetDeckReplayGain { deck, gain } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.replay_gain = gain.clamp(0.1, 8.0);
+                    }
+                }
                 AudioCommand::SetDeckEq {
                     deck,
                     low_db,
@@ -1107,6 +1121,7 @@ impl Mixer {
                         d.loop_active = false;
                         d.cue_point = 0.0;
                         d.cue_previewing = false;
+                        d.replay_gain = 1.0;
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
                         d.sync_master = None;

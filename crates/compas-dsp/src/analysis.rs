@@ -369,9 +369,40 @@ fn spectral_flux_envelope(samples: &[f32], frame: usize, hop: usize) -> Vec<f32>
     envelope
 }
 
+/// Linear gain that brings `samples` to a reference loudness (~−18 dBFS RMS — the classic
+/// ReplayGain target), for auto-gain/loudness normalization across a library. Accepts interleaved
+/// stereo or mono. Clamped to a musical range so silent or hot tracks don't jump. Offline; not
+/// RT-safe (iterates the whole buffer).
+pub fn replaygain_linear(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 1.0;
+    }
+    let sum_sq: f64 = samples.iter().map(|&s| (s as f64) * (s as f64)).sum();
+    let rms = (sum_sq / samples.len() as f64).sqrt();
+    if rms < 1e-6 {
+        return 1.0; // silence — leave it alone
+    }
+    const TARGET_RMS: f64 = 0.125; // ≈ −18 dBFS
+    ((TARGET_RMS / rms) as f32).clamp(0.25, 4.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replaygain_boosts_quiet_and_attenuates_loud() {
+        // RMS ≈ 0.0625 (half target) → boost ~2x.
+        let quiet: Vec<f32> = (0..10_000).map(|i| if i % 2 == 0 { 0.0625 } else { -0.0625 }).collect();
+        let g = replaygain_linear(&quiet);
+        assert!((g - 2.0).abs() < 0.1, "quiet boost was {g}");
+        // Full-scale square → RMS 1.0 → attenuate toward target.
+        let loud: Vec<f32> = (0..10_000).map(|i| if i % 2 == 0 { 1.0 } else { -1.0 }).collect();
+        assert!(replaygain_linear(&loud) < 1.0, "loud track attenuated");
+        // Silence and empty are left unchanged.
+        assert_eq!(replaygain_linear(&[0.0; 1000]), 1.0);
+        assert_eq!(replaygain_linear(&[]), 1.0);
+    }
 
     #[test]
     fn tempo_on_empty_is_zero_confidence() {

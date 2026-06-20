@@ -45,6 +45,7 @@ enum EngineMsg {
     SetDeckSyncMode { deck: usize, mode: u8 },
     SetSyncLeader { deck: usize, explicit: bool },
     SyncToLeader { deck: usize },
+    SetDeckReplayGain { deck: usize, gain: f32 },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -279,6 +280,9 @@ fn spawn_engine() -> EngineHandle {
                         AudioCommand::SetSyncLeader { deck, explicit }
                     }
                     EngineMsg::SyncToLeader { deck } => AudioCommand::SyncToLeader { deck },
+                    EngineMsg::SetDeckReplayGain { deck, gain } => {
+                        AudioCommand::SetDeckReplayGain { deck, gain }
+                    }
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
                     EngineMsg::DeckEq {
@@ -499,6 +503,8 @@ struct DeckLoadedEvent {
     key_name: String,
     /// Max-abs amplitude per `WAVEFORM_BIN_FRAMES` frames; used to draw the overview.
     peaks: Vec<f32>,
+    /// Loudness-normalization (ReplayGain) factor the engine applied on load.
+    replay_gain: f32,
 }
 
 #[derive(Serialize, Clone)]
@@ -615,6 +621,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
 
         let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
         let (grid, key) = analyze_track(&buffer);
+        let replay_gain = compas_dsp::analysis::replaygain_linear(&buffer.samples);
 
         let _ = app.emit(
             "deck:loaded",
@@ -633,6 +640,7 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
                 key_camelot: key.camelot,
                 key_name: key.name,
                 peaks,
+                replay_gain,
             },
         );
 
@@ -645,6 +653,11 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
             buffer: Arc::new(buffer),
             beat_offset,
             beat_interval,
+        });
+        // Apply loudness normalization right after the load resets the deck's gain to neutral.
+        let _ = tx.send(EngineMsg::SetDeckReplayGain {
+            deck,
+            gain: replay_gain,
         });
     });
 }
@@ -1119,6 +1132,13 @@ fn set_sync_leader(state: State<'_, EngineHandle>, deck: usize, explicit: bool) 
 #[tauri::command]
 fn sync_to_leader(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
     state.send(EngineMsg::SyncToLeader { deck })
+}
+
+/// Set a deck's loudness-normalization factor (1.0 = off). Use to override or disable the
+/// auto-computed ReplayGain.
+#[tauri::command]
+fn set_deck_replay_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckReplayGain { deck, gain })
 }
 
 #[tauri::command]
@@ -1682,6 +1702,7 @@ pub fn run() {
             set_deck_sync_mode,
             set_sync_leader,
             sync_to_leader,
+            set_deck_replay_gain,
             set_master_gain,
             start_recording,
             stop_recording,

@@ -310,6 +310,10 @@ export const setSyncLeader = (deck: number, explicit: boolean) =>
   invoke("set_sync_leader", { deck, explicit });
 /** Auto-pick the best leader and follow it. */
 export const syncToLeader = (deck: number) => invoke("sync_to_leader", { deck });
+// ---- Loudness normalization (ReplayGain) ------------------------------------------
+/** Override a deck's loudness-normalization factor (1.0 = off). Auto-applied on load. */
+export const setDeckReplayGain = (deck: number, gain: number) =>
+  invoke("set_deck_replay_gain", { deck, gain });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
 // ---- Synth instrument + MIDI ------------------------------------------------------
