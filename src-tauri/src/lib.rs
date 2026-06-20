@@ -37,6 +37,9 @@ const TELEMETRY_HZ: u64 = 30;
 enum EngineMsg {
     SetCrossfader(f32),
     SetCrossfaderConfig { curve: f32, mode: u8, reverse: bool },
+    SetCueMode { deck: usize, mode: u8 },
+    SetCuePoint { deck: usize, frame: f64 },
+    CueButton { deck: usize, pressed: bool },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -249,6 +252,15 @@ fn spawn_engine() -> EngineHandle {
                         mode,
                         reverse,
                     },
+                    EngineMsg::SetCueMode { deck, mode } => {
+                        AudioCommand::SetCueMode { deck, mode }
+                    }
+                    EngineMsg::SetCuePoint { deck, frame } => {
+                        AudioCommand::SetCuePoint { deck, frame }
+                    }
+                    EngineMsg::CueButton { deck, pressed } => {
+                        AudioCommand::CueButton { deck, pressed }
+                    }
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
                     EngineMsg::DeckEq {
@@ -1043,6 +1055,24 @@ fn set_crossfader_config(
     })
 }
 
+/// Select a deck's main CUE button behavior. `mode`: 0 = CDJ, 1 = gated/stutter.
+#[tauri::command]
+fn set_cue_mode(state: State<'_, EngineHandle>, deck: usize, mode: u8) -> Result<(), String> {
+    state.send(EngineMsg::SetCueMode { deck, mode })
+}
+
+/// Set a deck's main cue point (source frames).
+#[tauri::command]
+fn set_cue_point(state: State<'_, EngineHandle>, deck: usize, frame: f64) -> Result<(), String> {
+    state.send(EngineMsg::SetCuePoint { deck, frame })
+}
+
+/// Press (`pressed = true`) or release the main CUE button; drives the cue state machine.
+#[tauri::command]
+fn cue_button(state: State<'_, EngineHandle>, deck: usize, pressed: bool) -> Result<(), String> {
+    state.send(EngineMsg::CueButton { deck, pressed })
+}
+
 #[tauri::command]
 fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetMasterGain(value))
@@ -1596,6 +1626,9 @@ pub fn run() {
             set_deck_crusher,
             set_crossfader,
             set_crossfader_config,
+            set_cue_mode,
+            set_cue_point,
+            cue_button,
             set_master_gain,
             start_recording,
             stop_recording,

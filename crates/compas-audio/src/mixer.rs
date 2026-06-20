@@ -62,6 +62,28 @@ impl XfaderAssign {
     }
 }
 
+/// Behavior of the main CUE button — configurable to match a DJ's hardware muscle memory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CueMode {
+    /// Pioneer/CDJ: press while playing returns to the cue point and pauses; press while paused
+    /// *at* the cue point previews (plays while held) and snaps back on release; press while paused
+    /// elsewhere sets the cue point at the current position.
+    Cdj,
+    /// Gated "stutter": press jumps to the cue point and plays while held; release returns to the
+    /// cue point and pauses. Repeatable from anywhere.
+    Gated,
+}
+
+impl CueMode {
+    /// Map a small integer (from the UI/IPC) to a mode.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            1 => CueMode::Gated,
+            _ => CueMode::Cdj,
+        }
+    }
+}
+
 /// Commands sent from the control thread into the audio callback over an SPSC ring.
 ///
 /// RT note: applying a command is O(1) and allocation-free. [`AudioCommand::LoadDeck`]
@@ -165,6 +187,21 @@ pub enum AudioCommand {
     SeekDeck {
         deck: usize,
         frame: f64,
+    },
+    /// Select the main CUE button behavior for a deck (0 = CDJ, 1 = gated).
+    SetCueMode {
+        deck: usize,
+        mode: u8,
+    },
+    /// Set the deck's main cue point (source frames), e.g. from the UI.
+    SetCuePoint {
+        deck: usize,
+        frame: f64,
+    },
+    /// Press/release the main CUE button; drives the [`CueMode`] state machine.
+    CueButton {
+        deck: usize,
+        pressed: bool,
     },
     /// Set (and activate) a loop region in source frames.
     SetLoop {
@@ -409,6 +446,11 @@ struct DeckPlayer {
     sync_master: Option<usize>,
     /// Sync-controlled read rate (overrides `tempo` while engaged); set each block by the PLL.
     sync_tempo: Option<f64>,
+    /// Main cue point in source frames, and the configurable CUE button behavior.
+    cue_point: f64,
+    cue_mode: CueMode,
+    /// True while a CDJ-style preview (play-while-held) is active, so release snaps back.
+    cue_previewing: bool,
 }
 
 impl DeckPlayer {
@@ -450,6 +492,44 @@ impl DeckPlayer {
             beat_interval: 0.0,
             sync_master: None,
             sync_tempo: None,
+            cue_point: 0.0,
+            cue_mode: CueMode::Cdj,
+            cue_previewing: false,
+        }
+    }
+
+    /// Drive the main CUE button through the selected [`CueMode`]. RT-SAFE.
+    fn cue_button(&mut self, pressed: bool) {
+        match self.cue_mode {
+            CueMode::Cdj => {
+                if pressed {
+                    if self.playing {
+                        // Playing → return to the cue point and pause.
+                        self.playing = false;
+                        self.playhead = self.cue_point;
+                        self.stretch_engaged = false;
+                    } else if (self.playhead - self.cue_point).abs() < 1.0 {
+                        // Paused at the cue point → preview (play while held).
+                        self.cue_previewing = true;
+                        self.playing = true;
+                    } else {
+                        // Paused elsewhere → set the cue point here.
+                        self.cue_point = self.playhead;
+                    }
+                } else if self.cue_previewing {
+                    // Release of a preview → snap back to the cue point and pause.
+                    self.cue_previewing = false;
+                    self.playing = false;
+                    self.playhead = self.cue_point;
+                    self.stretch_engaged = false;
+                }
+            }
+            CueMode::Gated => {
+                // Play from the cue point while held; return to it on release.
+                self.playhead = self.cue_point;
+                self.playing = pressed;
+                self.stretch_engaged = false;
+            }
         }
     }
 
@@ -876,6 +956,21 @@ impl Mixer {
                         d.stretch_engaged = false;
                     }
                 }
+                AudioCommand::SetCueMode { deck, mode } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.cue_mode = CueMode::from_index(mode);
+                    }
+                }
+                AudioCommand::SetCuePoint { deck, frame } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.cue_point = frame.max(0.0);
+                    }
+                }
+                AudioCommand::CueButton { deck, pressed } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.cue_button(pressed);
+                    }
+                }
                 AudioCommand::LoadDeck {
                     deck,
                     buffer,
@@ -900,6 +995,8 @@ impl Mixer {
                         d.crusher_active = false;
                         d.crusher.clear();
                         d.loop_active = false;
+                        d.cue_point = 0.0;
+                        d.cue_previewing = false;
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
                         d.sync_master = None;
@@ -1302,6 +1399,55 @@ mod tests {
         mixer.decks[0].playing = true;
         mixer.decks[0].cue = true; // cued, but nowhere to send
         let _ = mixer.next_frame();
+    }
+
+    #[test]
+    fn cdj_cue_returns_and_pauses_when_playing() {
+        let mut d = ramp_deck();
+        d.cue_point = 20.0;
+        d.playhead = 50.0;
+        d.playing = true;
+        d.cue_button(true);
+        assert!(!d.playing, "CDJ cue while playing pauses");
+        assert!((d.playhead - 20.0).abs() < 1e-9, "and returns to the cue point");
+    }
+
+    #[test]
+    fn cdj_cue_sets_point_when_paused_off_cue() {
+        let mut d = ramp_deck();
+        d.cue_point = 0.0;
+        d.playhead = 30.0;
+        d.playing = false;
+        d.cue_button(true);
+        assert!((d.cue_point - 30.0).abs() < 1e-9, "sets the cue point here");
+        assert!(!d.playing, "stays paused");
+    }
+
+    #[test]
+    fn cdj_cue_previews_while_held_then_snaps_back() {
+        let mut d = ramp_deck();
+        d.cue_point = 20.0;
+        d.playhead = 20.0;
+        d.playing = false;
+        d.cue_button(true); // press at the cue point → preview
+        assert!(d.playing && d.cue_previewing, "preview plays while held");
+        d.playhead = 35.0; // play advanced
+        d.cue_button(false); // release
+        assert!(!d.playing, "preview release pauses");
+        assert!((d.playhead - 20.0).abs() < 1e-9, "and snaps back to the cue point");
+    }
+
+    #[test]
+    fn gated_cue_plays_from_point_and_returns_on_release() {
+        let mut d = ramp_deck();
+        d.cue_mode = CueMode::Gated;
+        d.cue_point = 10.0;
+        d.playhead = 50.0;
+        d.cue_button(true);
+        assert!(d.playing, "gated cue plays while held");
+        assert!((d.playhead - 10.0).abs() < 1e-9, "from the cue point");
+        d.cue_button(false);
+        assert!(!d.playing && (d.playhead - 10.0).abs() < 1e-9, "returns on release");
     }
 
     #[test]
