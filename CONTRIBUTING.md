@@ -33,3 +33,38 @@ CI runs the same on Windows/macOS/Linux; keep it green.
 ## Project map
 `crates/compas-{core,dsp,audio,sources}` (engine), `src-tauri` (Tauri app + IPC),
 `frontend` (React UI), `website` (landing page). See `AGENTS.md` for a fuller orientation.
+
+## Release setup (one-time, maintainer only)
+Tagging `v*` triggers `.github/workflows/release.yml`, which builds Windows + macOS installers
+and (when signing keys are configured) publishes a signed `latest.json` that the in-app
+auto-updater consumes. To finish wiring a real release:
+
+1. **Generate the updater signing keypair** (once per project; keep the private key offline):
+
+   ```bash
+   cd frontend
+   npx tauri signer generate -w ~/.tauri/compas.key
+   ```
+
+   This writes `~/.tauri/compas.key` (private) and `~/.tauri/compas.key.pub` (public).
+
+2. **Paste the public key** into `src-tauri/tauri.conf.json` at `plugins.updater.pubkey`
+   (replacing the `REPLACE_BEFORE_RELEASE_…` placeholder).
+
+3. **Add repo secrets** (Settings → Secrets and variables → Actions):
+   - `TAURI_SIGNING_PRIVATE_KEY` — contents of `~/.tauri/compas.key`
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — the passphrase set during generation
+
+4. **macOS signing + notarization** (optional; required for Gatekeeper-clean distribution):
+   - `APPLE_CERTIFICATE` — base64 of the exported `Developer ID Application` `.p12`
+   - `APPLE_CERTIFICATE_PASSWORD` — `.p12` export password
+   - `APPLE_SIGNING_IDENTITY` — e.g. `Developer ID Application: Your Name (TEAMID)`
+   - `APPLE_ID`, `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID`
+
+5. **Windows code-signing** (optional): add `WINDOWS_CERTIFICATE` (base64 `.pfx`) +
+   `WINDOWS_CERTIFICATE_PASSWORD`, or wire Azure Trusted Signing as a separate workflow
+   step before `tauri-action`.
+
+Without these the workflow still produces unsigned installers — useful for early previews.
+The in-app updater will refuse unsigned `latest.json`, so users won't auto-update until step 3
+is complete.

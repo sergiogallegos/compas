@@ -1,6 +1,6 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-19 (bitcrusher FX). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-20 (release infra). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
@@ -26,8 +26,12 @@ Next, from the ROADMAP backlog:
    ethos cleanly — discuss before starting.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,
    full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
-3. **Infra (for release):** auto-update (`tauri-plugin-updater`) + code-signing/notarization;
-   `vergen` version string in the status bar.
+3. **Release infra — wiring done, secrets pending (2026-06-20).** Auto-update plugin, manual
+   "check for updates" on the title-bar version chip, and a git-sha build chip all integrated;
+   `release.yml` env block fully populated for `TAURI_SIGNING_*` + Apple notarization. Before
+   the first signed release: run `npx tauri signer generate -w ~/.tauri/compas.key`, paste the
+   pubkey into `src-tauri/tauri.conf.json` (replacing `REPLACE_BEFORE_RELEASE_…`), and add the
+   matching repo secrets. See `CONTRIBUTING.md` § "Release setup".
 
 **Optional polish (tune by ear):** scratch release-inertia + platter mapping; FX curves
 (echo depth, reverb `WET_SCALE`); key-lock `STRETCH_WINDOW` (2048 ≈ 43 ms latency); sync PLL

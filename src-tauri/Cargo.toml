@@ -21,6 +21,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"   # in-app auto-update against GitHub Releases (latest.json + signed payloads)
+tauri-plugin-process = "2"   # relaunch() after an update installs
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Logo } from "./Logo";
 import { Icon } from "./icons";
-import { inTauri, pickRecordingPath, startRecording, stopRecording, type EngineLoad, type MasterMeter } from "../lib/ipc";
+import { buildInfo, checkForUpdate, inTauri, pickRecordingPath, startRecording, stopRecording, type BuildInfo, type EngineLoad, type MasterMeter } from "../lib/ipc";
 
 export function TitleBar({
   masterBpm,
@@ -36,6 +36,21 @@ export function TitleBar({
 
   const [recording, setRecording] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
+  const [build, setBuild] = useState<BuildInfo | null>(null);
+  const [updBusy, setUpdBusy] = useState(false);
+  useEffect(() => {
+    if (!inTauri()) return;
+    buildInfo().then(setBuild).catch(() => setBuild(null));
+  }, []);
+  const onCheckUpdate = async () => {
+    if (!inTauri() || updBusy) return;
+    setUpdBusy(true);
+    try {
+      await checkForUpdate();
+    } finally {
+      setUpdBusy(false);
+    }
+  };
   const toggleRecord = async () => {
     if (!inTauri() || recBusy) return;
     setRecBusy(true);
@@ -139,6 +154,18 @@ export function TitleBar({
             </span>
           );
         })()}
+        {build && (
+          <button
+            className="mono build-chip"
+            onClick={onCheckUpdate}
+            disabled={updBusy}
+            title={`compas ${build.version} · ${build.sha}${
+              build.built_at ? ` · built ${new Date(Number(build.built_at) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC` : ""
+            } · click to check for updates`}
+          >
+            {updBusy ? "…" : `v${build.version} · ${build.sha}`}
+          </button>
+        )}
         <button className="icon-btn" disabled title="Settings"><Icon name="settings" size={16} /></button>
         <span className="avatar">M</span>
       </div>

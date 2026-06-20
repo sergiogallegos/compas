@@ -33,6 +33,15 @@
     "icon": [
       "icons/icon.png",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/sergiogallegos/compas/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_BEFORE_RELEASE_dW50cnVzdGVkIGNvbXBhcyBwbGFjZWhvbGRlciBwdWJrZXk="
+    }
   }
 }

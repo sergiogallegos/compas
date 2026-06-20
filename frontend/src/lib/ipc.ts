@@ -2,7 +2,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { ask, message, open, save } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check as checkUpdate } from "@tauri-apps/plugin-updater";
 
 /** True when running inside the Tauri webview (vs. a plain browser dev tab). */
 export function inTauri(): boolean {
@@ -59,10 +61,56 @@ export interface EngineStatus {
 
 export type FilterMode = "off" | "lowpass" | "highpass";
 
+export interface BuildInfo {
+  /** `Cargo.toml` package version (e.g. `0.1.0`). */
+  version: string;
+  /** Short git SHA the binary was built from, or `"dev"` when built outside a checkout. */
+  sha: string;
+  /** Unix-seconds string captured at compile time, or empty string if unavailable. */
+  built_at: string;
+}
+
 // ---- Commands ---------------------------------------------------------------------
 
 export async function engineStatus(): Promise<EngineStatus> {
   return invoke<EngineStatus>("engine_status");
+}
+
+export async function buildInfo(): Promise<BuildInfo> {
+  return invoke<BuildInfo>("build_info");
+}
+
+/**
+ * Manual update check (fired from the title-bar version chip). Talks to the configured
+ * GitHub Releases `latest.json` endpoint; if a newer signed build exists, prompts the
+ * user before downloading, then offers to restart. Silent + safe to call repeatedly.
+ *
+ * Returns `true` only when an update was applied and the relaunch was queued — callers
+ * use this to put the chip into a "restarting…" state. Any failure is surfaced via a
+ * dialog and the function resolves to `false` so the chip returns to idle.
+ */
+export async function checkForUpdate(): Promise<boolean> {
+  try {
+    const upd = await checkUpdate();
+    if (!upd) {
+      await message("You're on the latest version.", { title: "compas — up to date", kind: "info" });
+      return false;
+    }
+    const ok = await ask(
+      `compas ${upd.version} is available (you're on ${upd.currentVersion}).\n\nDownload and install now? The app will restart.`,
+      { title: "Update available", kind: "info", okLabel: "Update", cancelLabel: "Later" },
+    );
+    if (!ok) return false;
+    await upd.downloadAndInstall();
+    await relaunch();
+    return true;
+  } catch (e) {
+    await message(`Update check failed:\n\n${e instanceof Error ? e.message : String(e)}`, {
+      title: "compas — update check",
+      kind: "error",
+    });
+    return false;
+  }
 }
 
 const AUDIO_FILTERS = [

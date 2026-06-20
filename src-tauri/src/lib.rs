@@ -514,6 +514,27 @@ struct DeckStatus {
     frame: f64,
 }
 
+/// Build metadata surfaced to the UI (title-bar version chip, About dialog).
+#[derive(Serialize)]
+struct BuildInfo {
+    /// `Cargo.toml` package version (e.g. `0.1.0`).
+    version: &'static str,
+    /// Short git SHA the binary was built from, or `"dev"` if vergen couldn't read git.
+    sha: &'static str,
+    /// ISO-8601 build timestamp (UTC), or empty string if unavailable.
+    built_at: &'static str,
+}
+
+#[tauri::command]
+fn build_info() -> BuildInfo {
+    let sha = env!("COMPAS_GIT_SHA");
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        sha: if sha.is_empty() { "dev" } else { sha },
+        built_at: env!("COMPAS_BUILD_TIMESTAMP"),
+    }
+}
+
 #[tauri::command]
 fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
     let decks = (0..2)
@@ -1482,6 +1503,8 @@ pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(engine)
         .manage(MidiState {
             conn: Mutex::new(None),
@@ -1509,6 +1532,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            build_info,
             engine_status,
             probe_track,
             db_list_tracks,

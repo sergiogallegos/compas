@@ -63,6 +63,9 @@
 
 .titlebar-right { display: flex; align-items: center; gap: 14px; }
 .cpu { font-size: 11px; color: var(--text-tertiary); display: inline-block; min-width: 58px; text-align: right; }
+.build-chip { font-size: 10px; color: var(--text-tertiary); letter-spacing: 0.04em; opacity: 0.75; background: none; border: 0; padding: 2px 6px; border-radius: 6px; cursor: pointer; }
+.build-chip:hover:not(:disabled) { opacity: 1; background: var(--surface-control); }
+.build-chip:disabled { cursor: default; opacity: 0.5; }
 .icon-btn { width: 34px; height: 34px; border-radius: 8px; background: var(--surface-control); border: 1px solid var(--border-hairline-strong); display: flex; align-items: center; justify-content: center; color: var(--text-secondary); }
 .avatar { width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--violet)); display: flex; align-items: center; justify-content: center; font-family: var(--font-display); font-weight: 600; font-size: 12px; color: #fff; }
 

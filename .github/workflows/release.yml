@@ -40,11 +40,30 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # For in-app auto-update (tauri-plugin-updater), generate a keypair with
-          # `npm run tauri signer generate`, put the public key in tauri.conf.json, and
-          # set these repo secrets to enable signed update artifacts (latest.json):
-          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+          # ---- In-app auto-update signing (tauri-plugin-updater) -------------------
+          # Generate locally with: `cd frontend && npx tauri signer generate -w ~/.tauri/compas.key`
+          # then paste the *private* key into TAURI_SIGNING_PRIVATE_KEY and the *public* key
+          # into src-tauri/tauri.conf.json (plugins.updater.pubkey). With both set, tauri-action
+          # produces a signed `latest.json` next to the installers — the updater verifies it.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+          # ---- macOS bundle signing + notarization ---------------------------------
+          # Required for distribution outside the Mac App Store (Gatekeeper). Without these,
+          # the .dmg is still produced but users see "developer cannot be verified" on first run.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}                 # base64 .p12 cert
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}       # "Developer ID Application: …"
+          APPLE_ID: ${{ secrets.APPLE_ID }}                                   # Apple account email
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}                       # app-specific password
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+          # ---- Windows code-signing (optional; pick one path) ----------------------
+          # PFX cert in a secret:  WINDOWS_CERTIFICATE (base64 .pfx) + WINDOWS_CERTIFICATE_PASSWORD.
+          # Tauri picks these up automatically when bundle.windows.signCommand is set in tauri.conf.json.
+          # Azure Trusted Signing is the modern alternative — wire it via a separate signing step
+          # before the tauri-action call. Leaving unset just ships an unsigned .msi/.nsis.
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "compas ${{ github.ref_name }}"
