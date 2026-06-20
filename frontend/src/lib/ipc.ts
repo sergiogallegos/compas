@@ -295,6 +295,12 @@ export const setCueMode = (deck: number, mode: 0 | 1) => invoke("set_cue_mode", 
 export const setCuePoint = (deck: number, frame: number) => invoke("set_cue_point", { deck, frame });
 export const cueButton = (deck: number, pressed: boolean) =>
   invoke("cue_button", { deck, pressed });
+// ---- Loop toolkit -----------------------------------------------------------------
+/** Scale the active loop length: 0.5 halves, 2.0 doubles (anchored at loop-in). */
+export const scaleLoop = (deck: number, factor: number) => invoke("scale_loop", { deck, factor });
+/** Shift the loop region (and play-head) by `deltaFrames`. */
+export const moveLoop = (deck: number, deltaFrames: number) =>
+  invoke("move_loop", { deck, deltaFrames });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
 // ---- Synth instrument + MIDI ------------------------------------------------------

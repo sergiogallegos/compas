@@ -40,6 +40,8 @@ enum EngineMsg {
     SetCueMode { deck: usize, mode: u8 },
     SetCuePoint { deck: usize, frame: f64 },
     CueButton { deck: usize, pressed: bool },
+    ScaleLoop { deck: usize, factor: f64 },
+    MoveLoop { deck: usize, delta_frames: f64 },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -260,6 +262,12 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::CueButton { deck, pressed } => {
                         AudioCommand::CueButton { deck, pressed }
+                    }
+                    EngineMsg::ScaleLoop { deck, factor } => {
+                        AudioCommand::ScaleLoop { deck, factor }
+                    }
+                    EngineMsg::MoveLoop { deck, delta_frames } => {
+                        AudioCommand::MoveLoop { deck, delta_frames }
                     }
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
@@ -1073,6 +1081,18 @@ fn cue_button(state: State<'_, EngineHandle>, deck: usize, pressed: bool) -> Res
     state.send(EngineMsg::CueButton { deck, pressed })
 }
 
+/// Scale the active loop length (0.5 = halve, 2.0 = double).
+#[tauri::command]
+fn scale_loop(state: State<'_, EngineHandle>, deck: usize, factor: f64) -> Result<(), String> {
+    state.send(EngineMsg::ScaleLoop { deck, factor })
+}
+
+/// Shift the loop region (and play-head) by `delta_frames`.
+#[tauri::command]
+fn move_loop(state: State<'_, EngineHandle>, deck: usize, delta_frames: f64) -> Result<(), String> {
+    state.send(EngineMsg::MoveLoop { deck, delta_frames })
+}
+
 #[tauri::command]
 fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetMasterGain(value))
@@ -1629,6 +1649,8 @@ pub fn run() {
             set_cue_mode,
             set_cue_point,
             cue_button,
+            scale_loop,
+            move_loop,
             set_master_gain,
             start_recording,
             stop_recording,

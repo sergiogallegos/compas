@@ -215,6 +215,17 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
     },
+    /// Scale the active loop's length by `factor` (0.5 = halve, 2.0 = double), anchored at the
+    /// loop-in; the play-head is wrapped to stay inside.
+    ScaleLoop {
+        deck: usize,
+        factor: f64,
+    },
+    /// Shift the loop region (and the play-head with it) by `delta_frames` — loop move/shift.
+    MoveLoop {
+        deck: usize,
+        delta_frames: f64,
+    },
     /// Momentary loop "roll" with slip: while `active`, loop `[in_frame, out_frame)` but keep
     /// a shadow play-head advancing underneath; on release, jump to it so the track plays on
     /// as if the roll never happened. `in/out_frame` are read only on the engaging edge.
@@ -496,6 +507,36 @@ impl DeckPlayer {
             cue_mode: CueMode::Cdj,
             cue_previewing: false,
         }
+    }
+
+    /// Scale the loop length by `factor`, anchored at the loop-in. RT-SAFE.
+    fn scale_loop(&mut self, factor: f64) {
+        if self.loop_out <= self.loop_in || factor <= 0.0 {
+            return;
+        }
+        let len = ((self.loop_out - self.loop_in) * factor).max(8.0);
+        self.loop_out = self.loop_in + len;
+        if self.loop_active {
+            while self.playhead >= self.loop_out {
+                self.playhead -= len;
+            }
+            if self.playhead < self.loop_in {
+                self.playhead = self.loop_in;
+            }
+        }
+    }
+
+    /// Shift the loop region and the play-head by `delta` frames. RT-SAFE.
+    fn move_loop(&mut self, delta: f64) {
+        if self.loop_out <= self.loop_in {
+            return;
+        }
+        let len = self.loop_out - self.loop_in;
+        let new_in = (self.loop_in + delta).max(0.0);
+        self.loop_in = new_in;
+        self.loop_out = new_in + len;
+        self.playhead = (self.playhead + delta).max(0.0);
+        self.stretch_engaged = false; // play-head jumped — re-prime the stretcher
     }
 
     /// Drive the main CUE button through the selected [`CueMode`]. RT-SAFE.
@@ -1049,6 +1090,16 @@ impl Mixer {
                         d.loop_active = active && d.loop_out > d.loop_in;
                     }
                 }
+                AudioCommand::ScaleLoop { deck, factor } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.scale_loop(factor);
+                    }
+                }
+                AudioCommand::MoveLoop { deck, delta_frames } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.move_loop(delta_frames);
+                    }
+                }
                 AudioCommand::SetLoopRoll {
                     deck,
                     in_frame,
@@ -1448,6 +1499,42 @@ mod tests {
         assert!((d.playhead - 10.0).abs() < 1e-9, "from the cue point");
         d.cue_button(false);
         assert!(!d.playing && (d.playhead - 10.0).abs() < 1e-9, "returns on release");
+    }
+
+    #[test]
+    fn scale_loop_halves_and_doubles_anchored_at_in() {
+        let mut d = ramp_deck();
+        d.loop_in = 0.0;
+        d.loop_out = 1000.0;
+        d.loop_active = true;
+        d.scale_loop(0.5);
+        assert!((d.loop_out - 500.0).abs() < 1e-9, "halved");
+        d.scale_loop(2.0);
+        assert!((d.loop_out - 1000.0).abs() < 1e-9, "doubled back");
+    }
+
+    #[test]
+    fn scale_loop_wraps_playhead_inside() {
+        let mut d = ramp_deck();
+        d.loop_in = 0.0;
+        d.loop_out = 1000.0;
+        d.loop_active = true;
+        d.playhead = 800.0;
+        d.scale_loop(0.5); // out -> 500, playhead 800 must wrap in
+        assert!(d.playhead < 500.0 && d.playhead >= 0.0, "playhead {} not wrapped", d.playhead);
+    }
+
+    #[test]
+    fn move_loop_shifts_region_and_playhead_together() {
+        let mut d = ramp_deck();
+        d.loop_in = 100.0;
+        d.loop_out = 600.0;
+        d.loop_active = true;
+        d.playhead = 300.0;
+        d.move_loop(50.0);
+        assert!((d.loop_in - 150.0).abs() < 1e-9);
+        assert!((d.loop_out - 650.0).abs() < 1e-9);
+        assert!((d.playhead - 350.0).abs() < 1e-9);
     }
 
     #[test]
