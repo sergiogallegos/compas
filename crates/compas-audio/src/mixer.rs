@@ -84,6 +84,26 @@ impl CueMode {
     }
 }
 
+/// How a sync follower tracks its leader.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncMode {
+    /// Match both tempo and beat phase (beatmatched *and* phase-locked).
+    Full,
+    /// Match tempo only — hold the follower's beats at the leader's rate without pulling phase,
+    /// so the DJ can offset the downbeat by hand.
+    TempoOnly,
+}
+
+impl SyncMode {
+    /// Map a small integer (from the UI/IPC) to a mode.
+    pub fn from_index(i: u8) -> Self {
+        match i {
+            1 => SyncMode::TempoOnly,
+            _ => SyncMode::Full,
+        }
+    }
+}
+
 /// Commands sent from the control thread into the audio callback over an SPSC ring.
 ///
 /// RT note: applying a command is O(1) and allocation-free. [`AudioCommand::LoadDeck`]
@@ -264,6 +284,21 @@ pub enum AudioCommand {
     SetDeckSync {
         deck: usize,
         master: Option<usize>,
+    },
+    /// Set a follower's sync mode (0 = full tempo+phase, 1 = tempo-only).
+    SetDeckSyncMode {
+        deck: usize,
+        mode: u8,
+    },
+    /// Mark/unmark a deck as the explicit (pinned) sync leader; the auto-picker prefers it.
+    SetSyncLeader {
+        deck: usize,
+        explicit: bool,
+    },
+    /// Auto-pick the best leader (explicit leader, else the lowest-index playing gridded deck)
+    /// and make `deck` follow it. No-op if no suitable leader exists.
+    SyncToLeader {
+        deck: usize,
     },
     /// Begin tapping the master output into `sink` (interleaved stereo f32 at device rate).
     /// The control thread owns the matching consumer and writes it to a file.
@@ -457,6 +492,10 @@ struct DeckPlayer {
     sync_master: Option<usize>,
     /// Sync-controlled read rate (overrides `tempo` while engaged); set each block by the PLL.
     sync_tempo: Option<f64>,
+    /// Whether a follower matches tempo+phase or tempo only.
+    sync_mode: SyncMode,
+    /// Whether this deck is the explicit (pinned) sync leader — preferred by the auto-picker.
+    sync_explicit_leader: bool,
     /// Main cue point in source frames, and the configurable CUE button behavior.
     cue_point: f64,
     cue_mode: CueMode,
@@ -503,6 +542,8 @@ impl DeckPlayer {
             beat_interval: 0.0,
             sync_master: None,
             sync_tempo: None,
+            sync_mode: SyncMode::Full,
+            sync_explicit_leader: false,
             cue_point: 0.0,
             cue_mode: CueMode::Cdj,
             cue_previewing: false,
@@ -841,11 +882,39 @@ impl Mixer {
             let master_beat_rate = m_adv / m_int; // beats per output sample
             let base_adv = master_beat_rate * d.beat_interval; // follower frames per sample
             // Phase error (master − follower), wrapped to the nearest beat [−0.5, 0.5].
-            let mut err = beat_phase(m_ph, m_off, m_int) - beat_phase(d.playhead, d.beat_offset, d.beat_interval);
-            err -= err.round();
-            let bend = (SYNC_PHASE_GAIN * err).clamp(-SYNC_MAX_BEND, SYNC_MAX_BEND);
+            // Tempo-only sync rate-matches without pulling phase, so the DJ can hold an offset.
+            let bend = match d.sync_mode {
+                SyncMode::TempoOnly => 0.0,
+                SyncMode::Full => {
+                    let mut err = beat_phase(m_ph, m_off, m_int)
+                        - beat_phase(d.playhead, d.beat_offset, d.beat_interval);
+                    err -= err.round();
+                    (SYNC_PHASE_GAIN * err).clamp(-SYNC_MAX_BEND, SYNC_MAX_BEND)
+                }
+            };
             d.sync_tempo = Some((base_adv * (1.0 + bend)) / d.base_ratio);
         }
+    }
+
+    /// Pick the best sync leader for `follower`: an explicit (pinned) leader that's playing with a
+    /// beatgrid, else the lowest-index playing deck that has a beatgrid. RT-SAFE.
+    fn pick_leader(&self, follower: usize) -> Option<usize> {
+        let usable = |i: usize, d: &DeckPlayer| {
+            i != follower && d.playing && d.beat_interval > 0.0 && d.buffer.is_some()
+        };
+        if let Some((i, _)) = self
+            .decks
+            .iter()
+            .enumerate()
+            .find(|(i, d)| usable(*i, d) && d.sync_explicit_leader)
+        {
+            return Some(i);
+        }
+        self.decks
+            .iter()
+            .enumerate()
+            .find(|(i, d)| usable(*i, d))
+            .map(|(i, _)| i)
     }
 
     /// Apply all pending control commands. RT-SAFE (bounded by ring capacity).
@@ -1070,6 +1139,24 @@ impl Mixer {
                                     md.sync_tempo = None;
                                 }
                             }
+                        }
+                    }
+                }
+                AudioCommand::SetDeckSyncMode { deck, mode } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.sync_mode = SyncMode::from_index(mode);
+                    }
+                }
+                AudioCommand::SetSyncLeader { deck, explicit } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.sync_explicit_leader = explicit;
+                    }
+                }
+                AudioCommand::SyncToLeader { deck } => {
+                    if let Some(master) = self.pick_leader(deck) {
+                        if let Some(d) = self.decks.get_mut(deck) {
+                            d.sync_master = Some(master);
+                            d.sync_tempo = None;
                         }
                     }
                 }
@@ -1375,6 +1462,57 @@ mod tests {
         let mut err = mp - fp;
         err -= err.round();
         assert!(err.abs() < 0.02, "follower not phase-locked: err={err}");
+    }
+
+    #[test]
+    fn pick_leader_prefers_explicit_then_lowest_index() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        let buf = Arc::new(DeckBuffer::new(vec![0.0; 2 * 1000], 48_000));
+        for i in [1usize, 2] {
+            let d = &mut mixer.decks[i];
+            d.buffer = Some(buf.clone());
+            d.playing = true;
+            d.beat_interval = 24_000.0;
+        }
+        // No explicit leader → lowest usable index.
+        assert_eq!(mixer.pick_leader(0), Some(1));
+        // Explicit leader (deck 2) wins over the lower index.
+        mixer.decks[2].sync_explicit_leader = true;
+        assert_eq!(mixer.pick_leader(0), Some(2));
+        // A deck never picks itself.
+        assert_eq!(mixer.pick_leader(2), Some(1));
+        // A non-playing / ungridded deck is never a candidate.
+        assert_eq!(mixer.pick_leader(1), Some(2));
+    }
+
+    #[test]
+    fn tempo_only_sync_rate_matches_without_pulling_phase() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        let buf = Arc::new(DeckBuffer::new(vec![0.0; 2 * 480_000], 48_000));
+        let interval = 24_000.0;
+        for d in mixer.decks.iter_mut() {
+            d.buffer = Some(buf.clone());
+            d.base_ratio = 1.0;
+            d.playing = true;
+            d.beat_interval = interval;
+        }
+        mixer.decks[1].sync_master = Some(0);
+        mixer.decks[1].sync_mode = SyncMode::TempoOnly;
+        mixer.decks[1].playhead = 6_000.0; // a quarter-beat offset that must be preserved
+        for _ in 0..96_000 {
+            mixer.next_frame();
+        }
+        assert!(mixer.decks[1].sync_tempo.is_some(), "tempo-only still rate-matches");
+        let mp = beat_phase(mixer.decks[0].playhead, 0.0, interval);
+        let fp = beat_phase(mixer.decks[1].playhead, 0.0, interval);
+        let mut err = mp - fp;
+        err -= err.round();
+        // Phase offset is NOT corrected in tempo-only mode (stays near the original quarter beat).
+        assert!(err.abs() > 0.1, "tempo-only must not phase-lock: err={err}");
     }
 
     #[test]

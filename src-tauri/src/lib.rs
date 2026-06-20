@@ -42,6 +42,9 @@ enum EngineMsg {
     CueButton { deck: usize, pressed: bool },
     ScaleLoop { deck: usize, factor: f64 },
     MoveLoop { deck: usize, delta_frames: f64 },
+    SetDeckSyncMode { deck: usize, mode: u8 },
+    SetSyncLeader { deck: usize, explicit: bool },
+    SyncToLeader { deck: usize },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -269,6 +272,13 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::MoveLoop { deck, delta_frames } => {
                         AudioCommand::MoveLoop { deck, delta_frames }
                     }
+                    EngineMsg::SetDeckSyncMode { deck, mode } => {
+                        AudioCommand::SetDeckSyncMode { deck, mode }
+                    }
+                    EngineMsg::SetSyncLeader { deck, explicit } => {
+                        AudioCommand::SetSyncLeader { deck, explicit }
+                    }
+                    EngineMsg::SyncToLeader { deck } => AudioCommand::SyncToLeader { deck },
                     EngineMsg::SetMasterGain(g) => AudioCommand::SetMasterGain(g),
                     EngineMsg::DeckGain { deck, gain } => AudioCommand::SetDeckGain { deck, gain },
                     EngineMsg::DeckEq {
@@ -1093,6 +1103,24 @@ fn move_loop(state: State<'_, EngineHandle>, deck: usize, delta_frames: f64) -> 
     state.send(EngineMsg::MoveLoop { deck, delta_frames })
 }
 
+/// Set a follower's sync mode: 0 = full tempo+phase, 1 = tempo-only.
+#[tauri::command]
+fn set_deck_sync_mode(state: State<'_, EngineHandle>, deck: usize, mode: u8) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckSyncMode { deck, mode })
+}
+
+/// Mark/unmark a deck as the explicit (pinned) sync leader.
+#[tauri::command]
+fn set_sync_leader(state: State<'_, EngineHandle>, deck: usize, explicit: bool) -> Result<(), String> {
+    state.send(EngineMsg::SetSyncLeader { deck, explicit })
+}
+
+/// Auto-pick the best leader and make `deck` follow it.
+#[tauri::command]
+fn sync_to_leader(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
+    state.send(EngineMsg::SyncToLeader { deck })
+}
+
 #[tauri::command]
 fn set_master_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::SetMasterGain(value))
@@ -1651,6 +1679,9 @@ pub fn run() {
             cue_button,
             scale_loop,
             move_loop,
+            set_deck_sync_mode,
+            set_sync_leader,
+            sync_to_leader,
             set_master_gain,
             start_recording,
             stop_recording,

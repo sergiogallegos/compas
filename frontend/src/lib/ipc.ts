@@ -301,6 +301,15 @@ export const scaleLoop = (deck: number, factor: number) => invoke("scale_loop", 
 /** Shift the loop region (and play-head) by `deltaFrames`. */
 export const moveLoop = (deck: number, deltaFrames: number) =>
   invoke("move_loop", { deck, deltaFrames });
+// ---- Sync coordinator -------------------------------------------------------------
+/** Follower sync mode: 0 = full tempo+phase, 1 = tempo-only. */
+export const setDeckSyncMode = (deck: number, mode: 0 | 1) =>
+  invoke("set_deck_sync_mode", { deck, mode });
+/** Pin/unpin a deck as the explicit sync leader. */
+export const setSyncLeader = (deck: number, explicit: boolean) =>
+  invoke("set_sync_leader", { deck, explicit });
+/** Auto-pick the best leader and follow it. */
+export const syncToLeader = (deck: number) => invoke("sync_to_leader", { deck });
 export const setMasterGain = (value: number) => invoke("set_master_gain", { value });
 
 // ---- Synth instrument + MIDI ------------------------------------------------------
