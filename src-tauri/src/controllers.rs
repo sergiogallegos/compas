@@ -45,6 +45,24 @@ pub fn list_profiles(dir: &Path) -> Vec<ControllerProfile> {
     out
 }
 
+/// List profiles from a bundled (read-only) dir and the user dir, merged by id — a user profile
+/// overrides a bundled one with the same id. Sorted by name.
+pub fn list_merged(bundled: Option<&Path>, user: &Path) -> Vec<ControllerProfile> {
+    use std::collections::BTreeMap;
+    let mut by_id: BTreeMap<String, ControllerProfile> = BTreeMap::new();
+    if let Some(b) = bundled {
+        for p in list_profiles(b) {
+            by_id.insert(p.id.clone(), p);
+        }
+    }
+    for p in list_profiles(user) {
+        by_id.insert(p.id.clone(), p); // user overrides bundled
+    }
+    let mut out: Vec<_> = by_id.into_values().collect();
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out
+}
+
 /// Load a single profile file.
 pub fn load_profile(path: &Path) -> Result<ControllerProfile, String> {
     let text = fs::read_to_string(path).map_err(|e| e.to_string())?;

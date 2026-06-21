@@ -1591,8 +1591,14 @@ fn controller_registry() -> Vec<compas_core::ControlSpec> {
 #[tauri::command]
 fn controller_list(app: AppHandle) -> Result<Vec<compas_core::ControllerProfile>, String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
-    Ok(controllers::list_profiles(&dir))
+    let user_dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
+    // Bundled starter profiles ship under <resources>/resources/controllers.
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|r| r.join("resources").join("controllers"));
+    Ok(controllers::list_merged(bundled.as_deref(), &user_dir))
 }
 
 /// Save (or overwrite) a controller profile (used by the guided learn editor).

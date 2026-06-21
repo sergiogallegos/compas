@@ -82,7 +82,8 @@ own. (See the IP section of `CONTROLLER-ARCHITECTURE.md`.)
 - ⬜ KDJ500
 
 ## Korg
-- ⬜ Kaoss DJ · ⬜ nanoKONTROL · ⬜ nanoKONTROL2 · ⬜ nanoPAD2
+- ⬜ Kaoss DJ · ⬜ nanoKONTROL · ✅ **nanoKONTROL2** (bundled starter profile; sliders→deck gains,
+  knobs→filters, S→cue, M→sync, + crossfader/master — from the CC-mode default map) · ⬜ nanoPAD2
 
 ## M-Audio
 - ⬜ X-Session Pro · ⬜ Torq Xponent
