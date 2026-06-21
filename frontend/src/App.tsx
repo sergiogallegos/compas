@@ -8,6 +8,7 @@ import { Mixer } from "./components/Mixer";
 import { Library } from "./components/Library";
 import { Instrument } from "./components/Instrument";
 import { MidiMap } from "./components/MidiMap";
+import { ControllerMap } from "./components/ControllerMap";
 import { Sampler } from "./components/Sampler";
 import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
@@ -36,6 +37,7 @@ export function App() {
   const [showKeys, setShowKeys] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [showPads, setShowPads] = useState(false);
+  const [showControllers, setShowControllers] = useState(false);
   const midi = useMidi();
   const cue = useCue();
   const sampler = useSampler();
@@ -155,7 +157,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} />
       <div className="body">
         <NavRail />
         <div className="content">
@@ -201,6 +203,7 @@ export function App() {
       {showKeys && <Instrument midi={midi} onClose={() => setShowKeys(false)} />}
       {showMap && <MidiMap midi={midi} map={midiMap} onClose={() => setShowMap(false)} />}
       {showPads && <Sampler sampler={sampler} onClose={() => setShowPads(false)} />}
+      {showControllers && <ControllerMap onClose={() => setShowControllers(false)} />}
     </div>
   );
 }

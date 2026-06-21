@@ -1463,12 +1463,14 @@ struct MidiState {
 
 #[derive(Serialize, Clone)]
 struct MidiCcEvent {
+    channel: u8,
     controller: u8,
     value: u8,
 }
 
 #[derive(Serialize, Clone)]
 struct MidiNoteEvent {
+    channel: u8,
     note: u8,
     velocity: u8,
     on: bool,
@@ -1576,6 +1578,15 @@ fn midi_list_ports() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// The full list of mappable controls (the control-bus registry) for the learn editor.
+#[tauri::command]
+fn controller_registry() -> Vec<compas_core::ControlSpec> {
+    compas_core::Registry::defaults(compas_audio::NUM_DECKS)
+        .iter()
+        .cloned()
+        .collect()
+}
+
 /// List controller profiles in the user controller directory.
 #[tauri::command]
 fn controller_list(app: AppHandle) -> Result<Vec<compas_core::ControllerProfile>, String> {
@@ -1647,11 +1658,12 @@ fn midi_connect(
                 // Every note/CC is forwarded to the frontend so the MIDI-mapping layer can
                 // bind any source to a deck control; notes additionally drive the synth when
                 // its routing flag is on (the instrument panel owns that toggle).
+                let channel = message[0] & 0x0F;
                 match message[0] & 0xF0 {
                     0x90 => {
                         let (note, vel) = (message[1], *message.get(2).unwrap_or(&0));
                         let on = vel > 0;
-                        let _ = app_cc.emit("midi:note", MidiNoteEvent { note, velocity: vel, on });
+                        let _ = app_cc.emit("midi:note", MidiNoteEvent { channel, note, velocity: vel, on });
                         if synth.load(Ordering::Relaxed) {
                             let _ = if on {
                                 tx.send(EngineMsg::NoteOn { note, velocity: vel })
@@ -1662,7 +1674,7 @@ fn midi_connect(
                     }
                     0x80 => {
                         let note = message[1];
-                        let _ = app_cc.emit("midi:note", MidiNoteEvent { note, velocity: 0, on: false });
+                        let _ = app_cc.emit("midi:note", MidiNoteEvent { channel, note, velocity: 0, on: false });
                         if synth.load(Ordering::Relaxed) {
                             let _ = tx.send(EngineMsg::NoteOff { note });
                         }
@@ -1671,6 +1683,7 @@ fn midi_connect(
                         let _ = app_cc.emit(
                             "midi:cc",
                             MidiCcEvent {
+                                channel,
                                 controller: message[1],
                                 value: *message.get(2).unwrap_or(&0),
                             },
@@ -1867,6 +1880,7 @@ pub fn run() {
             sampler_pad_count,
             midi_list_ports,
             midi_connect,
+            controller_registry,
             controller_list,
             controller_save,
             controller_activate,

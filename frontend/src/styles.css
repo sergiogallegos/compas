@@ -250,6 +250,18 @@
 .tl-next { background: none; border: 1px solid var(--border-hairline); border-radius: 4px; cursor: pointer; }
 .src-group--crates { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .crate-add { background: none; border: 1px solid var(--border-hairline); border-radius: 4px; cursor: pointer; color: var(--text-secondary); line-height: 1; padding: 1px 5px; }
+/* Controller mapping panel */
+.panel-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 60; }
+.panel { background: var(--bg-panel, #15151c); border: 1px solid var(--border-hairline); border-radius: 10px; width: min(760px, 92vw); max-height: 86vh; display: flex; flex-direction: column; padding: 14px; gap: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.5); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; }
+.ctrl-toolbar { display: flex; gap: 8px; align-items: center; }
+.ctrl-profiles { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ctrl-hint { font-size: 12px; color: var(--text-secondary); margin: 0; }
+.ctrl-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.ctrl-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 6px; }
+.ctrl-row--bound { background: rgba(255,255,255,.05); }
+.ctrl-id { font-size: 11px; color: var(--text-secondary); }
+.ctrl-status { font-size: 12px; color: var(--status-ok); }
 .phones { display: flex; align-items: center; gap: 8px; padding-top: 8px; margin-top: 6px; border-top: 1px solid var(--border-hairline); color: var(--text-secondary); }
 .phones-dev { flex: 1; min-width: 0; background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 3px 5px; font-size: 10px; }
 .phones-dev:disabled { opacity: 0.7; }

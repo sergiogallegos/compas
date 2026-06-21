@@ -17,6 +17,8 @@ export function TitleBar({
   onToggleMap,
   padsOpen = false,
   onTogglePads,
+  controllersOpen = false,
+  onToggleControllers,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -30,6 +32,8 @@ export function TitleBar({
   onToggleMap?: () => void;
   padsOpen?: boolean;
   onTogglePads?: () => void;
+  controllersOpen?: boolean;
+  onToggleControllers?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
@@ -130,6 +134,13 @@ export function TitleBar({
             title="Sampler / performance pads"
           >
             <Icon name="pads" size={13} />
+          </button>
+          <button
+            className={`mt-btn ${controllersOpen ? "mt-rec--on" : ""}`}
+            onClick={onToggleControllers}
+            title="Controller profiles (mapping & learn)"
+          >
+            <Icon name="sliders" size={13} />
           </button>
           <button
             className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}

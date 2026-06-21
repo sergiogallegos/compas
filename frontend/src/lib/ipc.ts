@@ -281,6 +281,15 @@ export interface ControllerProfile {
   bindings: ControllerBinding[];
   script?: string | null;
 }
+/** A mappable control from the engine's control-bus registry (for the learn editor). */
+export interface ControlSpec {
+  id: string;
+  label: string;
+  unit: string;
+  behavior: { kind: string; min?: number; max?: number; steps?: number };
+}
+/** The full list of mappable controls. */
+export const controllerRegistry = () => invoke<ControlSpec[]>("controller_registry");
 /** List controller profiles in the user controller directory. */
 export const controllerList = () => invoke<ControllerProfile[]>("controller_list");
 /** Save (or overwrite) a controller profile. */
@@ -438,6 +447,7 @@ export const midiDisconnect = () => invoke("midi_disconnect");
 export const setMidiSynth = (enabled: boolean) => invoke("set_midi_synth", { enabled });
 
 export interface MidiCc {
+  channel: number;
   controller: number;
   value: number;
 }
@@ -445,6 +455,7 @@ export const onMidiCc = (cb: (e: MidiCc) => void): Promise<UnlistenFn> =>
   listen<MidiCc>("midi:cc", (e) => cb(e.payload));
 
 export interface MidiNote {
+  channel: number;
   note: number;
   velocity: number;
   on: boolean;
