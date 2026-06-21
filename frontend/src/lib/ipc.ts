@@ -132,10 +132,16 @@ export async function checkForUpdate(): Promise<boolean> {
     await relaunch();
     return true;
   } catch (e) {
-    await message(`Update check failed:\n\n${e instanceof Error ? e.message : String(e)}`, {
-      title: "compas — update check",
-      kind: "error",
-    });
+    const msg = e instanceof Error ? e.message : String(e);
+    // Before the first published release (or if the release feed is briefly unreachable),
+    // the updater can't fetch/parse `latest.json` and throws a parse/404/network error.
+    // That isn't a real failure — there's simply nothing newer — so present it as "up to date"
+    // rather than a scary raw error. Genuine unexpected errors still surface.
+    const benign = /expected value|expected ident|EOF|decoding response|invalid|json|404|not found|could not fetch|fetch|network|dns|timed out|timeout|connection/i.test(msg);
+    await message(
+      benign ? "You're on the latest version." : `Update check failed:\n\n${msg}`,
+      { title: benign ? "compas — up to date" : "compas — update check", kind: benign ? "info" : "error" },
+    );
     return false;
   }
 }
