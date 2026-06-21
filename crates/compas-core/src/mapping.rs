@@ -43,6 +43,44 @@ pub struct Mapping {
     pub bindings: Vec<Binding>,
 }
 
+/// Port-name hints used to auto-connect a controller (substring match against the OS port list).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortHints {
+    #[serde(default)]
+    pub input: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
+}
+
+/// A complete, shareable controller profile: identity, port hints, the binding set, and an optional
+/// device-logic script (loaded into a `compas-script` runtime by the host). This is the on-disk
+/// format — bundled with the app and/or dropped into the user controller dir; it deserializes into a
+/// usable [`Mapping`] plus metadata. (See `docs/CONTROLLER-ARCHITECTURE.md`.)
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ControllerProfile {
+    /// Stable slug, e.g. `"vendor-model-v1"`.
+    pub id: String,
+    /// Human display name.
+    pub name: String,
+    #[serde(default)]
+    pub ports: PortHints,
+    #[serde(default)]
+    pub bindings: Vec<Binding>,
+    /// Optional device-logic script source (JS for the sandboxed runtime), when bindings aren't enough.
+    #[serde(default)]
+    pub script: Option<String>,
+}
+
+impl ControllerProfile {
+    /// The declarative binding set as a ready-to-use [`Mapping`].
+    pub fn mapping(&self) -> Mapping {
+        Mapping {
+            name: self.name.clone(),
+            bindings: self.bindings.clone(),
+        }
+    }
+}
+
 /// The result of resolving a MIDI message: which control to set and to what.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResolvedUpdate {
@@ -144,6 +182,29 @@ mod tests {
         // Knob near the current value → picked up.
         let u = m.resolve(&reg, 0, InputKind::Cc { cc: 10 }, 1, 0.0, 0.03);
         assert!(u.is_some());
+    }
+
+    #[test]
+    fn controller_profile_round_trips_and_yields_a_mapping() {
+        let json = r#"{
+            "id": "vendor-model-v1",
+            "name": "Vendor Model",
+            "ports": { "input": "Model MIDI", "output": "Model MIDI" },
+            "bindings": [
+                { "channel": 0, "input": { "kind": "cc", "cc": 7 }, "control": "deck.0.gain", "soft_takeover": true }
+            ]
+        }"#;
+        let p: ControllerProfile = serde_json::from_str(json).unwrap();
+        assert_eq!(p.id, "vendor-model-v1");
+        assert_eq!(p.ports.input.as_deref(), Some("Model MIDI"));
+        assert!(p.script.is_none());
+        let m = p.mapping();
+        assert_eq!(m.bindings.len(), 1);
+        // The profile's binding resolves through the registry like any mapping. (soft_takeover is
+        // on, so the incoming value must already be near the current — pass 127 with current ~1.0.)
+        let reg = Registry::defaults(4);
+        let u = m.resolve(&reg, 0, InputKind::Cc { cc: 7 }, 127, 1.0, 0.03).unwrap();
+        assert_eq!(u.control.as_str(), "deck.0.gain");
     }
 
     #[test]
