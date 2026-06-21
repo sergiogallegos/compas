@@ -107,6 +107,12 @@ export interface DeckState {
   frame: number;
   playing: boolean;
   level: number;
+  /** Effective advance in source frames/sec (for play-head extrapolation). */
+  rate: number;
+  /** Measured output (DAC) latency in seconds. */
+  latencySecs: number;
+  /** `performance.now()` when `frame` was last sampled. */
+  frameAt: number;
   tempo: number;
   /** Key-lock (master tempo): tempo changes preserve pitch. */
   keylock: boolean;
@@ -151,6 +157,11 @@ export function useDeck(deck: number, dsp = true) {
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [level, setLevel] = useState(0);
+  // Play-head extrapolation inputs: advance rate (source frames/sec), DAC latency, and the
+  // wall-clock time `frame` was last sampled — the UI smooths between 30 Hz position events.
+  const [rate, setRate] = useState(0);
+  const [latencySecs, setLatencySecs] = useState(0);
+  const [frameAt, setFrameAt] = useState(0);
   const [tempo, setTempo] = useState(1);
   const [keylock, setKeylockState] = useState(false);
   const [gridOffset, setGridOffset] = useState(0);
@@ -280,6 +291,9 @@ export function useDeck(deck: number, dsp = true) {
         frameRef.current = e.frame;
         setPlaying(e.playing);
         setLevel(e.level);
+        setRate(e.rate ?? 0);
+        setLatencySecs(e.latency_secs ?? 0);
+        setFrameAt(performance.now());
       }),
     );
     track(
@@ -617,7 +631,7 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck, playing, tempo, meta, isLeader]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
   return { state, actions, deck };
 }
 

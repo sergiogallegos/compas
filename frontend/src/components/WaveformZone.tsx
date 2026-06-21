@@ -1,6 +1,23 @@
-import { useState, type PointerEvent } from "react";
+import { useEffect, useState, type PointerEvent } from "react";
 import type { DeckState } from "../hooks/useDeck";
 import { bandColor } from "../lib/ipc";
+
+/** Re-render at display refresh rate while `active`, so the play-head can be extrapolated smoothly
+ *  between the 30 Hz position events. Returns the latest `performance.now()`. */
+function useAnimationClock(active: boolean): number {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    let id = 0;
+    const loop = () => {
+      setNow(performance.now());
+      id = requestAnimationFrame(loop);
+    };
+    id = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(id);
+  }, [active]);
+  return now;
+}
 
 const VW = 1368;
 const VH = 80;
@@ -52,8 +69,13 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
   const bands = meta?.band_peaks ?? [];
   const useBands = bands.length === peaks.length && bands.length > 0;
 
+  // Extrapolate the play-head between 30 Hz events at display rate, offset by DAC latency so the
+  // marker matches what's being heard. Falls back to the raw frame when stopped.
+  const clock = useAnimationClock(state.playing);
+  const dt = state.playing && state.frameAt > 0 ? (clock - state.frameAt) / 1000 : 0;
+  const dispFrame = state.frame + state.rate * Math.max(0, dt - state.latencySecs);
   // Play-head already advances by tempo, so frame→time gives correct scroll speed.
-  const nowTime = state.frame / sr; // seconds (source time)
+  const nowTime = dispFrame / sr; // seconds (source time)
   const t0 = nowTime - NOW_FRAC * view; // left edge time
   const t1 = t0 + view;
 
