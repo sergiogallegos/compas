@@ -10,12 +10,14 @@ mod buffer;
 mod capabilities;
 pub mod control;
 mod error;
+pub mod mapping;
 mod track;
 
 pub use automix::{plan_next, score_transition, TrackInfo};
 pub use buffer::DeckBuffer;
 pub use capabilities::{SourceCapabilities, SourceKind};
 pub use control::{Behavior, ControlId, ControlSpec, Registry, Unit};
+pub use mapping::{Binding, InputKind, Mapping, ResolvedUpdate};
 pub use error::{CompasError, Result};
 pub use track::{MusicProvider, TrackMetadata};
 

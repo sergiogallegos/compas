@@ -11,3 +11,6 @@ description = "Shared domain types for compas: track metadata, source capabiliti
 [dependencies]
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
