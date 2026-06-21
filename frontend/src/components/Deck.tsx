@@ -283,7 +283,27 @@ export function Deck({
             </div>
           </div>
           <div className="platter-btns">
-            <button className="btn-cue" onClick={actions.cue} disabled={!meta}>CUE</button>
+            {dsp && (
+              <button
+                className="chip cue-mode"
+                onClick={() => actions.setCueMode(state.cueMode === 0 ? 1 : 0)}
+                disabled={!meta}
+                title="Cue button mode: CDJ (preview-while-held) vs gated (stutter)"
+              >
+                {state.cueMode === 1 ? "GATE" : "CDJ"}
+              </button>
+            )}
+            <button
+              className="btn-cue"
+              onPointerDown={() => dsp && actions.cueButton(true)}
+              onPointerUp={() => dsp && actions.cueButton(false)}
+              onPointerLeave={() => dsp && actions.cueButton(false)}
+              onClick={() => !dsp && actions.cue()}
+              disabled={!meta}
+              title="Main cue (hold to preview)"
+            >
+              CUE
+            </button>
             <button
               className="btn-play"
               onClick={actions.togglePlay}
@@ -482,6 +502,26 @@ export function Deck({
           >
             SYNC
           </button>
+          {dsp && (
+            <div className="sync-opts">
+              <button
+                className={`chip ${state.syncMode === 1 ? "chip--on" : ""}`}
+                onClick={() => actions.setSyncMode(state.syncMode === 1 ? 0 : 1)}
+                disabled={!meta}
+                title="Tempo-only sync (match BPM without locking phase)"
+              >
+                TEMPO
+              </button>
+              <button
+                className={`chip ${state.isLeader ? "chip--on" : ""}`}
+                onClick={actions.toggleLeader}
+                disabled={!meta}
+                title="Pin this deck as the sync leader"
+              >
+                LEAD
+              </button>
+            </div>
+          )}
           <span className="overline">TEMPO</span>
           <Fader
             value={dsp ? pct : 0}

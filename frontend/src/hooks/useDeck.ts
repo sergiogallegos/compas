@@ -30,6 +30,10 @@ import {
   setLoopRoll as setLoopRollCmd,
   scaleLoop as scaleLoopCmd,
   moveLoop as moveLoopCmd,
+  cueButton as cueButtonCmd,
+  setCueMode as setCueModeCmd,
+  setDeckSyncMode as setDeckSyncModeCmd,
+  setSyncLeader as setSyncLeaderCmd,
   dbClearCue,
   dbClearLoop,
   dbRecordPlay,
@@ -112,6 +116,12 @@ export interface DeckState {
   synced: boolean;
   /** Quantize: snap hot-cue jumps and beat-jumps to the beatgrid. */
   quantize: boolean;
+  /** Main-cue behavior: 0 = CDJ, 1 = gated. */
+  cueMode: number;
+  /** Sync mode: 0 = full tempo+phase, 1 = tempo-only. */
+  syncMode: number;
+  /** Whether this deck is pinned as the explicit sync leader. */
+  isLeader: boolean;
   /** Crossfader routing: 0 = A side, 1 = thru, 2 = B side. */
   xfaderAssign: number;
   eq: Eq;
@@ -146,6 +156,10 @@ export function useDeck(deck: number, dsp = true) {
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
   const [quantize, setQuantize] = useState(false);
+  // Main-cue behavior (0 = CDJ, 1 = gated) and sync mode (0 = full, 1 = tempo-only) + leader pin.
+  const [cueMode, setCueModeState] = useState(0);
+  const [syncMode, setSyncModeState] = useState(0);
+  const [isLeader, setIsLeaderState] = useState(false);
   // Default routing: deck 0 → A, deck 1 → B, decks C/D → through.
   const [xfaderAssign, setXfaderAssignState] = useState(deck === 0 ? 0 : deck === 1 ? 2 : 1);
   const [eq, setEqState] = useState<Eq>({ hi: 0, mid: 0, low: 0 });
@@ -501,6 +515,23 @@ export function useDeck(deck: number, dsp = true) {
           l.active ? { ...l, inFrame: Math.max(0, l.inFrame + delta), outFrame: l.outFrame + delta } : l,
         );
       },
+      // Main CUE button (press/release) → engine cue state machine (CDJ preview / gated stutter).
+      cueButton: (pressed: boolean) => cueButtonCmd(deck, pressed).catch(swallow),
+      setCueMode: (mode: number) => {
+        setCueModeState(mode);
+        setCueModeCmd(deck, mode === 1 ? 1 : 0).catch(swallow);
+      },
+      // Sync mode: full tempo+phase vs tempo-only.
+      setSyncMode: (mode: number) => {
+        setSyncModeState(mode);
+        setDeckSyncModeCmd(deck, mode === 1 ? 1 : 0).catch(swallow);
+      },
+      // Pin/unpin this deck as the explicit sync leader.
+      toggleLeader: () => {
+        const next = !isLeader;
+        setIsLeaderState(next);
+        setSyncLeaderCmd(deck, next).catch(swallow);
+      },
       toggleQuantize: () => setQuantize((q) => !q),
       // Jump the play-head by whole beats (negative = back). When quantize is on, the jump
       // starts from the nearest beat so repeated jumps stay grid-aligned.
@@ -584,9 +615,9 @@ export function useDeck(deck: number, dsp = true) {
         if (next.active) pushCrusher(next);
       },
     };
-  }, [deck, playing, tempo, meta]);
+  }, [deck, playing, tempo, meta, isLeader]);
 
-  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
   return { state, actions, deck };
 }
 
