@@ -1,5 +1,16 @@
-import { useEffect, useState } from "react";
-import { dbPlanNext, dbSearch, inTauri, loadTrack, type DbTrack } from "../lib/ipc";
+import { useCallback, useEffect, useState } from "react";
+import {
+  dbAddToCrate,
+  dbCrateTracks,
+  dbCreateCrate,
+  dbListCrates,
+  dbPlanNext,
+  dbSearch,
+  inTauri,
+  loadTrack,
+  type DbCrate,
+  type DbTrack,
+} from "../lib/ipc";
 import { useLibrary } from "../hooks/useLibrary";
 import { Icon } from "./icons";
 
@@ -46,6 +57,31 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
     return () => clearTimeout(id);
   }, [q, lib.tracks]);
 
+  // Crates / playlists.
+  const [crates, setCrates] = useState<DbCrate[]>([]);
+  const [activeCrate, setActiveCrate] = useState<DbCrate | null>(null);
+  const refreshCrates = useCallback(() => {
+    if (!inTauri()) return;
+    dbListCrates().then(setCrates).catch(() => {});
+  }, []);
+  useEffect(() => refreshCrates(), [refreshCrates]);
+
+  const createCrate = () => {
+    dbCreateCrate(`Crate ${crates.length + 1}`, false)
+      .then(() => refreshCrates())
+      .catch(() => {});
+  };
+  const viewCrate = (c: DbCrate) => {
+    setActiveCrate(c);
+    setSuggestFor(null);
+    setQ("");
+    dbCrateTracks(c.id).then(setResults).catch(() => {});
+  };
+  const addToActiveCrate = (t: DbTrack) => {
+    if (!activeCrate) return;
+    dbAddToCrate(activeCrate.id, t.path).then(refreshCrates).catch(() => {});
+  };
+
   // Auto-mix planner: ranked next-track suggestions after `t`.
   const suggestNext = (t: DbTrack) => {
     setQ("");
@@ -76,6 +112,24 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
             <span className="src-dot" style={{ background: "var(--text-disabled)" }} />
             <span className="src-name">{s}</span>
             <span className="ctrl-tag">P2</span>
+          </div>
+        ))}
+
+        <div className="overline src-group src-group--crates">
+          CRATES
+          <button className="crate-add" onClick={createCrate} title="New crate">＋</button>
+        </div>
+        {crates.length === 0 && <div className="src-row src-row--muted"><span className="src-name">No crates</span></div>}
+        {crates.map((c) => (
+          <div
+            key={c.id}
+            className={`src-row ${activeCrate?.id === c.id ? "src-row--active" : ""}`}
+            onClick={() => viewCrate(c)}
+            title="Click to view; the ＋ on a track adds it to the selected crate"
+          >
+            <span className="src-dot" style={{ background: c.is_playlist ? "var(--stream)" : "var(--status-warn)" }} />
+            <span className="src-name">{c.name}</span>
+            <span className="ctrl-tag">{c.track_count}</span>
           </div>
         ))}
       </aside>
@@ -159,6 +213,15 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
                     >
                       ✨
                     </button>
+                    {activeCrate && (
+                      <button
+                        className="tl-next"
+                        onClick={(e) => { e.stopPropagation(); addToActiveCrate(t); }}
+                        title={`Add to "${activeCrate.name}"`}
+                      >
+                        ＋
+                      </button>
+                    )}
                   </span>
                 </div>
               );
