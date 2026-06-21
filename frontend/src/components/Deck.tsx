@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import type { DeckController } from "../hooks/useDeck";
+import { memo, useEffect, useRef, useState, type ReactElement } from "react";
+import type { DeckController, DeckState } from "../hooks/useDeck";
+import { bandColor } from "../lib/ipc";
 import { Fader } from "./Fader";
 import { Knob } from "./Knob";
 import { Icon } from "./icons";
@@ -257,6 +258,10 @@ export function Deck({
           </span>
         </div>
       </div>
+
+      {/* full-track overview (rekordbox-style): summary waveform, hot-cue/loop markers,
+          and click/drag-to-seek across the whole track. */}
+      <OverviewBar state={state} color={color} onSeek={actions.seekFrac} />
 
       <div className="deck-body">
         {/* platter */}
@@ -571,5 +576,110 @@ export function Deck({
       </div>
       {/* EQ/gain knobs live in the mixer channel strip per the design. */}
     </section>
+  );
+}
+
+/// Full-track overview waveform. Rendered once per loaded track (memoized on the peaks
+/// identity) so the frequent play-head/position updates don't re-rasterize the whole
+/// summary every telemetry tick — the moving parts (head, played scrim, markers) are cheap
+/// absolutely-positioned divs layered on top.
+const OverviewWave = memo(function OverviewWave({
+  peaks,
+  bands,
+  color,
+}: {
+  peaks: number[];
+  bands: [number, number, number][];
+  color: string;
+}) {
+  const W = 600;
+  const H = 100;
+  const cy = H / 2;
+  const N = peaks.length;
+  const useBands = bands.length === N && N > 0;
+  // Cap at ~one bar per output column so long tracks stay cheap to draw.
+  const cols = Math.min(N, W);
+  const step = Math.max(1, Math.ceil(N / cols));
+  const bw = Math.max(0.8, W / Math.ceil(N / step));
+  const bars: ReactElement[] = [];
+  for (let i = 0; i < N; i += step) {
+    let pk = 0;
+    let bi = i;
+    const end = Math.min(N, i + step);
+    for (let j = i; j < end; j++) {
+      if (peaks[j] > pk) {
+        pk = peaks[j];
+        bi = j;
+      }
+    }
+    const x = (i / N) * W;
+    const amp = Math.min(1, pk) * cy * 0.94;
+    bars.push(
+      <line key={i} x1={x} x2={x} y1={cy - amp} y2={cy + amp} stroke={useBands ? bandColor(bands[bi]) : color} strokeWidth={bw} />,
+    );
+  }
+  return (
+    <svg className="ov-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      {bars}
+    </svg>
+  );
+});
+
+function OverviewBar({ state, color, onSeek }: { state: DeckState; color: string; onSeek: (frac: number) => void }) {
+  const meta = state.meta;
+  const frames = meta?.frames ?? 0;
+  const peaks = meta?.peaks ?? [];
+  const dragging = useRef(false);
+
+  if (!meta || peaks.length === 0 || frames <= 0) {
+    return <div className="overview overview--empty" />;
+  }
+
+  const frac = Math.min(1, Math.max(0, state.frame / frames));
+  const seekAt = (clientX: number, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    onSeek(Math.min(1, Math.max(0, (clientX - r.left) / r.width)));
+  };
+  const loop = state.loop;
+  const loopLeft = loop.active ? Math.max(0, loop.inFrame / frames) : 0;
+  const loopRight = loop.active ? Math.min(1, loop.outFrame / frames) : 0;
+
+  return (
+    <div
+      className="overview"
+      title="Click or drag to seek"
+      onPointerDown={(e) => {
+        dragging.current = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        seekAt(e.clientX, e.currentTarget);
+      }}
+      onPointerMove={(e) => {
+        if (dragging.current) seekAt(e.clientX, e.currentTarget);
+      }}
+      onPointerUp={(e) => {
+        dragging.current = false;
+        try {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        } catch {
+          /* already released */
+        }
+      }}
+      onPointerCancel={() => {
+        dragging.current = false;
+      }}
+    >
+      <OverviewWave peaks={peaks} bands={meta.band_peaks ?? []} color={color} />
+      {/* dim the portion already played so what's coming reads bright */}
+      <div className="ov-played" style={{ width: `${frac * 100}%` }} />
+      {loop.active && loopRight > loopLeft && (
+        <div className="ov-loop" style={{ left: `${loopLeft * 100}%`, width: `${(loopRight - loopLeft) * 100}%`, background: `${color}26`, borderColor: color }} />
+      )}
+      {state.hotCues.map((c, i) =>
+        c == null ? null : (
+          <div key={i} className="ov-cue" style={{ left: `${Math.min(100, (c / frames) * 100)}%`, background: CUE_COLORS[i % CUE_COLORS.length] }} />
+        ),
+      )}
+      <div className="ov-head" style={{ left: `${frac * 100}%`, background: color, boxShadow: `0 0 6px ${color}` }} />
+    </div>
   );
 }

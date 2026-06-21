@@ -128,6 +128,16 @@
 .tile-val { font-weight: 700; font-size: 24px; color: #fff; line-height: 1; }
 .tile-val.small { font-size: 14px; }
 
+/* full-track overview waveform (rekordbox-style): summary + seek + cue/loop markers */
+.overview { position: relative; height: 30px; border-radius: var(--r-tile); background: var(--surface-sunken); border: 1px solid var(--border-hairline); overflow: hidden; cursor: pointer; touch-action: none; }
+.overview--empty { opacity: 0.45; cursor: default; }
+.ov-svg { display: block; width: 100%; height: 100%; }
+.ov-played { position: absolute; top: 0; bottom: 0; left: 0; background: rgba(0, 0, 0, 0.42); pointer-events: none; }
+.ov-loop { position: absolute; top: 0; bottom: 0; border-left: 1px solid; border-right: 1px solid; pointer-events: none; }
+.ov-cue { position: absolute; top: 0; bottom: 0; width: 1.5px; margin-left: -0.75px; opacity: 0.85; pointer-events: none; box-shadow: 0 0 0 0; }
+.ov-cue::before { content: ""; position: absolute; top: 0; left: -1.75px; width: 5px; height: 5px; border-radius: 0 0 2px 2px; background: inherit; }
+.ov-head { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; pointer-events: none; z-index: 2; }
+
 .deck-body { flex: 1; display: flex; gap: 12px; min-height: 0; }
 /* Mirrored deck (left of the mixer): platter sits on the inner edge, near the center. */
 .deck--mirror .deck-header,
