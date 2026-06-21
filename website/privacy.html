@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — compas</title>
+    <meta name="description" content="compas privacy policy — a local-first DJ app that collects no analytics and has no servers. Plain-language, honest about exactly what touches the network." />
+    <link rel="canonical" href="https://compasaudio.com/privacy.html" />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.png" alt="compas" width="32" height="32" />
+        <span>compas</span>
+        <span class="badge-beta">Beta</span>
+      </a>
+      <nav class="nav-links">
+        <a href="index.html#features">Features</a>
+        <a href="manual.html">Manual</a>
+        <a href="index.html#download">Download</a>
+        <a class="gh" href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main class="doc">
+      <h1 class="doc-title">Privacy Policy</h1>
+      <p class="doc-meta">Last updated: 21 June 2026 · applies to the compas desktop app and this website</p>
+
+      <div class="notice">
+        <h4>The short version</h4>
+        <p>
+          compas runs entirely on your computer. It has <strong>no servers, no accounts, no analytics, and no
+          tracking</strong> — we never receive your music, your library, or any personal data. The only times
+          anything leaves your machine are the few clearly-listed cases below (checking for updates, downloading
+          the app, loading web fonts, or if <em>you</em> connect an optional streaming service).
+        </p>
+      </div>
+
+      <h2 id="app-data">1. What the app stores — locally, on your device</h2>
+      <p>
+        compas keeps a small library database on your own computer (in your OS application-data folder). It can
+        include: file paths to the tracks you add, their analyzed metadata (title, artist, BPM, musical key),
+        your hot cues and loops, beatgrid adjustments, gain trims, and play history. This data
+        <strong>never leaves your device</strong> — it is not uploaded, synced, or shared with us or anyone else.
+        Deleting the app, or its application-data folder, removes it.
+      </p>
+
+      <h2 id="no-analytics">2. No analytics, no tracking</h2>
+      <p>
+        The app contains no analytics SDKs, no telemetry, and no advertising. We do not profile you, and we have
+        no database in which to store anything about you. This website uses <strong>no cookies and no analytics</strong>.
+      </p>
+
+      <h2 id="network">3. When the app connects to the network</h2>
+      <ul>
+        <li>
+          <strong>Update checks.</strong> compas can check whether a newer version is available by requesting
+          release information from <strong>GitHub</strong>. Like any web request, this exposes your IP address and
+          the app version to GitHub. No account or personal data is sent. See
+          <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noopener">GitHub's privacy statement</a>.
+        </li>
+        <li>
+          <strong>Optional streaming integration.</strong> If <em>you</em> choose to connect a third-party
+          streaming service (e.g. Spotify), authentication and playback control are handled by that service under
+          <em>their</em> terms and privacy policy. This is off unless you enable it, and compas does not receive or
+          store your streaming credentials beyond what the integration requires to function on your device.
+        </li>
+      </ul>
+      <p>Apart from these, compas does not phone home. Local playback and analysis are fully offline.</p>
+
+      <h2 id="downloads">4. Downloading the app</h2>
+      <p>
+        Installers are hosted on <strong>GitHub Releases</strong>. When you download a build (from this site or
+        GitHub), GitHub receives standard web-request information such as your IP address. This site's download
+        buttons also make a request to GitHub's public API to find the latest version.
+      </p>
+
+      <h2 id="website">5. This website</h2>
+      <ul>
+        <li>
+          <strong>Hosting.</strong> The site is a static page served by <strong>Cloudflare Pages</strong>.
+          Cloudflare may process request metadata (such as IP addresses) to deliver the site and protect it from
+          abuse, under <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">Cloudflare's privacy policy</a>.
+        </li>
+        <li>
+          <strong>Web fonts.</strong> The site loads fonts from <strong>Google Fonts</strong>, which receives your
+          IP address when the fonts are fetched. See
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's privacy policy</a>.
+        </li>
+        <li><strong>No cookies, no analytics, no trackers.</strong></li>
+      </ul>
+
+      <h2 id="children">6. Children</h2>
+      <p>compas is not directed at children under 13 and we knowingly collect no data from anyone.</p>
+
+      <h2 id="changes">7. Changes to this policy</h2>
+      <p>
+        As compas is in active beta, this policy may change as features evolve (for example, if cloud sync is ever
+        added, it will be opt-in and documented here). Material changes will update the date above.
+      </p>
+
+      <h2 id="contact">8. Contact</h2>
+      <p>
+        Questions about privacy? Open an issue on the
+        <a href="https://github.com/sergiogallegos/compas/issues" target="_blank" rel="noopener">GitHub repository</a>.
+      </p>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-brand">
+        <img src="assets/logo.png" alt="" width="22" height="22" />
+        <span>compas</span>
+      </div>
+      <div class="foot-links">
+        <a href="manual.html">Manual</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/sergiogallegos/compas/issues" target="_blank" rel="noopener">Report a bug</a>
+        <span class="mono">Open-source · MIT-licensed</span>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>User Manual — compas</title>
+    <meta name="description" content="The compas user manual — every function explained: decks, jog/scratch, tempo & sync, key-lock, hot cues, loops, FX, the mixer, library, sampler, and MIDI/HID controller mapping." />
+    <link rel="canonical" href="https://compasaudio.com/manual.html" />
+    <meta name="robots" content="index, follow" />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="index.html">
+        <img src="assets/logo.png" alt="compas" width="32" height="32" />
+        <span>compas</span>
+        <span class="badge-beta">Beta</span>
+      </a>
+      <nav class="nav-links">
+        <a href="index.html#features">Features</a>
+        <a href="manual.html">Manual</a>
+        <a href="index.html#download">Download</a>
+        <a class="gh" href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main class="doc">
+      <h1 class="doc-title">User Manual</h1>
+      <p class="doc-meta">compas (public beta) · everything on the performance screen, function by function</p>
+
+      <div class="notice">
+        <h4>New to compas?</h4>
+        <p>
+          compas is a two-deck DJ application with a real-time audio engine. It plays your own local files with
+          true DSP — beatgrid, key detection, EQ, filter, key-lock, loops, scratch and FX — and is honest about
+          the few things (like streaming decks) where it can only control playback, not process audio.
+        </p>
+      </div>
+
+      <nav class="toc">
+        <h4>Contents</h4>
+        <ol>
+          <li><a href="#start">Getting started</a></li>
+          <li><a href="#layout">The performance screen</a></li>
+          <li><a href="#decks">Decks &amp; transport</a></li>
+          <li><a href="#platter">Jog wheel &amp; scratch</a></li>
+          <li><a href="#waveforms">Waveforms &amp; seeking</a></li>
+          <li><a href="#tempo">Tempo, pitch &amp; key-lock</a></li>
+          <li><a href="#sync">Beat sync</a></li>
+          <li><a href="#cues">Hot cues</a></li>
+          <li><a href="#loops">Loops &amp; loop-roll</a></li>
+          <li><a href="#jump">Beat-jump &amp; quantize</a></li>
+          <li><a href="#fx">The FX rack</a></li>
+          <li><a href="#mixer">The mixer</a></li>
+          <li><a href="#library">Library</a></li>
+          <li><a href="#sampler">Sampler</a></li>
+          <li><a href="#keyboard">MIDI keyboard</a></li>
+          <li><a href="#controllers">Hardware controllers</a></li>
+          <li><a href="#status">Status bar &amp; recording</a></li>
+          <li><a href="#trouble">Troubleshooting</a></li>
+        </ol>
+      </nav>
+
+      <h2 id="start">Getting started</h2>
+      <h3>Install &amp; first launch</h3>
+      <p>
+        Download the installer for your OS from the <a href="index.html#download">download section</a>, run it,
+        and launch compas. As an unsigned beta, Windows SmartScreen may say <em>"Windows protected your PC"</em>
+        — click <strong>More info → Run anyway</strong>. On macOS, if you see <em>"unidentified developer"</em>,
+        right-click the app and choose <strong>Open</strong> once.
+      </p>
+      <h3>Load your first track</h3>
+      <ul>
+        <li>Click the <strong>Load…</strong> button (or the artwork tile) on a deck to pick an audio file.</li>
+        <li>Or add tracks to the <strong>Library</strong> at the bottom, then double-click a row — or use its
+          <span class="key">A</span>/<span class="key">B</span> buttons — to load it onto a deck.</li>
+        <li>On load, compas decodes the file into RAM and analyzes <strong>BPM</strong>, <strong>beatgrid</strong>,
+          and <strong>musical key</strong> (shown in Camelot notation). Press <strong>Play</strong> to start.</li>
+      </ul>
+
+      <h2 id="layout">The performance screen</h2>
+      <p>From top to bottom:</p>
+      <ul>
+        <li><strong>Title bar</strong> — master BPM &amp; output meter, a master <strong>Sync</strong> toggle, and
+          buttons to open the keyboard, MIDI map, sampler pads, and controller mapping.</li>
+        <li><strong>Waveform zone</strong> — stacked, band-colored scrolling waveforms for the two on-screen decks
+          with a fixed <strong>NOW</strong> playhead and zoom controls.</li>
+        <li><strong>Deck · Mixer · Deck</strong> — the left deck, the center mixer, and the right deck.</li>
+        <li><strong>Library</strong> — your track browser and crates.</li>
+        <li><strong>Status bar</strong> — sample rate, CPU load, and audio dropout (xrun) counter.</li>
+      </ul>
+      <p>
+        compas has <strong>four decks</strong> (A–D); two are shown at a time. Each deck panel has slot tabs
+        (<span class="key">A</span>/<span class="key">C</span> on the left, <span class="key">B</span>/<span class="key">D</span>
+        on the right) to switch which deck that side controls. All four channels are always available in the mixer.
+      </p>
+
+      <h2 id="decks">Decks &amp; transport</h2>
+      <ul>
+        <li><strong>Play / Pause</strong> — the large transport button starts and stops the deck.</li>
+        <li><strong>CUE</strong> — sets/returns to the main cue point. The mode button next to it toggles behavior:
+          <strong>CDJ</strong> (hold to preview from the cue, release to jump back) or <strong>GATE</strong>
+          (stutter-play while held).</li>
+        <li><strong>BPM / KEY / TIME</strong> tiles show the live effective BPM, the Camelot key, and elapsed /
+          remaining time.</li>
+        <li><strong>Eject</strong> unloads the deck.</li>
+        <li>The source badge reads <strong>LOCAL · DSP</strong> for full processing, or <strong>CONTROL-ONLY</strong>
+          for a streaming deck where compas can only steer playback (loops/FX are disabled — it won't fake DSP it
+          can't perform).</li>
+      </ul>
+
+      <h2 id="platter">Jog wheel &amp; scratch</h2>
+      <p>
+        The vinyl-style platter shows playback position (the ring fills as the track plays) and rotates at
+        ≈33⅓ RPM. <strong>Drag the platter</strong> to scratch and nudge: angular velocity drives the read-rate,
+        so the audio follows your hand, and a still finger holds the sound. Release to resume. The center reads
+        the live BPM and the deck state (<strong>PLAYING</strong> / <strong>CUED</strong> / <strong>SCRATCH</strong>).
+      </p>
+
+      <h2 id="waveforms">Waveforms &amp; seeking</h2>
+      <h3>Overview waveform (per deck)</h3>
+      <p>
+        Below the BPM/KEY/TIME tiles, each deck shows a <strong>full-track overview</strong>: the whole song at a
+        glance, band-colored, with a play-head, your hot-cue and loop markers, and a dimmed "already played"
+        region. <strong>Click or drag anywhere on it to seek</strong> across the track (a needle-drop).
+      </p>
+      <h3>Scrolling waveform (top zone)</h3>
+      <ul>
+        <li>The detailed waveform scrolls under the fixed <strong>NOW</strong> line. Low/mid/high frequencies are
+          colored so you can read a track's structure at a glance.</li>
+        <li><strong>Zoom</strong> with the <span class="key">4s</span> / <span class="key">8s</span> /
+          <span class="key">16s</span> / <span class="key">32s</span> buttons.</li>
+        <li>Click in the lane to seek within the visible window.</li>
+        <li><strong>Beatgrid nudge</strong> — if the analyzed grid is slightly off, use the
+          <span class="key">◀</span> / <span class="key">▶</span> arrows on the lane to shift it; <strong>GRID</strong>
+          resets it. The nudge is saved per track and feeds the sync engine.</li>
+      </ul>
+
+      <h2 id="tempo">Tempo, pitch &amp; key-lock</h2>
+      <ul>
+        <li><strong>Tempo fader</strong> — ±8% pitch range. By default this is vinyl-style varispeed (tempo and
+          pitch move together).</li>
+        <li><strong>Nudge</strong> (<span class="key">−</span> / <span class="key">+</span>) trims tempo by 0.1%
+          for fine beatmatching by ear.</li>
+        <li><strong>KEY (key-lock)</strong> — engage <em>master tempo</em> to change speed without changing pitch.</li>
+      </ul>
+
+      <h2 id="sync">Beat sync</h2>
+      <ul>
+        <li><strong>SYNC</strong> — continuously beat-matches this deck to the other (tempo <em>and</em> phase).</li>
+        <li><strong>TEMPO</strong> — tempo-only sync: match BPM without locking phase, so you can ride the
+          beatmatch manually.</li>
+        <li><strong>LEAD</strong> — pin this deck as the sync leader the others follow.</li>
+        <li>The title bar's master <strong>Sync</strong> toggle links the two on-screen decks in one click.</li>
+      </ul>
+
+      <h2 id="cues">Hot cues</h2>
+      <p>
+        Each deck has <strong>8 hot-cue pads</strong>, color-coded. <strong>Click an empty pad</strong> to drop a
+        cue at the current position; <strong>click a set pad</strong> to jump to it; <strong>right-click</strong>
+        to clear it. Cues are saved per track and reappear when you reload it. With <strong>Quantize</strong> on,
+        jumps snap to the beatgrid.
+      </p>
+
+      <h2 id="loops">Loops &amp; loop-roll</h2>
+      <ul>
+        <li><strong>IN</strong> / <strong>OUT</strong> — set a manual loop's start and end; the loop activates on OUT.</li>
+        <li><strong>4 / 8 / 16</strong> — instant beat loops of that length (requires a beatgrid).</li>
+        <li><strong>½× / 2×</strong> — halve or double the active loop length.</li>
+        <li><strong>◀ / ▶</strong> — move the loop back/forward one beat.</li>
+        <li><strong>✕</strong> — exit the loop.</li>
+        <li><strong>Loop-roll</strong> (<span class="key">⅛</span> / <span class="key">¼</span> / <span class="key">½</span>)
+          — hold for a momentary sub-beat roll with slip: when you release, playback returns to where the track
+          would have been.</li>
+      </ul>
+
+      <h2 id="jump">Beat-jump &amp; quantize</h2>
+      <ul>
+        <li><strong>Q (Quantize)</strong> — snaps hot-cue jumps and beat-jumps to the grid so you stay in time.</li>
+        <li><strong>◀4 / 4▶</strong> — jump back/forward four beats.</li>
+      </ul>
+
+      <h2 id="fx">The FX rack</h2>
+      <p>Each deck has four beat-synced effects. Toggle one on, then dial its parameters in the detail panel:</p>
+      <ul>
+        <li><strong>ECHO</strong> — beat-synced delay (¼ / ½ / 1 / 2 beats) with a single <strong>DEPTH</strong>
+          amount controlling feedback and wet level.</li>
+        <li><strong>REVERB</strong> — <strong>SIZE</strong> (tail length) and <strong>MIX</strong> (wet/dry).</li>
+        <li><strong>FLANGE</strong> — beat-synced sweep over 1 / 2 / 4 / 8 beats with a <strong>DEPTH</strong> for
+          sweep width and resonance.</li>
+        <li><strong>CRUSH</strong> — bitcrusher: <strong>BITS</strong> (bit-depth reduction) and <strong>RATE</strong>
+          (sample-rate decimation).</li>
+      </ul>
+      <p>All FX run on the real-time audio thread and reset when you load a new track.</p>
+
+      <h2 id="mixer">The mixer</h2>
+      <p>The center mixer has one channel strip per deck, plus the crossfader and headphone section.</p>
+      <h3>Channel strip</h3>
+      <ul>
+        <li><strong>GAIN</strong> — channel trim.</li>
+        <li><strong>HI / MID / LOW</strong> — 3-band EQ (full kill to +6&nbsp;dB).</li>
+        <li><strong>FILTER</strong> — one knob sweeping from low-pass (left) through off (center) to high-pass (right).</li>
+        <li><strong>FX</strong> — a macro knob driving the deck's active effects.</li>
+        <li><strong>Crossfader assign</strong> — route the channel to the <strong>A</strong> side, <strong>thru</strong>
+          (always on), or the <strong>B</strong> side.</li>
+        <li><strong>Cue / PFL</strong> — pre-listen the channel in your headphones.</li>
+      </ul>
+      <h3>Crossfader</h3>
+      <ul>
+        <li><strong>CURVE</strong> — from a smooth blend to a sharp cut (for scratch-style cuts).</li>
+        <li><strong>Additive</strong> vs constant-power, and a <strong>Reverse</strong> ("hamster") switch.</li>
+      </ul>
+      <h3>Headphone cue</h3>
+      <p>
+        Pick a headphone output device, then balance <strong>CUE ◁▷ MAS</strong> (cue-vs-master blend) and set the
+        <strong>PHONES</strong> level. Use the per-channel PFL buttons to choose what you pre-listen to.
+      </p>
+      <h3>Auto-mix</h3>
+      <p>
+        <strong>Auto</strong> beatmatches and performs a bass-swap crossfade into the other deck near the end of a
+        track; <strong>Mix now</strong> triggers the transition immediately.
+      </p>
+
+      <h2 id="library">Library</h2>
+      <ul>
+        <li><strong>Add tracks</strong> to mount local files into your library.</li>
+        <li><strong>Double-click</strong> a row (or use its A/B buttons) to load it onto a deck.</li>
+        <li>Browse by your <strong>crates</strong>, and search by title/artist.</li>
+        <li>Analyzed <strong>BPM</strong> and <strong>key</strong> are cached so reloading a known track is instant,
+          along with its saved cues, loops, grid nudge and gain.</li>
+      </ul>
+
+      <h2 id="sampler">Sampler</h2>
+      <p>
+        Open the <strong>pads</strong> from the title bar to trigger one-shot samples and loops over your mix.
+        Pads can be played from the screen or mapped to a hardware controller.
+      </p>
+
+      <h2 id="keyboard">MIDI keyboard</h2>
+      <p>
+        compas includes a built-in synth/instrument you can open from the title bar and play from a connected MIDI
+        keyboard (or the on-screen keys) — handy for stabs and tones over a set. Choose the waveform and level in
+        its panel.
+      </p>
+
+      <h2 id="controllers">Hardware controllers</h2>
+      <p>
+        Open <strong>Controllers</strong> from the title bar to connect MIDI or HID devices. compas maps physical
+        controls (jog wheels, faders, pads, knobs) to deck and mixer functions, with <strong>LED and motor
+        feedback</strong> so the hardware reflects what's on screen.
+      </p>
+      <ul>
+        <li>Bundled starter profiles: <strong>Pioneer DDJ-400</strong> and <strong>DDJ-FLX4</strong>,
+          <strong>Akai MPK Mini MK3</strong> and <strong>LPD8</strong>.</li>
+        <li>You can edit mappings and learn controls directly in the controller panel.</li>
+      </ul>
+
+      <h2 id="status">Status bar &amp; recording</h2>
+      <p>
+        The bottom status bar shows the engine's <strong>sample rate</strong>, <strong>CPU load</strong>, and the
+        <strong>xrun</strong> (audio-dropout) count — keep an eye on xruns; rising numbers mean your buffer/CPU is
+        stressed. The title bar's record control captures your master output to a file.
+      </p>
+
+      <h2 id="trouble">Troubleshooting</h2>
+      <ul>
+        <li><strong>"Windows protected your PC" / "unidentified developer."</strong> Expected for unsigned beta
+          builds — use <em>More info → Run anyway</em> (Windows) or right-click → <em>Open</em> (macOS).</li>
+        <li><strong>No sound.</strong> Check your system output device and master gain; confirm the channel's
+          crossfader assignment and that the crossfader isn't fully on the other side.</li>
+        <li><strong>Crackles / dropouts (rising xruns).</strong> Close heavy background apps; on laptops, use a
+          high-performance power profile.</li>
+        <li><strong>BPM or grid looks off.</strong> Use the waveform <em>grid nudge</em> arrows to line the
+          beatgrid up with the audio.</li>
+        <li><strong>Found a bug?</strong> Please
+          <a href="https://github.com/sergiogallegos/compas/issues" target="_blank" rel="noopener">open an issue</a>
+          with your OS and steps to reproduce — that's exactly what this beta needs.</li>
+      </ul>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-brand">
+        <img src="assets/logo.png" alt="" width="22" height="22" />
+        <span>compas</span>
+      </div>
+      <div class="foot-links">
+        <a href="manual.html">Manual</a>
+        <a href="privacy.html">Privacy</a>
+        <a href="https://github.com/sergiogallegos/compas" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/sergiogallegos/compas/issues" target="_blank" rel="noopener">Report a bug</a>
+        <span class="mono">Open-source · MIT-licensed</span>
+      </div>
+    </footer>
+  </body>
+</html>
