@@ -1,13 +1,20 @@
 :root {
-  --bg: #16161d;
-  --bg-2: #1c1c25;
-  --panel: #24242f;
-  --fg: #ededf2;
-  --muted: #9a9aa5;
-  --accent: #ff2e7e;
-  --accent-glow: #ff5c9b;
+  /* matched to the app's design tokens (frontend/src/theme.css) — Traktor-style deep
+     near-black chrome with a single electric-blue brand accent, cyan for streaming. */
+  --bg: #0c0c0e;
+  --bg-2: #131316;
+  --panel: #1e1e22;
+  --panel-2: #151518;
+  --fg: #eef0f3;
+  --muted: #9498a2;
+  --faint: #686c76;
+  --accent: #18b4e8;
+  --accent-glow: #4fcdf6;
+  --accent-deep: #0e8fc0;
+  --accent-rgb: 24, 180, 232;
   --stream: #28e0ff;
-  --hair: rgba(255, 255, 255, 0.09);
+  --hair: rgba(255, 255, 255, 0.08);
+  --hair-strong: rgba(255, 255, 255, 0.15);
   --display: "Space Grotesk", system-ui, sans-serif;
   --ui: "Hanken Grotesk", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, monospace;
@@ -16,7 +23,7 @@
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
-  background: radial-gradient(1100px 600px at 50% -10%, #221525 0%, var(--bg) 60%);
+  background: radial-gradient(1100px 620px at 50% -12%, #10212b 0%, var(--bg) 62%);
   color: var(--fg);
   font-family: var(--ui);
   -webkit-font-smoothing: antialiased;
@@ -29,7 +36,7 @@ a { color: inherit; text-decoration: none; }
   position: sticky; top: 0; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 28px; backdrop-filter: blur(10px);
-  background: rgba(22, 22, 29, 0.7); border-bottom: 1px solid var(--hair);
+  background: rgba(12, 12, 14, 0.72); border-bottom: 1px solid var(--hair);
 }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--display); font-weight: 600; font-size: 18px; }
 .nav-links { display: flex; align-items: center; gap: 22px; color: var(--muted); font-size: 14px; }
@@ -47,7 +54,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
 .cta { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border-radius: 10px; font-weight: 600; font-size: 15px; border: 1px solid var(--hair); transition: transform 0.12s ease, box-shadow 0.12s ease; }
 .btn:hover { transform: translateY(-1px); }
-.btn-primary { background: linear-gradient(180deg, var(--accent), var(--accent-glow)); color: #fff; border: none; box-shadow: 0 8px 24px rgba(255, 46, 126, 0.3); }
+.btn-primary { background: linear-gradient(180deg, var(--accent-glow), var(--accent-deep)); color: #04141b; border: none; box-shadow: 0 8px 24px rgba(var(--accent-rgb), 0.32); }
 .btn-secondary { background: var(--panel); color: var(--fg); box-shadow: none; opacity: 0.85; }
 .btn-secondary:hover { opacity: 1; }
 .btn-ghost { background: transparent; color: var(--muted); }
@@ -57,8 +64,21 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
 .shot { margin: 24px 0 70px; border-radius: 14px; overflow: hidden; border: 1px solid var(--hair); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
 .shot img { display: block; width: 100%; }
 
+/* trust strip — open-source / Rust core / honest, the things the closed apps can't say */
+.trust { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; padding: 0 0 64px; }
+.trust div { text-align: center; padding: 0 12px; }
+.trust .k { font-family: var(--display); font-weight: 600; font-size: 16px; margin: 0 0 4px; }
+.trust .k span { color: var(--accent); }
+.trust p { color: var(--muted); font-size: 13px; margin: 0; }
+
+.section-head { text-align: center; max-width: 60ch; margin: 0 auto 36px; }
+.section-head h2 { font-family: var(--display); font-weight: 700; font-size: clamp(24px, 4vw, 34px); letter-spacing: -0.02em; margin: 0 0 10px; }
+.section-head p { color: var(--muted); font-size: 15px; margin: 0; }
+
 .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; padding-bottom: 80px; }
-.features article { background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--hair); border-radius: 12px; padding: 22px; }
+.features article { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--hair); border-radius: 12px; padding: 22px; transition: border-color 0.15s ease, transform 0.15s ease; }
+.features article:hover { border-color: var(--hair-strong); transform: translateY(-2px); }
+.features .ic { font-family: var(--mono); font-size: 12px; color: var(--accent); letter-spacing: 0.08em; margin: 0 0 12px; }
 .features h3 { font-family: var(--display); font-weight: 600; font-size: 17px; margin: 0 0 8px; }
 .features p { color: var(--muted); font-size: 14px; margin: 0; }
 

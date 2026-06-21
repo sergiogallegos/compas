@@ -74,34 +74,61 @@
       </section>
 
       <section class="shot">
-        <img src="assets/screenshot.png" alt="compas performance screen" />
+        <img src="assets/screenshot.png" alt="compas performance screen — dual decks, center mixer, band-colored waveform lanes" />
       </section>
 
-      <section id="features" class="features">
-        <article>
-          <h3>True DSP on local files</h3>
-          <p>In-RAM decoding with a cubic-interpolated play-head: instant seek, varispeed, 3-band EQ, and an HPF/LPF filter — all real-time-safe.</p>
-        </article>
-        <article>
-          <h3>Beatgrid · BPM · Key</h3>
-          <p>Spectral-flux tempo + beat-phase detection draws a real grid; Krumhansl–Schmuckler key detection in Camelot notation.</p>
-        </article>
-        <article>
-          <h3>Scrolling waveforms</h3>
-          <p>A fixed NOW playhead with the track scrolling under it, beat-aligned grid, and 4–32&nbsp;s zoom.</p>
-        </article>
-        <article>
-          <h3>Tempo sync</h3>
-          <p>Match decks with one click, or ride the tempo fader and nudge by ear — vinyl-style varispeed by default.</p>
-        </article>
-        <article>
-          <h3>Key-lock, scratch &amp; FX</h3>
-          <p>Master-tempo key-lock (tempo without pitch), a draggable jog-wheel scratch, beat loops, hot cues, and an echo + reverb FX rack — all on the lock-free audio thread.</p>
-        </article>
-        <article>
-          <h3>Native &amp; fast</h3>
-          <p>A Rust audio engine in a Tauri shell. Lock-free, allocation-free audio thread; small, quick, cross-platform.</p>
-        </article>
+      <section class="trust">
+        <div>
+          <p class="k"><span>Open-source</span>, MIT</p>
+          <p>Read the engine, build it yourself, own your workflow. No subscription, no lock-in.</p>
+        </div>
+        <div>
+          <p class="k"><span>Rust</span> audio core</p>
+          <p>Lock-free, allocation-free audio thread. Native builds for Windows, macOS &amp; Linux.</p>
+        </div>
+        <div>
+          <p class="k"><span>Honest</span> about the mix</p>
+          <p>Real DSP on your local files — no faked sync, no smoke. What you hear is what it does.</p>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="section-head">
+          <h2>Everything on the real-time audio thread</h2>
+          <p>The performance surface mirrors the booth — decks, mixer, FX, and beat-aligned waveforms — driven by a lock-free Rust engine.</p>
+        </div>
+        <div class="features">
+          <article>
+            <p class="ic">DSP</p>
+            <h3>True DSP on local files</h3>
+            <p>In-RAM decoding with a cubic-interpolated play-head: instant seek, varispeed, 3-band EQ, and an HPF/LPF filter — all real-time-safe.</p>
+          </article>
+          <article>
+            <p class="ic">ANALYSIS</p>
+            <h3>Beatgrid · BPM · Key</h3>
+            <p>Spectral-flux tempo + beat-phase detection draws a real grid; Krumhansl–Schmuckler key detection in Camelot notation.</p>
+          </article>
+          <article>
+            <p class="ic">WAVEFORMS</p>
+            <h3>Scrolling waveforms</h3>
+            <p>A fixed NOW playhead with the track scrolling under it, band-colored lanes, a beat-aligned grid, and 4–32&nbsp;s zoom.</p>
+          </article>
+          <article>
+            <p class="ic">SYNC</p>
+            <h3>Tempo sync</h3>
+            <p>Match decks with one click, or ride the tempo fader and nudge by ear — vinyl-style varispeed by default.</p>
+          </article>
+          <article>
+            <p class="ic">PERFORM</p>
+            <h3>Key-lock, scratch &amp; FX</h3>
+            <p>Master-tempo key-lock (tempo without pitch), a draggable jog-wheel scratch, beat loops, hot cues, and an echo + reverb FX rack — all on the lock-free audio thread.</p>
+          </article>
+          <article>
+            <p class="ic">CONTROLLERS</p>
+            <h3>MIDI &amp; HID mapping</h3>
+            <p>Map MIDI and HID controllers with full LED/motor feedback. Bundled profiles for Pioneer DDJ-400 / FLX4 and Akai MPK&nbsp;Mini / LPD8.</p>
+          </article>
+        </div>
       </section>
     </main>
 
