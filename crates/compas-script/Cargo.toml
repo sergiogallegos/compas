@@ -1,0 +1,16 @@
+[package]
+name = "compas-script"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Sandboxed controller-scripting runtime (QuickJS via rquickjs). Quarantines the JS engine dependency out of the core crates; exposes an engine.* API over the control bus."
+
+[dependencies]
+# QuickJS bindings — a quarantined native dependency (like ort in compas-stems), justified for a
+# small, sandboxed controller-scripting engine. Out of `default-members` so core CI stays light.
+rquickjs = "0.6"
+compas-core = { workspace = true }
+thiserror = { workspace = true }
