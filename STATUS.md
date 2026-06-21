@@ -14,14 +14,18 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   + `compasaudio.com` CNAME/social cards. Frontend builds clean.
 - **Phase 2 — `trait Effect` FX rack ✅ done.** `Effect` trait + reorderable `FxChain` (step A),
   then the deck's fixed inserts swapped onto the chain, behavior-preserving (step B).
-- **Phase 3 — JS scripting sandbox 🔨 runtime done.** New `compas-script` crate (QuickJS via
-  `rquickjs`, quarantined) with a sandboxed `engine.*` API + `onMidi` hook, 6 tests. **Remaining:**
-  host wiring (route MIDI → `on_midi` → control bus → engine commands), `engine.sendMidi` feedback,
-  in-app editor.
-- **Phase 4 — controllers 🔨 started.** `docs/CONTROLLER-ARCHITECTURE.md` (clean-room; no external
-  software named) + the serde `ControllerProfile` model in `compas-core::mapping`. **Remaining:**
-  profile loader (bundled + user-override dirs) + picker + MIDI-path wiring, clean-room starter MIDI
-  profiles, output/LED feedback, the guided learn editor, and HID input.
+- **Phase 3 — JS scripting sandbox + host wiring ✅.** `compas-script` crate (QuickJS via `rquickjs`,
+  quarantined): sandboxed `engine.*` API + `onMidi`, 6 tests. **Host-wired:** a controller-engine
+  thread owns the runtime + active profile; MIDI is forwarded to it; it resolves and emits
+  `controller:update` events the frontend applies via the existing setters. **Remaining:**
+  `engine.sendMidi` LED feedback, in-app script editor.
+- **Phase 4 — controllers 🔨 core done.** `docs/CONTROLLER-ARCHITECTURE.md` + `docs/CONTROLLERS.md`
+  (the ~140-device target matrix, clean-room) + serde `ControllerProfile` (`compas-core::mapping`) +
+  the **profile loader** (`controllers` backend module: list/load/save + IPC) + the **controller
+  engine** (declarative bindings w/ soft-takeover → control updates; script fallback) + a frontend
+  controller-bus dispatcher + activate/deactivate IPC. **Remaining:** clean-room starter MIDI
+  profiles (priority list in `docs/CONTROLLERS.md`), output/LED feedback, the guided learn editor,
+  and HID input (`hidapi`).
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
 OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +
