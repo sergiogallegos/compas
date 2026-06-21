@@ -237,6 +237,26 @@ abstraction; Ableton Link / MIDI-clock sync.
 
 ---
 
+## Feature-parity targets (vs Serato / rekordbox / Traktor / mature open-source)
+
+Status: ✅ have · 🔶 partial · ⬜ planned. The controller list lives in `docs/CONTROLLERS.md`.
+
+- ✅ BPM + key detection · ✅ tempo+phase sync (+ tempo-only/leader) · ✅ key-lock + pitch control
+- ✅ 4 decks · ✅ EQ + crossfader (curve/additive/reverse) · ✅ beat looping + loop scale/move
+- ✅ hotcues · ✅ configurable cue modes · ✅ quantize · ✅ loop-roll · ✅ beat-jump · ✅ ReplayGain
+- ✅ **programmable mapping engine** (control bus + declarative bindings + soft-takeover + JS scripting)
+- ✅ **DJ controller support** (engine + loader + scripting host wiring); 🔶 **MIDI** profiles to author,
+  ⬜ **HID** input layer (`hidapi`) for jog/displays
+- 🔨 **effects** (echo/reverb/flanger/bitcrusher in a reorderable chain + meta-knob; ⬜ phaser, FX units UI)
+- 🔨 **stem separation** (S1 offline pipeline done; resampling + optional-download pending)
+- ✅ master recording · ⬜ **microphone & aux inputs** · ⬜ controller **LED/output feedback**
+- ✅ library: crates/playlists, search/sort, BPM/key; 🔶 AutoDJ (planner done; ⬜ queue/chaining for breaks)
+- ⬜ **vinyl / timecode control** (DVS) · ⬜ reverse / censor
+- ⬜ **external library import** — your local files ✅; ⬜ import from other DJ apps + media libraries
+- 🔶 **broad format support** — symphonia covers WAV/AIFF/FLAC/MP3/OGG-Vorbis/Opus; ⬜ AAC/MP4 via the
+  documented FFmpeg fallback (codec-patent note in the dependency table)
+- ⬜ harmonic-mixing assist UI (planner exists) · ⬜ smart crates / tags / folder-watch
+
 ## Infrastructure & distribution (pending)
 
 - 🔨 **Release pipeline** (`.github/workflows/release.yml`, via `tauri-action`): on a `v*` tag,
