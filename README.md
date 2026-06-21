@@ -42,9 +42,10 @@ installer. The app then keeps itself current via the built-in updater.
 
 ![compas performance screen](docs/assets/screenshot.png)
 
-> The performance UI: dual decks (A magenta = full DSP, B cyan), center mixer, stacked waveform
-> lanes, library browser, and a live engine status bar. Brand mark = the "Needle & Rose" — a
-> compass needle (the tonearm) inside a beat-ticked ring (*compás* = beat/measure).
+> The performance UI (Traktor-inspired dark theme): dual decks with per-deck color identity, center
+> mixer (gain / 3-band EQ / filter / FX), stacked band-colored waveform lanes, library browser, and a
+> live engine status bar. Brand mark = the "Needle & Rose" — a compass needle (the tonearm) inside a
+> beat-ticked ring (*compás* = beat/measure).
 
 ## Layout
 
