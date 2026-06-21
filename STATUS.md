@@ -6,6 +6,29 @@
 
 ## ▶ Resume here (next up, in order)
 
+**Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
+were taken on (per the maintainer's order), all committed on `main`, each step tested:
+- **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
+  (crossfader curve/cut/reverse, FX macro, loop ½×/2×/move, cue modes + tempo-only sync + leader,
+  band-RGB waveform, latency-aware play-head, library grammar search + ✨ suggest-next, crates panel)
+  + `compasaudio.com` CNAME/social cards. Frontend builds clean.
+- **Phase 2 — `trait Effect` FX rack ✅ done.** `Effect` trait + reorderable `FxChain` (step A),
+  then the deck's fixed inserts swapped onto the chain, behavior-preserving (step B).
+- **Phase 3 — JS scripting sandbox 🔨 runtime done.** New `compas-script` crate (QuickJS via
+  `rquickjs`, quarantined) with a sandboxed `engine.*` API + `onMidi` hook, 6 tests. **Remaining:**
+  host wiring (route MIDI → `on_midi` → control bus → engine commands), `engine.sendMidi` feedback,
+  in-app editor.
+- **Phase 4 — controllers 🔨 started.** `docs/CONTROLLER-ARCHITECTURE.md` (clean-room; no external
+  software named) + the serde `ControllerProfile` model in `compas-core::mapping`. **Remaining:**
+  profile loader (bundled + user-override dirs) + picker + MIDI-path wiring, clean-room starter MIDI
+  profiles, output/LED feedback, the guided learn editor, and HID input.
+
+Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
+OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +
+optional-download. Brand stays **compas**; domain **compasaudio.com** (Cloudflare/Pages DNS is the
+account-side step).
+
+
 **Design-study feature batch — engine + IPC complete (2026-06-20).** All 12 items from the
 ROADMAP deep-dive backlog are implemented at the **Rust-engine + IPC + TS-binding** level, each
 unit-tested and committed on `main` (one `feat(...)` commit per feature). Verified together:
