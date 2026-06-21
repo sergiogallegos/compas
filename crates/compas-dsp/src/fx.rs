@@ -185,6 +185,14 @@ impl FxChain {
         }
     }
 
+    /// Bypass every slot and clear its state (e.g. on track load/eject). RT-SAFE.
+    pub fn reset(&mut self) {
+        for s in self.slots.iter_mut() {
+            s.enabled = false;
+            s.effect.clear();
+        }
+    }
+
     /// Set a normalized parameter on a slot's effect. RT-SAFE.
     pub fn set_param(&mut self, slot: usize, index: usize, value: f32) {
         if let Some(s) = self.slots.get_mut(slot) {

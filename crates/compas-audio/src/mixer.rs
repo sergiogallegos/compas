@@ -5,9 +5,17 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,
-    Reverb, Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
+    meta_map, Biquad, BiquadCoeffs, Crossfader, FxChain, GainSmoother, LinkType, Synth, ThreeBandEq,
+    TimeStretch, Waveform, XfaderMode,
 };
+
+/// FX chain slot indices (the default deck chain order: echo → reverb → flanger → bitcrusher).
+const FX_ECHO: usize = 0;
+const FX_REVERB: usize = 1;
+const FX_FLANGER: usize = 2;
+const FX_CRUSHER: usize = 3;
+/// Max echo time the delay slot maps its normalized `time` param across.
+const FX_DELAY_MAX_SECS: f32 = 2.0;
 use rtrb::Producer;
 
 use crate::sampler::Sampler;
@@ -16,9 +24,6 @@ use crate::sampler::Sampler;
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
 
-/// Max echo time the pre-allocated delay line can hold (2 s = 1 beat at 30 BPM / 2 beats
-/// at 60 BPM — well past any musical echo).
-const MAX_DELAY_SECS: f32 = 2.0;
 
 /// Sync PLL: how hard the beat-phase error pulls the follower's read rate. The pull is
 /// capped to ±8% (a musical pitch-bend range) so locking in is a smooth glide, not a click.
@@ -496,19 +501,9 @@ struct DeckPlayer {
     /// Pre-fader-listen: when true, this deck feeds the headphone cue bus regardless of the
     /// crossfader/master. Independent of `xfader_assign`.
     cue: bool,
-    /// Echo/delay insert (post-EQ). The delay line is pre-allocated; toggling only flips
-    /// `echo_active` and clears the line on engage.
-    echo: Delay,
-    echo_active: bool,
-    /// Reverb insert (post-echo). Buffers pre-allocated; toggling flips `reverb_active`.
-    reverb: Reverb,
-    reverb_active: bool,
-    /// Flanger insert (post-reverb). Pre-allocated; toggling flips `flanger_active`.
-    flanger: Flanger,
-    flanger_active: bool,
-    /// Bitcrusher insert (post-flanger). Toggling flips `crusher_active`.
-    crusher: Bitcrusher,
-    crusher_active: bool,
+    /// Per-deck effects chain (post-EQ): echo → reverb → flanger → bitcrusher by default,
+    /// reorderable and individually bypassable. Pre-allocated on construction.
+    fx: FxChain,
     loop_active: bool,
     loop_in: f64,
     loop_out: f64,
@@ -559,14 +554,7 @@ impl DeckPlayer {
             filter_active: false,
             xfader_assign: XfaderAssign::Thru,
             cue: false,
-            echo: Delay::new(device_rate, MAX_DELAY_SECS),
-            echo_active: false,
-            reverb: Reverb::new(device_rate),
-            reverb_active: false,
-            flanger: Flanger::new(device_rate),
-            flanger_active: false,
-            crusher: Bitcrusher::new(),
-            crusher_active: false,
+            fx: FxChain::default_deck(device_rate),
             loop_active: false,
             loop_in: 0.0,
             loop_out: 0.0,
@@ -723,26 +711,10 @@ impl DeckPlayer {
         }
         l = self.eq_l.process(l);
         r = self.eq_r.process(r);
-        if self.echo_active {
-            let (el, er) = self.echo.process(l, r);
-            l = el;
-            r = er;
-        }
-        if self.reverb_active {
-            let (rl, rr) = self.reverb.process(l, r);
-            l = rl;
-            r = rr;
-        }
-        if self.flanger_active {
-            let (fl, fr) = self.flanger.process(l, r);
-            l = fl;
-            r = fr;
-        }
-        if self.crusher_active {
-            let (cl, cr) = self.crusher.process(l, r);
-            l = cl;
-            r = cr;
-        }
+        // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
+        let (fl, fr) = self.fx.process(l, r);
+        l = fl;
+        r = fr;
         let g = g * self.replay_gain; // loudness normalization, pre-fader
         (l * g, r * g)
     }
@@ -1018,13 +990,10 @@ impl Mixer {
                     mix,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.echo.set_time_sec(time_sec);
-                        d.echo.set_feedback(feedback);
-                        d.echo.set_mix(mix);
-                        if active && !d.echo_active {
-                            d.echo.clear(); // fresh line on engage
-                        }
-                        d.echo_active = active;
+                        d.fx.set_param(FX_ECHO, 0, mix);
+                        d.fx.set_param(FX_ECHO, 1, feedback);
+                        d.fx.set_param(FX_ECHO, 2, time_sec / FX_DELAY_MAX_SECS);
+                        d.fx.set_enabled(FX_ECHO, active); // clears the line on the engage edge
                     }
                 }
                 AudioCommand::SetDeckReverb {
@@ -1034,12 +1003,9 @@ impl Mixer {
                     mix,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.reverb.set_room_size(room_size);
-                        d.reverb.set_mix(mix);
-                        if active && !d.reverb_active {
-                            d.reverb.clear(); // fresh tail on engage
-                        }
-                        d.reverb_active = active;
+                        d.fx.set_param(FX_REVERB, 0, mix);
+                        d.fx.set_param(FX_REVERB, 1, room_size);
+                        d.fx.set_enabled(FX_REVERB, active);
                     }
                 }
                 AudioCommand::SetDeckFlanger {
@@ -1051,14 +1017,11 @@ impl Mixer {
                     mix,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.flanger.set_rate_hz(rate_hz);
-                        d.flanger.set_depth(depth);
-                        d.flanger.set_feedback(feedback);
-                        d.flanger.set_mix(mix);
-                        if active && !d.flanger_active {
-                            d.flanger.clear(); // fresh sweep on engage
-                        }
-                        d.flanger_active = active;
+                        d.fx.set_param(FX_FLANGER, 0, mix);
+                        d.fx.set_param(FX_FLANGER, 1, depth);
+                        d.fx.set_param(FX_FLANGER, 2, (rate_hz - 0.05) / 4.95);
+                        d.fx.set_param(FX_FLANGER, 3, feedback);
+                        d.fx.set_enabled(FX_FLANGER, active);
                     }
                 }
                 AudioCommand::SetDeckCrusher {
@@ -1069,34 +1032,23 @@ impl Mixer {
                     mix,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.crusher.set_bits(bits);
-                        d.crusher.set_downsample(downsample);
-                        d.crusher.set_mix(mix);
-                        if active && !d.crusher_active {
-                            d.crusher.clear();
-                        }
-                        d.crusher_active = active;
+                        d.fx.set_param(FX_CRUSHER, 0, mix);
+                        d.fx.set_param(FX_CRUSHER, 1, (16.0 - bits) / 14.0);
+                        d.fx.set_param(FX_CRUSHER, 2, (downsample.saturating_sub(1)) as f32 / 31.0);
+                        d.fx.set_enabled(FX_CRUSHER, active);
                     }
                 }
                 AudioCommand::SetDeckFxMacro { deck, value } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         // Reverb rides the whole sweep; echo comes in over the upper half. Each
-                        // insert clears on its engage edge (matches the manual FX commands).
+                        // slot clears on its engage edge (handled by set_enabled).
                         let rev_mix = meta_map(value, LinkType::Linked) * 0.6;
-                        d.reverb.set_mix(rev_mix);
-                        let want_rev = rev_mix > 0.001;
-                        if want_rev && !d.reverb_active {
-                            d.reverb.clear();
-                        }
-                        d.reverb_active = want_rev;
+                        d.fx.set_param(FX_REVERB, 0, rev_mix);
+                        d.fx.set_enabled(FX_REVERB, rev_mix > 0.001);
 
                         let echo_mix = meta_map(value, LinkType::LinkedRight);
-                        d.echo.set_mix(echo_mix);
-                        let want_echo = echo_mix > 0.001;
-                        if want_echo && !d.echo_active {
-                            d.echo.clear();
-                        }
-                        d.echo_active = want_echo;
+                        d.fx.set_param(FX_ECHO, 0, echo_mix);
+                        d.fx.set_enabled(FX_ECHO, echo_mix > 0.001);
                     }
                 }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
@@ -1167,14 +1119,7 @@ impl Mixer {
                         d.scratch_speed = 0.0;
                         d.keylock = false;
                         d.stretch_engaged = false;
-                        d.echo_active = false;
-                        d.echo.clear();
-                        d.reverb_active = false;
-                        d.reverb.clear();
-                        d.flanger_active = false;
-                        d.flanger.clear();
-                        d.crusher_active = false;
-                        d.crusher.clear();
+                        d.fx.reset();
                         d.loop_active = false;
                         d.cue_point = 0.0;
                         d.cue_previewing = false;
@@ -1334,14 +1279,7 @@ impl Mixer {
                         d.scratch_speed = 0.0;
                         d.keylock = false;
                         d.stretch_engaged = false;
-                        d.echo_active = false;
-                        d.echo.clear();
-                        d.reverb_active = false;
-                        d.reverb.clear();
-                        d.flanger_active = false;
-                        d.flanger.clear();
-                        d.crusher_active = false;
-                        d.crusher.clear();
+                        d.fx.reset();
                         d.playhead = 0.0;
                         d.loop_active = false;
                         d.sync_master = None;
