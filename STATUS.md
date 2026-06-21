@@ -5,6 +5,31 @@
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
+
+**Design-study feature batch — engine + IPC complete (2026-06-20).** All 12 items from the
+ROADMAP deep-dive backlog are implemented at the **Rust-engine + IPC + TS-binding** level, each
+unit-tested and committed on `main` (one `feat(...)` commit per feature). Verified together:
+`cargo test` (all crates green), `cargo clippy -D warnings` (default-members), `cargo check`
+(Tauri app), `tsc --noEmit` (frontend) — all clean.
+1. ✅ Typed control bus (`compas-core::control`) · 2. ✅ Crossfader curve/additive/reverse ·
+3. ✅ Main-cue modes (CDJ/gated) · 4. ✅ Loop scale + move · 5. ✅ Sync tempo-only/explicit-leader/
+ranked picker · 6. ✅ ReplayGain (auto on load) · 7. ✅ FX meta-knob + link types · 8. ✅ Band-RGB
+waveform analysis · 9. ✅ DAC-latency-aware play-head data · 10. ✅ Library search grammar +
+crates/playlists · 11. ✅ Auto-mix harmonic+tempo planner (`compas-core::automix`) ·
+12. ✅ Declarative mapping/soft-takeover (`compas-core::mapping`).
+
+**What's deliberately deferred (next):**
+- **One consolidated UI pass** wiring these to React controls (FX-macro knob, cue-mode toggle, loop
+  buttons, band-RGB waveform render via `bandColor`/WebGL, latency-aware play-head via
+  `extrapolateFrame`, crate/playlist browser + search box, "suggest next" panel, mapping editor),
+  **plus the website pass** (point `compasaudio.com` via Cloudflare; brand stays **compas**).
+- **Larger follow-ups noted in commits:** full chainable `trait Effect` FX rack (replacing fixed
+  inserts), sync internal-clock virtual leader, embedded JS sandbox (`rquickjs`/`boa`) for true
+  scripting, OR-between-terms + smart crates + tags + folder-watch, full AutoDJ queue.
+
+**Stem separation (S1)** remains as previously noted (first slice done; resampling +
+optional-download follow-ups).
+
 **User-confirmed working in the running app (2026-06-19):** the user ran `tauri dev` and reported
 the recent batch works — FX rack (echo/reverb/flanger/bitcrusher), performance row (quantize /
 beat-jump / loop-roll), sampler pads, headphone cue, and A/B/C/D library loading. (Hardware MIDI

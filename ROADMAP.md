@@ -170,6 +170,10 @@ features (clean-room — behaviors and concepts only, independently designed). D
 KEEP/IMPROVE/DROP calls, and the full Rust-core ↔ TS-UI mapping were captured in internal design
 notes.
 
+> **Status (2026-06-20): all 12 implemented at the engine + IPC + TS-binding level**, each
+> unit-tested and committed individually on `main`. Remaining: one consolidated **UI pass** to wire
+> them to React controls, plus the per-item **follow-ups** flagged below (and in each commit).
+
 **Near-term (the control bus enables much of the rest):**
 1. ⬜ **Typed control bus** — a named `(group, param)` registry where every tweakable engine value
    is one shared, lock-free cell carrying a value↔normalized↔MIDI behavior curve. This is the seam
