@@ -18,16 +18,25 @@ interface AutoMixProps {
   onMixNow: () => void;
 }
 
+interface XfaderConfig {
+  curve: number;
+  additive: boolean;
+  reverse: boolean;
+  onChange: (curve: number, additive: boolean, reverse: boolean) => void;
+}
+
 export function Mixer({
   channels,
   crossfader,
   onCrossfader,
+  xfader,
   auto,
   cue,
 }: {
   channels: Channel[];
   crossfader: number;
   onCrossfader: (v: number) => void;
+  xfader?: XfaderConfig;
   auto?: AutoMixProps;
   cue?: CueApi;
 }) {
@@ -74,8 +83,42 @@ export function Mixer({
         />
         <span className="overline" style={{ color: "var(--stream)" }}>B</span>
       </div>
+      {xfader && <XfaderConfigRow {...xfader} />}
       {cue && <Phones cue={cue} />}
     </section>
+  );
+}
+
+/** Crossfader response: curve steepness (smooth → cut), additive/cut mode, and reverse. */
+function XfaderConfigRow({ curve, additive, reverse, onChange }: XfaderConfig) {
+  return (
+    <div className="xf-config">
+      <span className="overline">CURVE</span>
+      <input
+        className="xf-curve"
+        type="range"
+        min={0.5}
+        max={6}
+        step={0.1}
+        value={curve}
+        onChange={(e) => onChange(parseFloat(e.target.value), additive, reverse)}
+        title="Crossfader curve: low = smooth blend, high = sharp cut"
+      />
+      <button
+        className={`chip ${additive ? "chip--on" : ""}`}
+        onClick={() => onChange(curve, !additive, reverse)}
+        title="Additive (slow-fade / fast-cut) vs constant-power"
+      >
+        CUT
+      </button>
+      <button
+        className={`chip ${reverse ? "chip--on" : ""}`}
+        onClick={() => onChange(curve, additive, !reverse)}
+        title="Reverse the crossfader (hamster switch)"
+      >
+        REV
+      </button>
+    </div>
   );
 }
 

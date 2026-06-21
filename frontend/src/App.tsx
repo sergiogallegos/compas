@@ -15,7 +15,7 @@ import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -48,6 +48,17 @@ export function App() {
   const applyCrossfade = useCallback((v: number) => {
     setXfade(v);
     if (inTauri()) setCrossfader(v).catch(() => {});
+  }, []);
+
+  // Crossfader response config (curve steepness, additive/cut mode, reverse).
+  const [xfCurve, setXfCurve] = useState(1);
+  const [xfAdditive, setXfAdditive] = useState(false);
+  const [xfReverse, setXfReverse] = useState(false);
+  const applyXfConfig = useCallback((curve: number, additive: boolean, reverse: boolean) => {
+    setXfCurve(curve);
+    setXfAdditive(additive);
+    setXfReverse(reverse);
+    if (inTauri()) setCrossfaderConfig(curve, additive ? 1 : 0, reverse).catch(() => {});
   }, []);
   const auto = useAutoMix([leftDeck, rightDeck], applyCrossfade);
 
@@ -126,6 +137,7 @@ export function App() {
               channels={decks.map((d) => ({ ctrl: d, letter: DECK_LETTERS[d.deck], color: DECK_COLORS[d.deck] }))}
               crossfader={xfade}
               onCrossfader={applyCrossfade}
+              xfader={{ curve: xfCurve, additive: xfAdditive, reverse: xfReverse, onChange: applyXfConfig }}
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
               cue={cue}
             />
