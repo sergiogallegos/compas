@@ -1697,6 +1697,8 @@ fn midi_connect(
         .map_err(|e| e.to_string())?;
 
     *midi.conn.lock().map_err(|e| e.to_string())? = Some(conn);
+    // Open a matching MIDI output (same device name) for LED/feedback echo.
+    ctrl.send(controllers::ControllerMsg::SetOutputPort(Some(name.clone())));
     tracing::info!("MIDI connected: {name}");
     Ok(name)
 }

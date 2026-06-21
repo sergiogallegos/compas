@@ -11,6 +11,7 @@ use std::sync::mpsc::{self, Sender};
 
 use compas_core::{ControllerProfile, InputKind, Mapping, Registry};
 use compas_script::ScriptRuntime;
+use midir::{MidiOutput, MidiOutputConnection};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -81,6 +82,9 @@ pub enum ControllerMsg {
     Activate(Box<ControllerProfile>),
     /// Drop the active profile.
     Deactivate,
+    /// Open (or close, with `None`) a MIDI output port for LED/feedback echo — matched by name
+    /// substring against the OS output ports.
+    SetOutputPort(Option<String>),
 }
 
 /// Handle to the controller engine thread. The thread owns the (`!Send`) script runtime, so all it
@@ -119,9 +123,14 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
     let mut script: Option<ScriptRuntime> = None;
     // Last normalized value applied per control, for soft-takeover.
     let mut current: HashMap<String, f64> = HashMap::new();
+    // MIDI output for LED/feedback echo (controller-driven changes only).
+    let mut out: Option<MidiOutputConnection> = None;
 
     for msg in rx {
         match msg {
+            ControllerMsg::SetOutputPort(name) => {
+                out = name.and_then(|name| open_output(&name));
+            }
             ControllerMsg::Activate(profile) => {
                 mapping = profile.mapping();
                 script = profile.script.as_deref().and_then(|src| match ScriptRuntime::new() {
@@ -154,12 +163,18 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
 
                 if let Some(inp) = input {
                     if let Some(binding) = mapping.find(channel, inp) {
+                        let (b_channel, b_input) = (binding.channel, binding.input);
                         // Soft-takeover uses the last value we applied; unknown → adopt immediately.
                         let cur = current
                             .get(binding.control.as_str())
                             .copied()
                             .unwrap_or(d2 as f64 / 127.0);
                         if let Some(u) = mapping.resolve(&registry, channel, inp, d2, cur, TAKEOVER) {
+                            // Echo back to the device on the same address (LED/feedback).
+                            if let Some(conn) = out.as_mut() {
+                                let mv = (u.normalized * 127.0).round().clamp(0.0, 127.0) as u8;
+                                let _ = conn.send(&midi_bytes(b_channel, b_input, mv));
+                            }
                             current.insert(u.control.as_str().to_string(), u.normalized);
                             updates.push(ControllerUpdateEvent {
                                 control: u.control.as_str().to_string(),
@@ -191,9 +206,34 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
     }
 }
 
+/// Open a MIDI output port whose name contains `name` (for LED/feedback echo).
+fn open_output(name: &str) -> Option<MidiOutputConnection> {
+    let midi = MidiOutput::new("compas-out").ok()?;
+    let ports = midi.ports();
+    let port = ports
+        .iter()
+        .find(|p| midi.port_name(p).map(|n| n.contains(name)).unwrap_or(false))?;
+    midi.connect(port, "compas-feedback").ok()
+}
+
+/// Build a 3-byte MIDI message echoing `value` (0..127) to a binding's input address.
+fn midi_bytes(channel: u8, input: InputKind, value: u8) -> [u8; 3] {
+    let ch = channel & 0x0F;
+    match input {
+        InputKind::Cc { cc } => [0xB0 | ch, cc, value],
+        InputKind::Note { note } => [0x90 | ch, note, value],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn midi_bytes_builds_cc_and_note() {
+        assert_eq!(midi_bytes(0, InputKind::Cc { cc: 7 }, 100), [0xB0, 7, 100]);
+        assert_eq!(midi_bytes(2, InputKind::Note { note: 36 }, 127), [0x92, 36, 127]);
+    }
 
     #[test]
     fn save_then_list_round_trips() {
