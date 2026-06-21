@@ -11,9 +11,7 @@ export function StatusBar({ sampleRate }: { sampleRate: number | null }) {
       <span className="st-sep">·</span>
       <span className="st-rt">RT-SAFE</span>
       <span className="st-right">
-        <span>Windows · WASAPI</span>
-        <span className="st-sep">·</span>
-        <span>compas 0.1.0 — Phase 1</span>
+        <span>compas — public beta</span>
       </span>
     </footer>
   );
