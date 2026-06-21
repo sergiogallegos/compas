@@ -334,6 +334,18 @@ export function Deck({
                     {n}
                   </button>
                 ))}
+                <button className="chip" onClick={() => actions.scaleLoop(0.5)} disabled={!state.loop.active} title="Halve loop length">
+                  ½×
+                </button>
+                <button className="chip" onClick={() => actions.scaleLoop(2)} disabled={!state.loop.active} title="Double loop length">
+                  2×
+                </button>
+                <button className="chip" onClick={() => actions.moveLoop(-1)} disabled={!state.loop.active} title="Move loop back 1 beat">
+                  ◀
+                </button>
+                <button className="chip" onClick={() => actions.moveLoop(1)} disabled={!state.loop.active} title="Move loop forward 1 beat">
+                  ▶
+                </button>
                 <button className="chip" onClick={actions.clearLoop} disabled={!state.loop.active} title="Exit loop">
                   ✕
                 </button>

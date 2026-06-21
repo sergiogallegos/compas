@@ -28,6 +28,8 @@ import {
   setLoop as setLoopCmd,
   setLoopActive as setLoopActiveCmd,
   setLoopRoll as setLoopRollCmd,
+  scaleLoop as scaleLoopCmd,
+  moveLoop as moveLoopCmd,
   dbClearCue,
   dbClearLoop,
   dbRecordPlay,
@@ -476,6 +478,28 @@ export function useDeck(deck: number, dsp = true) {
         setLoopActiveCmd(deck, false).catch(swallow);
         setLoopState((l) => ({ ...l, active: false }));
         if (canPersist) dbClearLoop(path as string, 0).catch(swallow);
+      },
+      // Halve/double the active loop, anchored at the loop-in. Mirror the new length locally.
+      scaleLoop: (factor: number) => {
+        scaleLoopCmd(deck, factor).catch(swallow);
+        setLoopState((l) => {
+          if (!l.active || l.outFrame <= l.inFrame) return l;
+          const len = Math.max(8, (l.outFrame - l.inFrame) * factor);
+          return {
+            ...l,
+            outFrame: l.inFrame + len,
+            beats: l.beats != null ? l.beats * factor : null,
+          };
+        });
+      },
+      // Shift the active loop by whole beats (or ~50 ms when there's no grid).
+      moveLoop: (deltaBeats: number) => {
+        const g = grid();
+        const delta = g ? g.interval * deltaBeats : (meta?.source_rate ?? 44100) * 0.05 * Math.sign(deltaBeats);
+        moveLoopCmd(deck, delta).catch(swallow);
+        setLoopState((l) =>
+          l.active ? { ...l, inFrame: Math.max(0, l.inFrame + delta), outFrame: l.outFrame + delta } : l,
+        );
       },
       toggleQuantize: () => setQuantize((q) => !q),
       // Jump the play-head by whole beats (negative = back). When quantize is on, the jump
