@@ -12,7 +12,10 @@
 #![forbid(unsafe_code)]
 
 pub mod analysis;
+pub mod fx;
 pub mod rt;
+
+pub use fx::{Effect, FxChain, FxSlot};
 
 pub use rt::{
     meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,
