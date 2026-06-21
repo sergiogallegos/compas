@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { loadTrack } from "../lib/ipc";
+import { useEffect, useState } from "react";
+import { dbPlanNext, dbSearch, inTauri, loadTrack, type DbTrack } from "../lib/ipc";
 import { useLibrary } from "../hooks/useLibrary";
 import { Icon } from "./icons";
 
@@ -21,10 +21,44 @@ function fmtMs(ms: number): string {
 export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }) {
   const lib = useLibrary();
   const [q, setQ] = useState("");
+  // Search results (engine grammar) and a "suggest next" override; null = show the full library.
+  const [results, setResults] = useState<DbTrack[] | null>(null);
+  const [suggestFor, setSuggestFor] = useState<string | null>(null);
 
-  const filtered = lib.tracks.filter(
-    (t) => q.trim() === "" || `${t.title} ${t.artist}`.toLowerCase().includes(q.toLowerCase()),
-  );
+  // Debounced search via the engine query grammar (bpm:120-128 key:8A artist:foo -live); falls
+  // back to a client-side title/artist filter outside Tauri.
+  useEffect(() => {
+    setSuggestFor(null);
+    const query = q.trim();
+    if (query === "") {
+      setResults(null);
+      return;
+    }
+    if (!inTauri()) {
+      setResults(
+        lib.tracks.filter((t) => `${t.title} ${t.artist}`.toLowerCase().includes(query.toLowerCase())),
+      );
+      return;
+    }
+    const id = setTimeout(() => {
+      dbSearch(query).then(setResults).catch(() => {});
+    }, 180);
+    return () => clearTimeout(id);
+  }, [q, lib.tracks]);
+
+  // Auto-mix planner: ranked next-track suggestions after `t`.
+  const suggestNext = (t: DbTrack) => {
+    setQ("");
+    setSuggestFor(t.title);
+    dbPlanNext(t.path, 12).then(setResults).catch(() => {});
+  };
+  const clearView = () => {
+    setResults(null);
+    setSuggestFor(null);
+    setQ("");
+  };
+
+  const filtered = results ?? lib.tracks;
 
   return (
     <section className="library">
@@ -50,13 +84,25 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
         <div className="tl-toolbar">
           <div className="search">
             <Icon name="search" size={14} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, artist…" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search… e.g. bpm:120-128 key:8A artist:daft -live"
+              title="Grammar: bpm:120-128 (range), key:8A, artist:/title: (fuzzy), bare word = title or artist, - to exclude"
+            />
           </div>
           <button className="add-btn" onClick={lib.add} disabled={lib.busy}>
             {lib.busy ? "Adding…" : "+ Add tracks"}
           </button>
           <span className="mono tl-count">{filtered.length} tracks</span>
         </div>
+
+        {suggestFor && (
+          <div className="tl-banner">
+            <span>✨ Suggested next after <strong>{suggestFor}</strong> (harmonic + tempo)</span>
+            <button className="chip" onClick={clearView}>clear</button>
+          </div>
+        )}
 
         <div className="tl-head tl-grid">
           <span>#</span><span>TITLE</span><span>ARTIST</span><span>TIME</span><span>LOAD</span>
@@ -106,6 +152,13 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
                         {d.letter}
                       </button>
                     ))}
+                    <button
+                      className="tl-next"
+                      onClick={(e) => { e.stopPropagation(); suggestNext(t); }}
+                      title="Suggest harmonically/tempo-compatible next tracks"
+                    >
+                      ✨
+                    </button>
                   </span>
                 </div>
               );
