@@ -263,6 +263,9 @@ export const dbRemoveFromCrate = (crateId: number, path: string) =>
   invoke("db_remove_from_crate", { crateId, path });
 export const dbCrateTracks = (crateId: number) =>
   invoke<DbTrack[]>("db_crate_tracks", { crateId });
+/** Auto-mix planner: ranked next-track suggestions (harmonic + tempo) after `currentPath`. */
+export const dbPlanNext = (currentPath: string, limit: number) =>
+  invoke<DbTrack[]>("db_plan_next", { currentPath, limit });
 
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });

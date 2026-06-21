@@ -89,7 +89,7 @@ pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
     Ok(Db(Mutex::new(conn)))
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct TrackRow {
     pub path: String,
     pub title: String,

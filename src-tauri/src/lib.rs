@@ -861,6 +861,34 @@ fn db_crate_tracks(db: State<'_, db::Db>, crate_id: i64) -> Result<Vec<db::Track
     with_db(&db, |c| db::crate_tracks(c, crate_id))
 }
 
+/// Suggest the next tracks to mix after `current_path`, ranked by harmonic + tempo compatibility
+/// (the auto-mix / set-construction planner). Returns up to `limit` library tracks, best first.
+#[tauri::command]
+fn db_plan_next(
+    db: State<'_, db::Db>,
+    current_path: String,
+    limit: usize,
+) -> Result<Vec<db::TrackRow>, String> {
+    let tracks = with_db(&db, db::list_tracks)?;
+    let to_info = |t: &db::TrackRow| compas_core::TrackInfo {
+        bpm: t.bpm.map(|b| b as f32),
+        camelot: t.key_camelot.clone(),
+    };
+    let current = tracks
+        .iter()
+        .find(|t| t.path == current_path)
+        .map(&to_info)
+        .unwrap_or_default();
+    let pool: Vec<&db::TrackRow> = tracks.iter().filter(|t| t.path != current_path).collect();
+    let infos: Vec<compas_core::TrackInfo> = pool.iter().map(|t| to_info(t)).collect();
+    let ranked = compas_core::plan_next(&current, &infos);
+    Ok(ranked
+        .into_iter()
+        .take(limit.max(1))
+        .map(|(i, _)| pool[i].clone())
+        .collect())
+}
+
 #[tauri::command]
 fn deck_play(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
     state.send(EngineMsg::DeckPlaying {
@@ -1735,6 +1763,7 @@ pub fn run() {
             db_add_to_crate,
             db_remove_from_crate,
             db_crate_tracks,
+            db_plan_next,
             load_track,
             deck_play,
             deck_pause,

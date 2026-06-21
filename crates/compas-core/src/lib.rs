@@ -5,12 +5,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod automix;
 mod buffer;
 mod capabilities;
 pub mod control;
 mod error;
 mod track;
 
+pub use automix::{plan_next, score_transition, TrackInfo};
 pub use buffer::DeckBuffer;
 pub use capabilities::{SourceCapabilities, SourceKind};
 pub use control::{Behavior, ControlId, ControlSpec, Registry, Unit};
