@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
+mod controllers;
 mod db;
 mod spotify;
 
@@ -1575,6 +1576,25 @@ fn midi_list_ports() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// List controller profiles in the user controller directory.
+#[tauri::command]
+fn controller_list(app: AppHandle) -> Result<Vec<compas_core::ControllerProfile>, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
+    Ok(controllers::list_profiles(&dir))
+}
+
+/// Save (or overwrite) a controller profile (used by the guided learn editor).
+#[tauri::command]
+fn controller_save(
+    app: AppHandle,
+    profile: compas_core::ControllerProfile,
+) -> Result<(), String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
+    controllers::save_profile(&dir, &profile).map(|_| ())
+}
+
 /// Open a MIDI input port; its messages drive the synth (notes) and emit `midi:cc` (knobs).
 #[tauri::command]
 fn midi_connect(
@@ -1820,6 +1840,8 @@ pub fn run() {
             sampler_pad_count,
             midi_list_ports,
             midi_connect,
+            controller_list,
+            controller_save,
             midi_disconnect,
             set_midi_synth,
             spotify::spotify_listen

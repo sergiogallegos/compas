@@ -267,6 +267,25 @@ export const dbCrateTracks = (crateId: number) =>
 export const dbPlanNext = (currentPath: string, limit: number) =>
   invoke<DbTrack[]>("db_plan_next", { currentPath, limit });
 
+// ---- Controllers (mapping profiles) -----------------------------------------------
+export interface ControllerBinding {
+  channel: number;
+  input: { kind: "note"; note: number } | { kind: "cc"; cc: number };
+  control: string;
+  soft_takeover?: boolean;
+}
+export interface ControllerProfile {
+  id: string;
+  name: string;
+  ports?: { input?: string | null; output?: string | null };
+  bindings: ControllerBinding[];
+  script?: string | null;
+}
+/** List controller profiles in the user controller directory. */
+export const controllerList = () => invoke<ControllerProfile[]>("controller_list");
+/** Save (or overwrite) a controller profile. */
+export const controllerSave = (profile: ControllerProfile) => invoke("controller_save", { profile });
+
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });
 export const deckPause = (deck: number) => invoke("deck_pause", { deck });
