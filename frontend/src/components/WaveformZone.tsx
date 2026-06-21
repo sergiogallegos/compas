@@ -1,5 +1,6 @@
 import { useState, type PointerEvent } from "react";
 import type { DeckState } from "../hooks/useDeck";
+import { bandColor } from "../lib/ipc";
 
 const VW = 1368;
 const VH = 80;
@@ -47,6 +48,9 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
   const duration = frames > 0 ? frames / sr : 0;
   const peaks = meta?.peaks ?? [];
   const binSec = peaks.length > 0 && duration > 0 ? duration / peaks.length : 0;
+  // Frequency-band energy per bin (low→R, mid→G, high→B), aligned 1:1 with `peaks`.
+  const bands = meta?.band_peaks ?? [];
+  const useBands = bands.length === peaks.length && bands.length > 0;
 
   // Play-head already advances by tempo, so frame→time gives correct scroll speed.
   const nowTime = state.frame / sr; // seconds (source time)
@@ -102,8 +106,30 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
               <line key={i} x1={b.x} y1={0} x2={b.x} y2={VH} stroke={b.down ? color : "rgba(255,255,255,.12)"} strokeWidth={b.down ? 1.6 : 0.7} opacity={b.down ? 0.6 : 1} />
             ))}
           </g>
-          <path d={slice(1)} fill={color} opacity={0.3} />
-          <path d={slice(0.46)} fill={color} opacity={0.92} />
+          {useBands ? (
+            <g>
+              {(() => {
+                const cy = VH / 2;
+                const bw = Math.max(0.7, (binSec / view) * VW);
+                const i0 = Math.max(0, Math.floor(t0 / binSec));
+                const i1 = Math.min(peaks.length - 1, Math.ceil(t1 / binSec));
+                const bars = [];
+                for (let i = i0; i <= i1; i++) {
+                  const x = xOf(i * binSec);
+                  const amp = Math.min(1, peaks[i]) * cy * 0.92;
+                  bars.push(
+                    <line key={i} x1={x} y1={cy - amp} x2={x} y2={cy + amp} stroke={bandColor(bands[i])} strokeWidth={bw} />,
+                  );
+                }
+                return bars;
+              })()}
+            </g>
+          ) : (
+            <>
+              <path d={slice(1)} fill={color} opacity={0.3} />
+              <path d={slice(0.46)} fill={color} opacity={0.92} />
+            </>
+          )}
         </svg>
       )}
       <div className="wf-scrim" style={{ width: `${NOW_FRAC * 100}%` }} />
