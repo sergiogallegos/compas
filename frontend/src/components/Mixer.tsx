@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import type { CueApi } from "../hooks/useCue";
 import { Knob } from "./Knob";
@@ -30,6 +31,7 @@ export function Mixer({
   crossfader,
   onCrossfader,
   xfader,
+  onFxMacro,
   auto,
   cue,
 }: {
@@ -37,6 +39,7 @@ export function Mixer({
   crossfader: number;
   onCrossfader: (v: number) => void;
   xfader?: XfaderConfig;
+  onFxMacro?: (deck: number, v: number) => void;
   auto?: AutoMixProps;
   cue?: CueApi;
 }) {
@@ -66,7 +69,7 @@ export function Mixer({
       </div>
       <div className="mixer-strips">
         {channels.map((c) => (
-          <ChannelStrip key={c.letter} {...c} cue={cue} />
+          <ChannelStrip key={c.letter} {...c} cue={cue} onFxMacro={onFxMacro} />
         ))}
       </div>
       <div className="xfader">
@@ -154,10 +157,17 @@ function Phones({ cue }: { cue: CueApi }) {
 
 const XF_LABELS = ["A", "│", "B"]; // assign: 0 = A side, 1 = thru, 2 = B side
 
-function ChannelStrip({ ctrl, letter, color, cue }: Channel & { cue?: CueApi }) {
+function ChannelStrip({
+  ctrl,
+  letter,
+  color,
+  cue,
+  onFxMacro,
+}: Channel & { cue?: CueApi; onFxMacro?: (deck: number, v: number) => void }) {
   const { state, actions } = ctrl;
   const dsp = state.dsp;
   const cued = !!cue?.cued.has(ctrl.deck);
+  const [fxMacro, setFxMacro] = useState(0);
   // GAIN trim × channel fader both scale the single engine gain.
   const setVol = (trim: number, fader: number) => actions.setGain(trim * fader);
 
@@ -189,6 +199,10 @@ function ChannelStrip({ ctrl, letter, color, cue }: Channel & { cue?: CueApi }) 
           onChange={(v) => actions.setEq({ ...state.eq, low: v })} />
         <Knob label="FILTER" value={state.filter} min={-1} max={1} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setFilter(v)} />
+        {onFxMacro && (
+          <Knob label="FX" value={fxMacro} min={0} max={1} size={28} color={color} disabled={!dsp}
+            onChange={(v) => { setFxMacro(v); onFxMacro(ctrl.deck, v); }} />
+        )}
         {!dsp && <span className="eq-na">EQ N/A</span>}
       </div>
 

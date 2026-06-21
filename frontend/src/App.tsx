@@ -15,7 +15,7 @@ import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -61,6 +61,10 @@ export function App() {
     if (inTauri()) setCrossfaderConfig(curve, additive ? 1 : 0, reverse).catch(() => {});
   }, []);
   const auto = useAutoMix([leftDeck, rightDeck], applyCrossfade);
+
+  const applyFxMacro = useCallback((deck: number, v: number) => {
+    if (inTauri()) setDeckFxMacro(deck, v).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -138,6 +142,7 @@ export function App() {
               crossfader={xfade}
               onCrossfader={applyCrossfade}
               xfader={{ curve: xfCurve, additive: xfAdditive, reverse: xfReverse, onChange: applyXfConfig }}
+              onFxMacro={applyFxMacro}
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
               cue={cue}
             />
