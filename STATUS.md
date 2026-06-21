@@ -23,9 +23,11 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   (the ~140-device target matrix, clean-room) + serde `ControllerProfile` (`compas-core::mapping`) +
   the **profile loader** (`controllers` backend module: list/load/save + IPC) + the **controller
   engine** (declarative bindings w/ soft-takeover → control updates; script fallback) + a frontend
-  controller-bus dispatcher + activate/deactivate IPC. **Remaining:** clean-room starter MIDI
-  profiles (priority list in `docs/CONTROLLERS.md`), output/LED feedback, the guided learn editor,
-  and HID input (`hidapi`).
+  controller-bus dispatcher + activate/deactivate IPC + the **guided learn editor** (wiggle-to-bind
+  over the control registry; MIDI events now carry channel; save/activate profiles). **Remaining:**
+  clean-room starter MIDI profiles (priority list in `docs/CONTROLLERS.md`), **output/LED feedback**
+  (design fork: echo controller-driven changes only, vs reflect all UI changes on the device), and
+  **HID input** (`hidapi`).
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
 OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +
