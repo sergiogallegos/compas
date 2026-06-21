@@ -285,6 +285,18 @@ export interface ControllerProfile {
 export const controllerList = () => invoke<ControllerProfile[]>("controller_list");
 /** Save (or overwrite) a controller profile. */
 export const controllerSave = (profile: ControllerProfile) => invoke("controller_save", { profile });
+/** Activate a profile (its bindings + script resolve incoming MIDI to controller:update events). */
+export const controllerActivate = (profile: ControllerProfile) =>
+  invoke("controller_activate", { profile });
+export const controllerDeactivate = () => invoke("controller_deactivate");
+
+/** A resolved control change from the active controller profile: control-bus id + engine value. */
+export interface ControllerUpdate {
+  control: string;
+  value: number;
+}
+export const onControllerUpdate = (cb: (u: ControllerUpdate) => void): Promise<UnlistenFn> =>
+  listen<ControllerUpdate>("controller:update", (e) => cb(e.payload));
 
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });

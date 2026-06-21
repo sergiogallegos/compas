@@ -647,6 +647,7 @@ dependencies = [
  "compas-audio",
  "compas-core",
  "compas-dsp",
+ "compas-script",
  "compas-sources",
  "midir",
  "rtrb",

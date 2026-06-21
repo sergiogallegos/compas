@@ -1595,14 +1595,32 @@ fn controller_save(
     controllers::save_profile(&dir, &profile).map(|_| ())
 }
 
+/// Activate a controller profile (declarative bindings + optional script) in the controller engine.
+#[tauri::command]
+fn controller_activate(
+    ctrl: State<'_, controllers::ControllerEngine>,
+    profile: compas_core::ControllerProfile,
+) -> Result<(), String> {
+    ctrl.send(controllers::ControllerMsg::Activate(Box::new(profile)));
+    Ok(())
+}
+
+/// Drop the active controller profile.
+#[tauri::command]
+fn controller_deactivate(ctrl: State<'_, controllers::ControllerEngine>) {
+    ctrl.send(controllers::ControllerMsg::Deactivate);
+}
+
 /// Open a MIDI input port; its messages drive the synth (notes) and emit `midi:cc` (knobs).
 #[tauri::command]
 fn midi_connect(
     app: AppHandle,
     engine: State<'_, EngineHandle>,
     midi: State<'_, MidiState>,
+    ctrl: State<'_, controllers::ControllerEngine>,
     index: usize,
 ) -> Result<String, String> {
+    let ctrl_tx = ctrl.sender();
     let midi_in = MidiInput::new("compas").map_err(|e| e.to_string())?;
     let ports = midi_in.ports();
     let port = ports.get(index).ok_or("invalid MIDI port index")?.clone();
@@ -1619,6 +1637,13 @@ fn midi_connect(
                 if message.len() < 2 {
                     return;
                 }
+                // Forward the raw message to the controller engine (active profile maps it to
+                // controls and emits controller:update).
+                let _ = ctrl_tx.send(controllers::ControllerMsg::Midi(
+                    message[0],
+                    message[1],
+                    *message.get(2).unwrap_or(&0),
+                ));
                 // Every note/CC is forwarded to the frontend so the MIDI-mapping layer can
                 // bind any source to a deck control; notes additionally drive the synth when
                 // its routing flag is on (the instrument panel owns that toggle).
@@ -1743,6 +1768,8 @@ pub fn run() {
         })
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
+            // Controller engine: owns the script runtime + active mapping; emits controller:update.
+            app.manage(controllers::ControllerEngine::spawn(app.handle().clone()));
             // Open the library DB in the app-data dir. If it fails, log and carry on —
             // DB-backed commands will then error and the frontend degrades gracefully.
             match app.path().app_data_dir() {
@@ -1842,6 +1869,8 @@ pub fn run() {
             midi_connect,
             controller_list,
             controller_save,
+            controller_activate,
+            controller_deactivate,
             midi_disconnect,
             set_midi_synth,
             spotify::spotify_listen

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { NavRail } from "./components/NavRail";
 import { StatusBar } from "./components/StatusBar";
@@ -15,7 +15,7 @@ import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { engineStatus, inTauri, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -107,6 +107,42 @@ export function App() {
     deckCue: cue.toggleDeckCue,
     samplerPad: sampler.trigger,
   });
+
+  // Controller bus: apply resolved controller:update events through the existing setters. A ref
+  // keeps the handler current without re-subscribing the listener on every render.
+  const dispatchRef = useRef<(u: ControllerUpdate) => void>(() => {});
+  dispatchRef.current = (u: ControllerUpdate) => {
+    const { control, value } = u;
+    if (control === "mixer.crossfader") return applyCrossfade(value);
+    if (control === "mixer.master_gain") {
+      setMasterGain(value).catch(() => {});
+      return;
+    }
+    const m = control.match(/^deck\.(\d+)\.(.+)$/);
+    if (!m) return;
+    const d = decks[parseInt(m[1], 10)];
+    if (!d) return;
+    const { actions: a, state: s } = d;
+    switch (m[2]) {
+      case "gain": a.setGain(value); break;
+      case "filter": a.setFilter(value); break;
+      case "tempo": a.setTempo(1 + value / 100); break;
+      case "eq.low": a.setEq({ ...s.eq, low: value }); break;
+      case "eq.mid": a.setEq({ ...s.eq, mid: value }); break;
+      case "eq.high": a.setEq({ ...s.eq, hi: value }); break;
+      case "play": value >= 0.5 ? a.play() : a.pause(); break;
+      case "cue": a.cueButton(value >= 0.5); break;
+      case "keylock": if (value >= 0.5) a.toggleKeylock(); break;
+      case "sync": if (value >= 0.5) syncDeckByIndex(parseInt(m[1], 10)); break;
+    }
+  };
+  useEffect(() => {
+    if (!inTauri()) return;
+    const un = onControllerUpdate((u) => dispatchRef.current(u));
+    return () => {
+      un.then((u) => u());
+    };
+  }, []);
 
   const slotLane = (d: DeckController) => ({
     state: d.state,
