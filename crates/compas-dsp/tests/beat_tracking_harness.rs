@@ -1,4 +1,4 @@
-use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo};
+use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo, estimate_tempo_diagnostics};
 
 const SR: u32 = 44_100;
 
@@ -104,6 +104,61 @@ fn beat_tracking_reference_half_double_tempo_trap() {
 
     let estimate = estimate_tempo(&samples, SR);
     assert_bpm_close(estimate.bpm, 128.0, 2.0);
+}
+
+#[test]
+fn diagnostics_expose_half_double_candidates() {
+    // Same half/double trap as the ignored selection case: strong 64 BPM on-beats with
+    // weaker 128 BPM off-beats. The estimator may still pick the wrong octave, but the
+    // diagnostics must make the ambiguity *visible* — that is this slice's whole job.
+    let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];
+    add_clicks(&mut samples, 64.0, 0.0, 16.0, 1.0);
+    add_clicks(&mut samples, 128.0, 60.0 / 128.0, 16.0, 0.35);
+
+    let diag = estimate_tempo_diagnostics(&samples, SR).expect("diagnostics for a real signal");
+
+    eprintln!(
+        "selected_bpm={:.2} first_beat={:.3} conf={:.3} half={:?} double={:?}",
+        diag.selected_bpm,
+        diag.first_beat_sec,
+        diag.confidence,
+        diag.half_tempo_score,
+        diag.double_tempo_score
+    );
+    for (i, c) in diag.candidates.iter().enumerate() {
+        eprintln!(
+            "  cand[{i}] lag={:.2} raw_bpm={:.2} folded_bpm={:.2} score={:.3}",
+            c.lag, c.raw_bpm, c.folded_bpm, c.score
+        );
+    }
+
+    // Structural invariants the diagnostics must always uphold.
+    assert!(
+        !diag.candidates.is_empty(),
+        "expected at least one candidate"
+    );
+    assert!(
+        diag.selected < diag.candidates.len(),
+        "selected index in range"
+    );
+    assert_eq!(
+        diag.candidates[0].score, 1.0,
+        "the strongest candidate is peak-relative 1.0"
+    );
+    assert!(
+        (diag.candidates[diag.selected].folded_bpm - diag.selected_bpm).abs() <= 0.5,
+        "selected candidate must agree with selected_bpm"
+    );
+
+    // The half/double ambiguity is the point: the half-tempo octave (64 BPM, the strong
+    // on-beats that fall outside the in-range search) must show strong onset support.
+    let half = diag
+        .half_tempo_score
+        .expect("half-tempo octave should be scorable");
+    assert!(
+        half > 0.5,
+        "half-tempo (64 BPM) support should be visible, got {half:.3}"
+    );
 }
 
 #[test]

@@ -39,24 +39,81 @@ pub struct KeyEstimate {
     pub confidence: f32,
 }
 
+/// One tempo candidate the autocorrelation stage considered, for diagnostics only.
+///
+/// These are exposed by [`estimate_tempo_diagnostics`] so half/double decisions and
+/// competing phases can be *seen* before we change tempo-selection behavior. They do
+/// not affect [`estimate_tempo`] / [`estimate_beatgrid`] output.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TempoCandidate {
+    /// Autocorrelation lag in onset-envelope samples (sub-sample refined).
+    pub lag: f32,
+    /// BPM implied by `lag` before octave folding into [`MIN_BPM`, `MAX_BPM`].
+    pub raw_bpm: f32,
+    /// BPM after octave folding — directly comparable to [`TempoEstimate::bpm`].
+    pub folded_bpm: f32,
+    /// Autocorrelation score relative to the winning peak (`1.0` == the selected peak).
+    pub score: f32,
+}
+
+/// Debug/diagnostic view into tempo selection: the ranked candidates the estimator
+/// considered, which one it chose, the resulting beat phase, and how much onset support
+/// the half-tempo and double-tempo octaves have.
+///
+/// This is intentionally additive — it does **not** change the public app contract
+/// ([`TempoEstimate`] / [`BeatGrid`]). It exists so ambiguous beatgrid decisions are
+/// visible to tooling and tests (adoption-plan slice 1) before selection behavior changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TempoDiagnostics {
+    /// In-range autocorrelation peaks, strongest first (capped at [`MAX_CANDIDATES`]).
+    pub candidates: Vec<TempoCandidate>,
+    /// Index into `candidates` of the peak the estimator actually selected.
+    pub selected: usize,
+    /// Selected BPM after octave folding (== [`estimate_tempo`]'s `bpm`).
+    pub selected_bpm: f32,
+    /// Selected beat phase: first beat time in seconds (== [`BeatGrid::first_beat_sec`]).
+    pub first_beat_sec: f32,
+    /// Confidence, identical to [`TempoEstimate`] / [`BeatGrid`].
+    pub confidence: f32,
+    /// Onset support at the half-tempo octave (double the period), peak-relative.
+    /// `None` if that lag falls outside the envelope. May exceed `1.0` when the true
+    /// tempo sits outside the search range — a clear half/double-ambiguity signal.
+    pub half_tempo_score: Option<f32>,
+    /// Onset support at the double-tempo octave (half the period), peak-relative.
+    pub double_tempo_score: Option<f32>,
+}
+
 /// Tempo search range. Results outside are octave-folded into it.
 const MIN_BPM: f32 = 70.0;
 const MAX_BPM: f32 = 180.0;
 const FRAME: usize = 1024;
 const HOP: usize = 256;
+/// Most diagnostic tempo candidates surfaced by [`estimate_tempo_diagnostics`].
+const MAX_CANDIDATES: usize = 6;
 
-/// Estimate tempo from mono PCM via autocorrelation of a spectral-flux onset envelope.
-///
-/// Pipeline: onset envelope (spectral flux) → mean-subtract → autocorrelation over the
-/// lag range implied by [`MIN_BPM`, `MAX_BPM`] → pick the peak lag → parabolic
-/// interpolation for sub-bin precision → convert lag to BPM.
-///
-/// This is intentionally a solid-but-simple estimator: no full beat tracking / dynamic
-/// programming yet (that, plus downbeat/phase for the beatgrid, is the rest of P1). It
-/// uses no GPL code (aubio is reference-only).
-/// Shared core: onset envelope → autocorrelation tempo. Returns the (mean-subtracted)
-/// envelope, its sample rate, the period in env-samples, the BPM, and confidence.
-fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, f32, f32)> {
+/// Raw autocorrelation tempo analysis, shared by the estimator and the diagnostics
+/// path so they can never disagree about which lag won.
+struct TempoAnalysis {
+    /// Mean-subtracted, half-wave-rectified onset envelope.
+    env: Vec<f32>,
+    /// Envelope sample rate (Hz): `sample_rate / HOP`.
+    env_rate: f32,
+    /// Envelope energy (Σ env²), used to normalize autocorrelation scores.
+    energy: f32,
+    /// Autocorrelation score for each lag in `lag_min..=lag_max`.
+    r_by_lag: Vec<f32>,
+    /// First lag covered by `r_by_lag`.
+    lag_min: usize,
+    /// Lag of the winning (largest-score) autocorrelation peak.
+    best_lag: usize,
+    /// Score of the winning peak.
+    best_r: f32,
+    /// Mean autocorrelation score across the searched lag range.
+    mean_r: f32,
+}
+
+/// Shared first stage: onset envelope → autocorrelation over the BPM search range.
+fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
     if samples.is_empty() || sample_rate == 0 {
         return None;
     }
@@ -77,26 +134,103 @@ fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, 
     }
 
     let energy: f32 = env.iter().map(|x| x * x).sum::<f32>().max(1e-9);
+    let mut r_by_lag = Vec::with_capacity(lag_max - lag_min + 1);
     let mut best_lag = lag_min;
     let mut best_r = f32::MIN;
     let mut sum_r = 0.0f32;
-    let mut count = 0u32;
     for lag in lag_min..=lag_max {
         let mut acc = 0.0f32;
         for i in 0..(env.len() - lag) {
             acc += env[i] * env[i + lag];
         }
         let r = acc / energy;
+        r_by_lag.push(r);
         sum_r += r;
-        count += 1;
         if r > best_r {
             best_r = r;
             best_lag = lag;
         }
     }
+    let mean_r = sum_r / r_by_lag.len() as f32;
 
-    let refined_lag = parabolic_peak(&env, best_lag, energy).unwrap_or(best_lag as f32);
-    let mut bpm = 60.0 * env_rate / refined_lag;
+    Some(TempoAnalysis {
+        env,
+        env_rate,
+        energy,
+        r_by_lag,
+        lag_min,
+        best_lag,
+        best_r,
+        mean_r,
+    })
+}
+
+/// Peak-relative-spread confidence: how much the winning peak stands above the mean.
+fn confidence_from(best_r: f32, mean_r: f32) -> f32 {
+    if best_r > 0.0 {
+        (1.0 - mean_r / best_r).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// Octave-fold a BPM into [`MIN_BPM`, `MAX_BPM`].
+fn fold_bpm(mut bpm: f32) -> f32 {
+    if bpm <= 0.0 {
+        return 0.0;
+    }
+    while bpm < MIN_BPM {
+        bpm *= 2.0;
+    }
+    while bpm > MAX_BPM {
+        bpm /= 2.0;
+    }
+    bpm
+}
+
+/// Autocorrelation score at an arbitrary lag, normalized against the winning peak.
+/// `None` when the lag falls outside the envelope (no octave neighbor to score).
+fn autocorr_score(env: &[f32], lag: usize, energy: f32, best_r: f32) -> Option<f32> {
+    if lag == 0 || lag >= env.len() || best_r <= 0.0 {
+        return None;
+    }
+    let mut acc = 0.0f32;
+    for i in 0..(env.len() - lag) {
+        acc += env[i] * env[i + lag];
+    }
+    Some(((acc / energy) / best_r).clamp(0.0, 4.0))
+}
+
+/// Comb candidate phases [0, period) over the onset envelope and return the first-beat
+/// time (seconds) with the most accumulated onset energy.
+fn comb_first_beat(env: &[f32], period: f32, sample_rate: u32) -> f32 {
+    if period <= 0.0 {
+        return 0.0;
+    }
+    let mut best_phi = 0usize;
+    let mut best_score = f32::MIN;
+    let phi_max = period.ceil() as usize;
+    for phi in 0..phi_max {
+        let mut score = 0.0f32;
+        let mut idx = phi as f32;
+        while (idx as usize) < env.len() {
+            score += env[idx as usize];
+            idx += period;
+        }
+        if score > best_score {
+            best_score = score;
+            best_phi = phi;
+        }
+    }
+    best_phi as f32 * (HOP as f32 / sample_rate as f32)
+}
+
+/// Shared core: onset envelope → autocorrelation tempo. Returns the (mean-subtracted)
+/// envelope, its sample rate, the period in env-samples, the BPM, and confidence.
+fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, f32, f32)> {
+    let a = analyze_tempo(samples, sample_rate)?;
+    let refined_lag = parabolic_peak(&a.env, a.best_lag, a.energy).unwrap_or(a.best_lag as f32);
+    let mut bpm = 60.0 * a.env_rate / refined_lag;
     let mut period = refined_lag;
     while bpm < MIN_BPM {
         bpm *= 2.0;
@@ -106,18 +240,20 @@ fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, 
         bpm /= 2.0;
         period /= 2.0;
     }
-
-    let mean_r = if count > 0 { sum_r / count as f32 } else { 0.0 };
-    let confidence = if best_r > 0.0 {
-        (1.0 - mean_r / best_r).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-
-    Some((env, env_rate, period, bpm, confidence))
+    let confidence = confidence_from(a.best_r, a.mean_r);
+    Some((a.env, a.env_rate, period, bpm, confidence))
 }
 
-/// Estimate tempo only (BPM + confidence).
+/// Estimate tempo from mono PCM via autocorrelation of a spectral-flux onset envelope.
+///
+/// Pipeline: onset envelope (spectral flux) → mean-subtract → autocorrelation over the
+/// lag range implied by [`MIN_BPM`, `MAX_BPM`] → pick the peak lag → parabolic
+/// interpolation for sub-bin precision → convert lag to BPM.
+///
+/// This is intentionally a solid-but-simple estimator: no full beat tracking / dynamic
+/// programming yet (that, plus downbeat/phase for the beatgrid, is the rest of P1). It
+/// uses no GPL code (aubio is reference-only). Returns BPM + confidence only;
+/// [`estimate_tempo_diagnostics`] exposes the candidate ranking behind that choice.
 pub fn estimate_tempo(samples: &[f32], sample_rate: u32) -> TempoEstimate {
     match tempo_core(samples, sample_rate) {
         Some((_, _, _, bpm, confidence)) => TempoEstimate { bpm, confidence },
@@ -141,31 +277,104 @@ pub fn estimate_beatgrid(samples: &[f32], sample_rate: u32) -> BeatGrid {
         };
     };
 
-    // Comb over candidate phases [0, period) in env-samples; pick max accumulated energy.
-    let mut best_phi = 0usize;
-    let mut best_score = f32::MIN;
-    let phi_max = period.ceil() as usize;
-    for phi in 0..phi_max {
-        let mut score = 0.0f32;
-        let mut idx = phi as f32;
-        while (idx as usize) < env.len() {
-            score += env[idx as usize];
-            idx += period;
-        }
-        if score > best_score {
-            best_score = score;
-            best_phi = phi;
-        }
-    }
-
-    // env-sample → seconds: each env sample spans HOP/sample_rate seconds.
-    let sec_per_env = HOP as f32 / sample_rate as f32;
     BeatGrid {
         bpm,
-        first_beat_sec: best_phi as f32 * sec_per_env,
+        first_beat_sec: comb_first_beat(&env, period, sample_rate),
         beat_interval_sec: if bpm > 0.0 { 60.0 / bpm } else { 0.0 },
         confidence,
     }
+}
+
+/// Diagnostic-only tempo analysis: the ranked autocorrelation candidates, the selected
+/// tempo and beat phase, and how much onset support the half/double octaves have.
+///
+/// This makes ambiguous beatgrid decisions (especially half/double traps) visible to
+/// tooling and tests without changing what [`estimate_tempo`] / [`estimate_beatgrid`]
+/// return. Offline only — same cost profile as [`estimate_tempo`]. Returns `None` for
+/// signals too short/quiet to analyze.
+pub fn estimate_tempo_diagnostics(samples: &[f32], sample_rate: u32) -> Option<TempoDiagnostics> {
+    let a = analyze_tempo(samples, sample_rate)?;
+
+    // Collect in-range local maxima of the autocorrelation as candidates, plus the
+    // winning lag itself (so `selected` always resolves even if it sat on a plateau).
+    let n = a.r_by_lag.len();
+    let mut peaks: Vec<(usize, f32)> = Vec::new();
+    for i in 0..n {
+        let r = a.r_by_lag[i];
+        let left = if i == 0 { f32::MIN } else { a.r_by_lag[i - 1] };
+        let right = if i + 1 == n {
+            f32::MIN
+        } else {
+            a.r_by_lag[i + 1]
+        };
+        if r > 0.0 && r >= left && r >= right {
+            peaks.push((a.lag_min + i, r));
+        }
+    }
+    if !peaks.iter().any(|&(lag, _)| lag == a.best_lag) {
+        peaks.push((a.best_lag, a.best_r));
+    }
+    peaks.sort_by(|x, y| y.1.total_cmp(&x.1));
+    peaks.truncate(MAX_CANDIDATES);
+
+    let candidates: Vec<TempoCandidate> = peaks
+        .iter()
+        .map(|&(lag, r)| {
+            let refined = parabolic_peak(&a.env, lag, a.energy).unwrap_or(lag as f32);
+            let raw_bpm = 60.0 * a.env_rate / refined;
+            TempoCandidate {
+                lag: refined,
+                raw_bpm,
+                folded_bpm: fold_bpm(raw_bpm),
+                score: if a.best_r > 0.0 {
+                    (r / a.best_r).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                },
+            }
+        })
+        .collect();
+    let selected = peaks
+        .iter()
+        .position(|&(lag, _)| lag == a.best_lag)
+        .unwrap_or(0);
+
+    // Selected tempo/phase, derived exactly like `tempo_core` so they match the public API.
+    let refined_lag = parabolic_peak(&a.env, a.best_lag, a.energy).unwrap_or(a.best_lag as f32);
+    let mut selected_bpm = 60.0 * a.env_rate / refined_lag;
+    let mut period = refined_lag;
+    while selected_bpm < MIN_BPM {
+        selected_bpm *= 2.0;
+        period *= 2.0;
+    }
+    while selected_bpm > MAX_BPM {
+        selected_bpm /= 2.0;
+        period /= 2.0;
+    }
+
+    // Octave neighbors of the *winning* lag: double the period == half tempo, and vice versa.
+    let half_tempo_score = autocorr_score(
+        &a.env,
+        (2.0 * a.best_lag as f32).round() as usize,
+        a.energy,
+        a.best_r,
+    );
+    let double_tempo_score = autocorr_score(
+        &a.env,
+        (0.5 * a.best_lag as f32).round() as usize,
+        a.energy,
+        a.best_r,
+    );
+
+    Some(TempoDiagnostics {
+        candidates,
+        selected,
+        selected_bpm,
+        first_beat_sec: comb_first_beat(&a.env, period, sample_rate),
+        confidence: confidence_from(a.best_r, a.mean_r),
+        half_tempo_score,
+        double_tempo_score,
+    })
 }
 
 /// Sub-bin lag refinement: fit a parabola to the autocorrelation at `lag-1, lag, lag+1`.
@@ -557,6 +766,48 @@ mod tests {
             "first beat {}",
             grid.first_beat_sec
         );
+    }
+
+    #[test]
+    fn diagnostics_match_public_estimator() {
+        // The diagnostics path must never disagree with estimate_tempo / estimate_beatgrid:
+        // it shares analyze_tempo and derives the selected tempo/phase identically.
+        let sr = 44_100u32;
+        let period = (sr as f32 * 0.5) as usize; // 120 BPM
+        let total = sr as usize * 12;
+        let mut samples = vec![0.0f32; total];
+        let mut t = 0;
+        while t < total {
+            for k in 0..64 {
+                if t + k < total {
+                    samples[t + k] = (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                }
+            }
+            t += period;
+        }
+
+        let diag = estimate_tempo_diagnostics(&samples, sr).expect("diagnostics");
+        let tempo = estimate_tempo(&samples, sr);
+        let grid = estimate_beatgrid(&samples, sr);
+
+        assert!((diag.selected_bpm - tempo.bpm).abs() < 1e-3, "bpm drift");
+        assert!(
+            (diag.confidence - tempo.confidence).abs() < 1e-3,
+            "conf drift"
+        );
+        assert!(
+            (diag.first_beat_sec - grid.first_beat_sec).abs() < 1e-3,
+            "phase drift"
+        );
+        assert!(!diag.candidates.is_empty());
+        assert_eq!(diag.candidates[diag.selected].score, 1.0);
+        // A clean 120 BPM click has no real half/double competitor near the winning peak.
+        assert!(diag.double_tempo_score.unwrap_or(0.0) < 1.0);
+    }
+
+    #[test]
+    fn diagnostics_none_on_empty() {
+        assert!(estimate_tempo_diagnostics(&[], 44_100).is_none());
     }
 
     #[test]

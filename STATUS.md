@@ -134,6 +134,21 @@ algorithm changes: source note, target behavior, tests first, benchmark cost, UI
 boundary, and rollback path. The planned order is candidate tempo diagnostics first, then confidence
 calibration, before any tempo-selection rewrite.
 
+**Beat-tracking TODO 1 done (candidate tempo diagnostics).** `compas-dsp::analysis` now has a shared
+`analyze_tempo` core feeding both the public estimator and a new, additive
+`estimate_tempo_diagnostics`. The diagnostics expose ranked autocorrelation candidates (raw + folded
+BPM, peak-relative score), the selected BPM/beat phase, and half/double-octave onset support — so the
+half/double trap is visible (the estimator picks 128 BPM while the diagnostics show the 64 BPM octave
+has ~1.69× the winning peak's support). `estimate_tempo`/`estimate_beatgrid` output is unchanged. New
+active harness test `diagnostics_expose_half_double_candidates` plus unit tests asserting the
+diagnostics never drift from the public API. Verified with `cargo test -p compas-dsp --locked` and
+`cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`.
+
+**Next beat-tracking task:** research-backed TODO 2 — **beatgrid confidence calibration** (make
+`TempoEstimate.confidence`/`BeatGrid.confidence` lower for half/double ambiguity, weak onsets, sparse
+intros, silence/noise, or competing phases). The new diagnostics give the inputs (octave support,
+candidate spread) to drive that.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls

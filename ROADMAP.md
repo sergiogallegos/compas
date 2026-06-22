@@ -309,9 +309,12 @@ These are the concrete code/design tasks that came out of the research pass. Wor
 unless a release-critical bug interrupts; each item should land as its own small commit with tests
 or docs updated in the same patch.
 
-1. ⬜ **Candidate tempo diagnostics** — expose internal/debug-only tempo candidates, half/double
-   alternatives, candidate scores, and selected beat phase so ambiguous beatgrid decisions are
-   visible before changing selection behavior.
+1. ✅ **Candidate tempo diagnostics** — `compas-dsp::analysis::estimate_tempo_diagnostics` exposes
+   ranked autocorrelation candidates (raw + folded BPM, peak-relative score), half/double-octave
+   onset support, the selected BPM, and the selected beat phase. Additive only: `estimate_tempo`/
+   `estimate_beatgrid` are unchanged (a shared `analyze_tempo` core keeps them in lockstep). The
+   half/double trap fixture now has an active diagnostic test asserting the 64 BPM octave's support
+   is visible even while the estimator still picks 128.
 2. ⬜ **Beatgrid confidence calibration** — make `TempoEstimate.confidence` and
    `BeatGrid.confidence` lower for half/double ambiguity, weak onsets, sparse intros, silence/noise,
    or competing candidate phases.

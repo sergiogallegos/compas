@@ -18,6 +18,11 @@ All notable changes to compas are documented here. Format follows
   OK/restarting/error status in the footer.
 
 ### Added
+- **Candidate tempo diagnostics (`compas-dsp`):** a new `estimate_tempo_diagnostics` exposes the
+  ranked autocorrelation candidates, the selected BPM/beat phase, and half/double-octave onset
+  support so ambiguous beatgrid decisions are visible before tempo-selection behavior changes. This
+  is additive — `estimate_tempo` / `estimate_beatgrid` output is unchanged (the shared
+  `analyze_tempo` core guarantees they cannot disagree).
 - **App-shell controls wired:** the left rail now performs real actions (Perform scroll, Library
   focus, Crates/source focus, FX focus, Rec toggle). The title bar now has working recording,
   metronome, settings, contrast, and profile controls instead of inert placeholders.
