@@ -705,6 +705,10 @@ struct EngineStatus {
     audio_restarting: bool,
     audio_restarts: u64,
     audio_error: Option<String>,
+    cue_device_latency_secs: f64,
+    cue_prime_latency_secs: f64,
+    booth_device_latency_secs: f64,
+    booth_prime_latency_secs: f64,
     decks: Vec<DeckStatus>,
 }
 
@@ -738,7 +742,11 @@ fn build_info() -> BuildInfo {
 }
 
 #[tauri::command]
-fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
+fn engine_status(
+    state: State<'_, EngineHandle>,
+    cue: State<'_, CueState>,
+    booth: State<'_, BoothState>,
+) -> EngineStatus {
     let sample_rate = state.audio.sample_rate.load(Ordering::Relaxed);
     let decks = (0..2)
         .map(|deck| DeckStatus {
@@ -754,6 +762,10 @@ fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
         audio_restarting: state.audio.restarting.load(Ordering::Relaxed),
         audio_restarts: state.audio.restarts.load(Ordering::Relaxed),
         audio_error: state.audio.last_error(),
+        cue_device_latency_secs: cue.latency.device_latency_secs(),
+        cue_prime_latency_secs: cue.latency.prime_latency_secs(),
+        booth_device_latency_secs: booth.latency.device_latency_secs(),
+        booth_prime_latency_secs: booth.latency.prime_latency_secs(),
         decks,
     }
 }
@@ -1544,11 +1556,13 @@ const CUE_RING_CAPACITY: usize = 1 << 16;
 /// replacing it) tells that thread to drop its `cpal::Stream` and exit. `None` = cue off.
 struct CueState {
     stop: Mutex<Option<Sender<()>>>,
+    latency: Arc<compas_audio::MonitorLatency>,
 }
 
 /// Same ownership model as [`CueState`], but for the booth/monitor output.
 struct BoothState {
     stop: Mutex<Option<Sender<()>>>,
+    latency: Arc<compas_audio::MonitorLatency>,
 }
 
 /// List available output devices the headphone cue can target (first is usually the default).
@@ -1582,10 +1596,11 @@ fn start_cue_output(
 
     let (stop_tx, stop_rx) = channel::<()>();
     let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let latency = cue.latency.clone();
     let spawn = thread::Builder::new()
         .name("compas-cue".to_string())
-        .spawn(
-            move || match compas_audio::open_cue_output(device.as_deref(), consumer) {
+        .spawn(move || {
+            match compas_audio::open_cue_output_with_latency(device.as_deref(), consumer, latency) {
                 Ok(out) => {
                     let _ = ready_tx.send(Ok(out.device_name.clone()));
                     let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
@@ -1594,8 +1609,8 @@ fn start_cue_output(
                 Err(e) => {
                     let _ = ready_tx.send(Err(e.to_string()));
                 }
-            },
-        );
+            }
+        });
     if let Err(e) = spawn {
         let _ = state.send(EngineMsg::StopCueOutput);
         return Err(format!("could not spawn cue thread: {e}"));
@@ -1667,10 +1682,12 @@ fn start_booth_output(
 
     let (stop_tx, stop_rx) = channel::<()>();
     let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let latency = booth.latency.clone();
     let spawn = thread::Builder::new()
         .name("compas-booth".to_string())
-        .spawn(
-            move || match compas_audio::open_booth_output(device.as_deref(), consumer) {
+        .spawn(move || {
+            match compas_audio::open_booth_output_with_latency(device.as_deref(), consumer, latency)
+            {
                 Ok(out) => {
                     let _ = ready_tx.send(Ok(out.device_name.clone()));
                     let _ = stop_rx.recv();
@@ -1679,8 +1696,8 @@ fn start_booth_output(
                 Err(e) => {
                     let _ = ready_tx.send(Err(e.to_string()));
                 }
-            },
-        );
+            }
+        });
     if let Err(e) = spawn {
         let _ = state.send(EngineMsg::StopBoothOutput);
         return Err(format!("could not spawn booth thread: {e}"));
@@ -2121,9 +2138,11 @@ pub fn run() {
         })
         .manage(CueState {
             stop: Mutex::new(None),
+            latency: Arc::new(compas_audio::MonitorLatency::default()),
         })
         .manage(BoothState {
             stop: Mutex::new(None),
+            latency: Arc::new(compas_audio::MonitorLatency::default()),
         })
         .manage(hid::HidState::default())
         .setup(move |app| {

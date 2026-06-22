@@ -171,7 +171,9 @@ telemetry. `compas-audio::Mixer` groups the secondary taps under `OutputRouting`
 cue/headphones, and booth each have one explicit owner. Secondary outputs are fed by lock-free
 rings from the one RT mixer so decks and DSP are never double-advanced: cue/headphones receive a
 PFL/master blend, booth receives the post-master mix with its own smoothed gain, and recording taps
-the post-master mix for the writer thread.
+the post-master mix for the writer thread. Cue and booth streams also publish measured CPAL device
+latency plus their known prime-buffer latency through atomic `MonitorLatency` probes exposed via
+`engine_status`.
 The next hardening pass should make these guarantees explicit:
 
 1. **Sync edge-case tests:** cover empty decks, late/early beatgrid anchors, tempo extremes,
@@ -186,8 +188,8 @@ The next hardening pass should make these guarantees explicit:
 5. **Master/headphone/record routing:** define routing as buses, not one-off taps. Recording should
    choose master or pre-master where supported; headphones should remain PFL/cue-aware; booth should
    stay independent from both.
-6. **Latency compensation:** track output-device latency, cue-device latency, buffering, and UI
-   render offset so play-heads, sync, cue, and recordings can be aligned intentionally.
+6. **Latency compensation:** master, cue, and booth device/buffer latency are observable. Next,
+   apply those offsets where needed so play-heads, sync, cue, and recordings align intentionally.
 7. **No-drop RT guarantee:** any old `Arc<DeckBuffer>` or large processor state retired by load,
    eject, stem swap, or graph mutation must be reclaimed off the audio thread.
 8. **Controller mapping profiles:** profile coverage should expand device-by-device with tests that

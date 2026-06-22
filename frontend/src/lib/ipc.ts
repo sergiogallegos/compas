@@ -93,6 +93,10 @@ export interface EngineStatus {
   audio_restarting: boolean;
   audio_restarts: number;
   audio_error: string | null;
+  cue_device_latency_secs: number;
+  cue_prime_latency_secs: number;
+  booth_device_latency_secs: number;
+  booth_prime_latency_secs: number;
   decks: { deck: number; loaded: boolean; playing: boolean; frame: number }[];
 }
 

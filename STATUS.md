@@ -24,7 +24,7 @@ engineering practices from `rust-ethernet-ip`, then used the same pass to close 
 - **Docs/status cleanup:** roadmap/status/changelog/website docs now match the above.
 
 **Next recommended workstream:** pro-audio hardening before release. Track it in `ROADMAP.md`
-under "Reliability / Pro-Audio Hardening Backlog": latency compensation, no-drop tests for retired
+under "Reliability / Pro-Audio Hardening Backlog": no-drop tests for retired
 `Arc<DeckBuffer>`/graph state, more controller mapping profiles, and the modular per-deck
 processing graph
 `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
@@ -65,6 +65,15 @@ bus matrix a clean landing point without changing behavior. Remaining follow-up:
 record source/policy and routing choices for future mic/aux/stems buses. Verified with
 `cargo test -p compas-audio --locked` and
 `cargo clippy -p compas-audio --all-targets -- -D warnings`.
+
+**Hardening item 6 partial:** secondary output streams now publish latency telemetry. Cue/headphone
+and booth output threads write measured CPAL device latency plus the known prime-buffer latency to
+atomic `MonitorLatency` probes, `engine_status` exposes those values, and the footer tooltip shows
+them. Remaining follow-up: align recordings and apply secondary-output offsets where user-facing
+controls need them. Verified with `cargo test -p compas-audio --locked`,
+`cargo clippy -p compas-audio --all-targets -- -D warnings`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
+`cd frontend && npx tsc --noEmit`.
 
 **Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
 Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state

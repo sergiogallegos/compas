@@ -34,7 +34,7 @@ export function App() {
   const decks = [deckA, deckB, deckC, deckD];
 
   const [sampleRate, setSampleRate] = useState<number | null>(null);
-  const [audioStatus, setAudioStatus] = useState<Pick<EngineStatus, "audio_online" | "audio_restarting" | "audio_restarts" | "audio_error"> | null>(null);
+  const [audioStatus, setAudioStatus] = useState<Pick<EngineStatus, "audio_online" | "audio_restarting" | "audio_restarts" | "audio_error" | "cue_device_latency_secs" | "cue_prime_latency_secs" | "booth_device_latency_secs" | "booth_prime_latency_secs"> | null>(null);
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [load, setLoad] = useState<EngineLoad>({
     load: 0,
@@ -103,12 +103,25 @@ export function App() {
             audio_restarting: s.audio_restarting,
             audio_restarts: s.audio_restarts,
             audio_error: s.audio_error,
+            cue_device_latency_secs: s.cue_device_latency_secs,
+            cue_prime_latency_secs: s.cue_prime_latency_secs,
+            booth_device_latency_secs: s.booth_device_latency_secs,
+            booth_prime_latency_secs: s.booth_prime_latency_secs,
           });
         })
         .catch(() => {
           if (!alive) return;
           setSampleRate(0);
-          setAudioStatus({ audio_online: false, audio_restarting: false, audio_restarts: 0, audio_error: "engine status unavailable" });
+          setAudioStatus({
+            audio_online: false,
+            audio_restarting: false,
+            audio_restarts: 0,
+            audio_error: "engine status unavailable",
+            cue_device_latency_secs: 0,
+            cue_prime_latency_secs: 0,
+            booth_device_latency_secs: 0,
+            booth_prime_latency_secs: 0,
+          });
         });
     };
     refreshStatus();

@@ -266,8 +266,10 @@ then turn the findings into tests, benchmarks, or small code changes.
 5. 🔶 **Master/headphone/record routing model** — mixer taps are now grouped under explicit
    `OutputRouting` buses for record, cue/headphones, and booth. Remaining: user-selectable record
    source/policy and a fuller bus matrix for future mic/aux/stems routing.
-6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; extend it to output-device
-   latency, cue-device latency, buffering, and recording alignment.
+6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; cue/headphone and booth
+   streams now publish measured device latency plus their prime-buffer latency through
+   `engine_status`. Remaining: recording alignment and applying secondary-output offsets to UI/user
+   controls where needed.
 7. 🔶 **No-drop guarantee for old buffers** — keep proving that retired `Arc<DeckBuffer>` values and
    large graph state are reclaimed off the audio thread during load/eject/stem swap/graph mutation.
 8. 🔶 **Controller mapping profiles** — continue adding tested profiles (DDJ-SB3, Numark, Hercules,

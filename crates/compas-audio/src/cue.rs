@@ -8,6 +8,9 @@
 //! before draining, and on underrun output silence and re-prime. `cpal::Stream` is `!Send`,
 //! so the returned [`CueOutput`] must stay on the thread that created it.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use compas_core::{CompasError, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SizedSample};
@@ -16,6 +19,23 @@ use rtrb::Consumer;
 /// Target buffered latency before the cue stream starts draining (and the level it re-primes
 /// to after an underrun). ~21 ms of stereo @ 48 kHz — small, but enough to ride clock drift.
 const PRIME_SAMPLES: usize = 2048;
+
+/// Latency telemetry for secondary output streams (cue/headphones and booth).
+#[derive(Default)]
+pub struct MonitorLatency {
+    device_latency_bits: AtomicU64,
+    prime_latency_bits: AtomicU64,
+}
+
+impl MonitorLatency {
+    pub fn device_latency_secs(&self) -> f64 {
+        f64::from_bits(self.device_latency_bits.load(Ordering::Relaxed))
+    }
+
+    pub fn prime_latency_secs(&self) -> f64 {
+        f64::from_bits(self.prime_latency_bits.load(Ordering::Relaxed))
+    }
+}
 
 /// List the names of available output devices (the first is typically the system default).
 /// Names are what [`open_cue_output`] matches against.
@@ -43,18 +63,37 @@ pub struct CueOutput {
 /// — the cue mix the mixer pushes (interleaved stereo f32). Must be called on, and the result
 /// kept on, a dedicated thread (`cpal::Stream` is not `Send`).
 pub fn open_cue_output(device_name: Option<&str>, consumer: Consumer<f32>) -> Result<CueOutput> {
-    open_monitor_output("cue", device_name, consumer)
+    open_monitor_output("cue", device_name, consumer, None)
+}
+
+/// Open a cue output stream and publish measured device/prime latency to `latency`.
+pub fn open_cue_output_with_latency(
+    device_name: Option<&str>,
+    consumer: Consumer<f32>,
+    latency: Arc<MonitorLatency>,
+) -> Result<CueOutput> {
+    open_monitor_output("cue", device_name, consumer, Some(latency))
 }
 
 /// Open a booth/monitor output stream that drains the post-master booth tap.
 pub fn open_booth_output(device_name: Option<&str>, consumer: Consumer<f32>) -> Result<CueOutput> {
-    open_monitor_output("booth", device_name, consumer)
+    open_monitor_output("booth", device_name, consumer, None)
+}
+
+/// Open a booth output stream and publish measured device/prime latency to `latency`.
+pub fn open_booth_output_with_latency(
+    device_name: Option<&str>,
+    consumer: Consumer<f32>,
+    latency: Arc<MonitorLatency>,
+) -> Result<CueOutput> {
+    open_monitor_output("booth", device_name, consumer, Some(latency))
 }
 
 fn open_monitor_output(
     label: &str,
     device_name: Option<&str>,
     consumer: Consumer<f32>,
+    latency: Option<Arc<MonitorLatency>>,
 ) -> Result<CueOutput> {
     let host = cpal::default_host();
     let device = match device_name {
@@ -78,9 +117,9 @@ fn open_monitor_output(
     let config: cpal::StreamConfig = supported.into();
 
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => build_cue_stream::<f32>(&device, &config, consumer),
-        cpal::SampleFormat::I16 => build_cue_stream::<i16>(&device, &config, consumer),
-        cpal::SampleFormat::U16 => build_cue_stream::<u16>(&device, &config, consumer),
+        cpal::SampleFormat::F32 => build_cue_stream::<f32>(&device, &config, consumer, latency),
+        cpal::SampleFormat::I16 => build_cue_stream::<i16>(&device, &config, consumer, latency),
+        cpal::SampleFormat::U16 => build_cue_stream::<u16>(&device, &config, consumer, latency),
         other => Err(CompasError::Device(format!(
             "unsupported sample format: {other:?}"
         ))),
@@ -100,11 +139,19 @@ fn build_cue_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mut consumer: Consumer<f32>,
+    latency: Option<Arc<MonitorLatency>>,
 ) -> Result<cpal::Stream>
 where
     T: SizedSample + FromSample<f32> + Send + 'static,
 {
     let channels = config.channels as usize;
+    if let Some(latency) = latency.as_ref() {
+        let prime_frames = PRIME_SAMPLES / 2;
+        let prime_secs = prime_frames as f64 / config.sample_rate.0 as f64;
+        latency
+            .prime_latency_bits
+            .store(prime_secs.to_bits(), Ordering::Relaxed);
+    }
     let err_fn = |e| tracing::error!("cue stream error: {e}");
     // Wait for PRIME_SAMPLES of buffered audio before draining; re-arm after an underrun.
     let mut primed = false;
@@ -112,7 +159,15 @@ where
     let stream = device
         .build_output_stream(
             config,
-            move |out: &mut [T], _: &cpal::OutputCallbackInfo| {
+            move |out: &mut [T], info: &cpal::OutputCallbackInfo| {
+                if let Some(latency) = latency.as_ref() {
+                    let ts = info.timestamp();
+                    if let Some(d) = ts.playback.duration_since(&ts.callback) {
+                        latency
+                            .device_latency_bits
+                            .store(d.as_secs_f64().to_bits(), Ordering::Relaxed);
+                    }
+                }
                 if !primed {
                     if consumer.slots() >= PRIME_SAMPLES {
                         primed = true;
