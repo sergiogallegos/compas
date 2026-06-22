@@ -1,7 +1,7 @@
 name: Release
 
 # Tag a version (e.g. `git tag v0.1.0 && git push --tags`) to build installers and
-# publish a draft GitHub Release with the Windows (.msi/NSIS) and macOS (.dmg) artifacts.
+# publish a draft GitHub Release with Windows, macOS, and Linux artifacts.
 on:
   push:
     tags: ["v*"]
@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-22.04]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +28,22 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Tauri deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - uses: Swatinem/rust-cache@v2
         with:
