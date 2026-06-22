@@ -1,0 +1,6 @@
+# Keep local paper downloads and extracted notes out of git unless a source explicitly permits
+# redistribution and the maintainer decides to vendor it.
+papers/
+*.pdf
+*.epub
+*.zip

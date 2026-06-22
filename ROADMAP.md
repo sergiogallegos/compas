@@ -248,6 +248,10 @@ abstraction; Ableton Link / MIDI-clock sync.
 These are the next engineering-quality items before the first serious beta release. They are not
 flashy features, but they are what make the app behave like reliable DJ software under pressure.
 
+Before implementation, run the research intake in `docs/research/README.md`: read the local
+architecture first, then the real-time audio/lock-free sources, then beat-tracking papers, and only
+then turn the findings into tests, benchmarks, or small code changes.
+
 1. ⬜ **Stronger sync edge-case tests** — empty/paused leaders, loop-roll/slip while synced,
    beatgrid-anchor offsets, tempo extremes, leader reassignment, four-deck conflicts, and
    seek/cue actions while a follower is phase-locked.
@@ -269,6 +273,20 @@ flashy features, but they are what make the app behave like reliable DJ software
 9. ⬜ **Modular per-deck processing graph** — formalize
    `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`
    so stems, ReplayGain, FX chains, booth, mic/aux, and recording all compose cleanly.
+
+### Research-backed implementation queue
+
+1. ⬜ **RT-audio paper/talk notes** — summarize Bencina and Doumler, then convert them into a
+   concrete callback-safety audit for `compas-audio`.
+2. ⬜ **Lock-free/state-handoff design note** — document immutable graph snapshots, SPSC command
+   flow, and control-thread reclamation for retired buffers/processors.
+3. ⬜ **Beat-tracking literature notes** — verify Dixon (2000), Laroche (2003), and the requested
+   2024 zero-latency citation; if the 2024 citation cannot be found, use OBTAIN (2017) as the
+   online beat-tracking fallback source.
+4. ⬜ **Beat-tracking benchmark harness** — build synthetic cases for silence, clicks, swung drums,
+   tempo ramps, half/double-tempo traps, and loop/sync edge cases before changing the algorithm.
+5. ⬜ **Adopt one algorithmic improvement at a time** — implement only after the summary identifies
+   the target behavior, tests, CPU cost, and rollback path.
 
 ---
 

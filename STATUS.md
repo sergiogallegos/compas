@@ -30,6 +30,12 @@ routing, latency compensation, no-drop tests for retired `Arc<DeckBuffer>`/graph
 controller mapping profiles, and the modular per-deck processing graph
 `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
 
+**Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
+Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state
+handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online beat-tracking source
+or OBTAIN fallback. Do not implement directly from a paper until there is a short summary, a compas
+impact decision, and a test/benchmark plan.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
