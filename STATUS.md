@@ -27,10 +27,13 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   over the control registry; MIDI events now carry channel; save/activate profiles) + **bundled
   starter profiles** (Korg nanoKONTROL2, Akai MPK Mini MK3, Akai LPD8 — knobs→gains/filters,
   pads→cue/sync, from each device's factory-default map; a `controllers::tests` check asserts every
-  bundled binding targets a real control). **Remaining:** more clean-room starter MIDI profiles
-  (priority list in `docs/CONTROLLERS.md` — DJ controllers next), **output/LED feedback**
-  (design fork: echo controller-driven changes only, vs reflect all UI changes on the device), and
-  **HID input** (`hidapi`).
+  bundled binding targets a real control) + **output/LED feedback ✅** (design fork resolved:
+  reflect *all* changes — the frontend pushes each mapped control's value via `controller_feedback`
+  on any UI/controller change; the engine maps engine-value→MIDI through the control behavior and
+  sends to every bound address, deduped per address; controller-driven moves still echo immediately;
+  a `controller:resync` window event re-syncs the device on profile activation). **Remaining:**
+  more clean-room starter MIDI profiles (priority list in `docs/CONTROLLERS.md` — DJ controllers
+  next), and **HID input** (`hidapi`).
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
 OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +

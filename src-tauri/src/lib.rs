@@ -1628,6 +1628,14 @@ fn controller_deactivate(ctrl: State<'_, controllers::ControllerEngine>) {
     ctrl.send(controllers::ControllerMsg::Deactivate);
 }
 
+/// Reflect a control's current engine value back onto the device (LED rings, motor faders). The
+/// frontend calls this whenever a control changes — from the UI or the controller — so the hardware
+/// tracks software state. No-op unless a profile + output port are active (handled engine-side).
+#[tauri::command]
+fn controller_feedback(ctrl: State<'_, controllers::ControllerEngine>, control: String, value: f64) {
+    ctrl.send(controllers::ControllerMsg::Feedback { control, value });
+}
+
 /// Open a MIDI input port; its messages drive the synth (notes) and emit `midi:cc` (knobs).
 #[tauri::command]
 fn midi_connect(
@@ -1893,6 +1901,7 @@ pub fn run() {
             controller_save,
             controller_activate,
             controller_deactivate,
+            controller_feedback,
             midi_disconnect,
             set_midi_synth,
             spotify::spotify_listen

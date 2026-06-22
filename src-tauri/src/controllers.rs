@@ -103,6 +103,10 @@ pub enum ControllerMsg {
     /// Open (or close, with `None`) a MIDI output port for LED/feedback echo — matched by name
     /// substring against the OS output ports.
     SetOutputPort(Option<String>),
+    /// Reflect a control's current engine value back onto the device (LED rings, motor faders).
+    /// Driven by the frontend whenever a control changes — from the UI *or* the controller — so the
+    /// hardware tracks software state, not just controller-originated moves.
+    Feedback { control: String, value: f64 },
 }
 
 /// Handle to the controller engine thread. The thread owns the (`!Send`) script runtime, so all it
@@ -141,13 +145,30 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
     let mut script: Option<ScriptRuntime> = None;
     // Last normalized value applied per control, for soft-takeover.
     let mut current: HashMap<String, f64> = HashMap::new();
-    // MIDI output for LED/feedback echo (controller-driven changes only).
+    // MIDI output for LED/feedback (controller echo + UI-driven changes).
     let mut out: Option<MidiOutputConnection> = None;
+    // Last MIDI value sent per output address (status+data1), to skip redundant resends.
+    let mut fb_last: HashMap<[u8; 2], u8> = HashMap::new();
 
     for msg in rx {
         match msg {
             ControllerMsg::SetOutputPort(name) => {
                 out = name.and_then(|name| open_output(&name));
+                fb_last.clear(); // a fresh port's LED/fader state is unknown
+            }
+            ControllerMsg::Feedback { control, value } => {
+                if out.is_none() {
+                    continue;
+                }
+                // Engine value → MIDI via the control's behavior, sent to every input bound to it.
+                if let Some(spec) = registry.get_str(&control) {
+                    let mv = spec.behavior.to_midi(value);
+                    for b in &mapping.bindings {
+                        if b.control.as_str() == control {
+                            send_feedback(&mut out, &mut fb_last, b.channel, b.input, mv);
+                        }
+                    }
+                }
             }
             ControllerMsg::Activate(profile) => {
                 mapping = profile.mapping();
@@ -164,11 +185,13 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
                     }
                 });
                 current.clear();
+                fb_last.clear(); // re-send feedback for the new mapping's addresses
             }
             ControllerMsg::Deactivate => {
                 mapping = Mapping::default();
                 script = None;
                 current.clear();
+                fb_last.clear();
             }
             ControllerMsg::Midi(status, d1, d2) => {
                 let channel = status & 0x0F;
@@ -188,11 +211,10 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
                             .copied()
                             .unwrap_or(d2 as f64 / 127.0);
                         if let Some(u) = mapping.resolve(&registry, channel, inp, d2, cur, TAKEOVER) {
-                            // Echo back to the device on the same address (LED/feedback).
-                            if let Some(conn) = out.as_mut() {
-                                let mv = (u.normalized * 127.0).round().clamp(0.0, 127.0) as u8;
-                                let _ = conn.send(&midi_bytes(b_channel, b_input, mv));
-                            }
+                            // Echo back to the device on the same address (immediate LED/feedback for
+                            // the control the user just moved; UI changes flow via Feedback).
+                            let mv = (u.normalized * 127.0).round().clamp(0.0, 127.0) as u8;
+                            send_feedback(&mut out, &mut fb_last, b_channel, b_input, mv);
                             current.insert(u.control.as_str().to_string(), u.normalized);
                             updates.push(ControllerUpdateEvent {
                                 control: u.control.as_str().to_string(),
@@ -234,6 +256,34 @@ fn open_output(name: &str) -> Option<MidiOutputConnection> {
     midi.connect(port, "compas-feedback").ok()
 }
 
+/// Send a feedback value to a control's input address on the device, skipping the send when the
+/// address already holds that value (avoids flooding LEDs / motor faders with redundant messages).
+/// No-op when no output port is open.
+fn send_feedback(
+    out: &mut Option<MidiOutputConnection>,
+    last: &mut HashMap<[u8; 2], u8>,
+    channel: u8,
+    input: InputKind,
+    value: u8,
+) {
+    let Some(conn) = out.as_mut() else { return };
+    let bytes = midi_bytes(channel, input, value);
+    let addr = [bytes[0], bytes[1]]; // status (type+channel) + note/cc number
+    if feedback_changed(last, addr, value) {
+        let _ = conn.send(&bytes);
+    }
+}
+
+/// Record `value` for an output address, returning whether it differs from the last value sent
+/// there (so callers skip redundant device writes). Pure so it can be unit-tested without a port.
+fn feedback_changed(last: &mut HashMap<[u8; 2], u8>, addr: [u8; 2], value: u8) -> bool {
+    if last.get(&addr) == Some(&value) {
+        return false;
+    }
+    last.insert(addr, value);
+    true
+}
+
 /// Build a 3-byte MIDI message echoing `value` (0..127) to a binding's input address.
 fn midi_bytes(channel: u8, input: InputKind, value: u8) -> [u8; 3] {
     let ch = channel & 0x0F;
@@ -246,6 +296,18 @@ fn midi_bytes(channel: u8, input: InputKind, value: u8) -> [u8; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn feedback_dedups_per_address() {
+        let mut last = HashMap::new();
+        let a = [0xB0, 7]; // CC 7 on ch 0
+        let b = [0x90, 36]; // note 36 on ch 0
+        assert!(feedback_changed(&mut last, a, 100)); // first value sends
+        assert!(!feedback_changed(&mut last, a, 100)); // same value is skipped
+        assert!(feedback_changed(&mut last, a, 101)); // a change sends
+        assert!(feedback_changed(&mut last, b, 100)); // a different address is independent
+        assert!(!feedback_changed(&mut last, b, 100));
+    }
 
     #[test]
     fn midi_bytes_builds_cc_and_note() {

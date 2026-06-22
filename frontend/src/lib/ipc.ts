@@ -298,6 +298,10 @@ export const controllerSave = (profile: ControllerProfile) => invoke("controller
 export const controllerActivate = (profile: ControllerProfile) =>
   invoke("controller_activate", { profile });
 export const controllerDeactivate = () => invoke("controller_deactivate");
+/** Reflect a control's current engine value back onto the device (LEDs, motor faders). No-op
+ *  unless a profile + output port are active; engine-side dedup skips redundant resends. */
+export const controllerFeedback = (control: string, value: number) =>
+  invoke("controller_feedback", { control, value });
 
 /** A resolved control change from the active controller profile: control-bus id + engine value. */
 export interface ControllerUpdate {

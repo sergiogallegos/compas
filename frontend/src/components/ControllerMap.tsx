@@ -72,6 +72,8 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
   const activate = async () => {
     try {
       await controllerActivate(profile);
+      // Sync the device LEDs/faders to current software state now that bindings are live.
+      window.dispatchEvent(new Event("controller:resync"));
       setStatus(`Activated "${name}" (${profile.bindings.length} bindings)`);
     } catch (e) {
       setStatus(`Activate failed: ${e}`);

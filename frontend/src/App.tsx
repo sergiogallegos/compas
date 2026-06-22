@@ -16,7 +16,7 @@ import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -145,6 +145,48 @@ export function App() {
       un.then((u) => u());
     };
   }, []);
+
+  // LED/motor feedback: push each mapped control's current value to the device so the hardware
+  // tracks software state (lit pads, LED rings, motor faders) — for UI changes, not just the
+  // controller's own moves. The engine no-ops without an active profile/output and dedups
+  // redundant resends. Tempo state is a ratio; the control bus speaks ±percent. (Master gain has
+  // no UI control, so it rides the controller-echo path only.)
+  const pushFeedback = useCallback(() => {
+    if (!inTauri()) return;
+    for (const d of decks) {
+      const s = d.state;
+      controllerFeedback(`deck.${d.deck}.gain`, s.gain).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.filter`, s.filter).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.eq.low`, s.eq.low).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.eq.mid`, s.eq.mid).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.eq.high`, s.eq.hi).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.tempo`, (s.tempo - 1) * 100).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.play`, s.playing ? 1 : 0).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.keylock`, s.keylock ? 1 : 0).catch(() => {});
+      controllerFeedback(`deck.${d.deck}.sync`, s.synced ? 1 : 0).catch(() => {});
+    }
+    controllerFeedback("mixer.crossfader", xfade).catch(() => {});
+    // Depend on the mapped scalars only (not the `decks` array, which is a new identity each
+    // render, nor frame/level which tick at 30 Hz) so this re-runs only on real control changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    deckA.state.gain, deckA.state.filter, deckA.state.eq.low, deckA.state.eq.mid, deckA.state.eq.hi, deckA.state.tempo, deckA.state.playing, deckA.state.keylock, deckA.state.synced,
+    deckB.state.gain, deckB.state.filter, deckB.state.eq.low, deckB.state.eq.mid, deckB.state.eq.hi, deckB.state.tempo, deckB.state.playing, deckB.state.keylock, deckB.state.synced,
+    deckC.state.gain, deckC.state.filter, deckC.state.eq.low, deckC.state.eq.mid, deckC.state.eq.hi, deckC.state.tempo, deckC.state.playing, deckC.state.keylock, deckC.state.synced,
+    deckD.state.gain, deckD.state.filter, deckD.state.eq.low, deckD.state.eq.mid, deckD.state.eq.hi, deckD.state.tempo, deckD.state.playing, deckD.state.keylock, deckD.state.synced,
+    xfade,
+  ]);
+
+  // Re-push on any mapped value change…
+  useEffect(() => {
+    pushFeedback();
+  }, [pushFeedback]);
+  // …and on demand when a profile is (re)activated, to sync the device to current state at connect.
+  useEffect(() => {
+    const onResync = () => pushFeedback();
+    window.addEventListener("controller:resync", onResync);
+    return () => window.removeEventListener("controller:resync", onResync);
+  }, [pushFeedback]);
 
   const slotLane = (d: DeckController) => ({
     state: d.state,
