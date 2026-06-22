@@ -90,6 +90,12 @@ their factory pad notes to sampler pads instead of the stale cue/sync bindings. 
 validation continues to assert every binding targets a real registered control. Remaining follow-up:
 more hardware-authored profiles (DDJ-SB3, Numark, Hercules) and per-device HID/LED behavior.
 
+**Hardening item 9 design slice:** `docs/DECK-GRAPH.md` now defines the modular per-deck graph
+contract: source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX ->
+fader -> buses. It also documents ownership, no-drop graph-snapshot retirement, current-code
+mapping, and the migration/test plan. Remaining follow-up: refactor `DeckPlayer::next_frame` into
+those stage structs incrementally.
+
 **Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
 Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state
 handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online beat-tracking source

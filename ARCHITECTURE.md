@@ -164,7 +164,8 @@ source buffer
 
 The graph should become explicit and modular, but never dynamic on the callback in a way that
 allocates or changes ownership. The control thread builds or mutates graph state; the RT side reads
-preallocated processors, smoothed parameters, and stable buffer references.
+preallocated processors, smoothed parameters, and stable buffer references. The detailed stage
+contract and migration plan live in `docs/DECK-GRAPH.md`.
 
 ## 5a. Routing, devices, and reliability backlog
 

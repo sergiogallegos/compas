@@ -69,6 +69,9 @@ All notable changes to compas are documented here. Format follows
 - **Sampler-capable controller profiles:** `sampler.gain` and `sampler.N.trigger` are now registered
   control-bus targets, and the bundled Akai MPK Mini MK3 / LPD8 profiles route factory pad notes to
   sampler pads through the controller engine.
+- **Deck graph design:** added `docs/DECK-GRAPH.md`, defining the target per-deck processing stages,
+  RT ownership rules, no-drop snapshot retirement model, and migration plan from the current inline
+  `DeckPlayer::next_frame` path.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted

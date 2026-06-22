@@ -278,9 +278,10 @@ then turn the findings into tests, benchmarks, or small code changes.
    the bundled Akai MPK Mini MK3 / LPD8 starter profiles map factory pad notes to sampler triggers.
    Continue adding tested profiles (DDJ-SB3, Numark, Hercules, more Akai/Korg), plus hot-plug
    profile activation and per-device HID button/LED support.
-9. ⬜ **Modular per-deck processing graph** — formalize
-   `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`
-   so stems, ReplayGain, FX chains, booth, mic/aux, and recording all compose cleanly.
+9. 🔶 **Modular per-deck processing graph** — `docs/DECK-GRAPH.md` now defines the target stage
+   contract, ownership model, and migration plan for
+   `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
+   Remaining: move `DeckPlayer::next_frame` into those stage structs without changing behavior.
 
 ### Research-backed implementation queue
 
