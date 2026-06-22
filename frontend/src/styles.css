@@ -267,7 +267,7 @@
 .phones-dev:disabled { opacity: 0.7; }
 .phones .chip.phones-on { flex: none; padding: 4px 9px; font-size: 9px; }
 
-.knob { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.knob { display: flex; flex-direction: column; align-items: center; gap: 3px; touch-action: none; user-select: none; -webkit-user-select: none; }
 .knob-label { font-size: 8px; }
 .knob--disabled { opacity: 0.6; }
 
@@ -278,7 +278,7 @@
 .xfader { flex: none; display: flex; align-items: center; gap: 10px; padding-top: 4px; }
 
 /* custom faders (vertical + horizontal) */
-.fader { position: relative; touch-action: none; }
+.fader { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; }
 .fader--v { width: 26px; cursor: ns-resize; }
 .fader--h { height: 26px; flex: 1; cursor: ew-resize; }
 .fader-track { position: absolute; background: var(--surface-sunken); border: 1px solid var(--border-hairline); border-radius: 3px; }

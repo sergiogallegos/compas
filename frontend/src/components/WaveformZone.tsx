@@ -1,23 +1,6 @@
-import { useEffect, useState, type PointerEvent } from "react";
+import { useState, type PointerEvent } from "react";
 import type { DeckState } from "../hooks/useDeck";
 import { bandColor } from "../lib/ipc";
-
-/** Re-render at display refresh rate while `active`, so the play-head can be extrapolated smoothly
- *  between the 30 Hz position events. Returns the latest `performance.now()`. */
-function useAnimationClock(active: boolean): number {
-  const [now, setNow] = useState(0);
-  useEffect(() => {
-    if (!active) return;
-    let id = 0;
-    const loop = () => {
-      setNow(performance.now());
-      id = requestAnimationFrame(loop);
-    };
-    id = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(id);
-  }, [active]);
-  return now;
-}
 
 const VW = 1368;
 const VH = 80;
@@ -69,13 +52,10 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
   const bands = meta?.band_peaks ?? [];
   const useBands = bands.length === peaks.length && bands.length > 0;
 
-  // Extrapolate the play-head between 30 Hz events at display rate, offset by DAC latency so the
-  // marker matches what's being heard. Falls back to the raw frame when stopped.
-  const clock = useAnimationClock(state.playing);
-  const dt = state.playing && state.frameAt > 0 ? (clock - state.frameAt) / 1000 : 0;
-  const dispFrame = state.frame + state.rate * Math.max(0, dt - state.latencySecs);
-  // Play-head already advances by tempo, so frame→time gives correct scroll speed.
-  const nowTime = dispFrame / sr; // seconds (source time)
+  // Play-head position (event-driven at the telemetry rate), offset by DAC latency so the marker
+  // matches what's being heard. (A display-rate rAF here re-rendered the whole band waveform every
+  // frame and saturated the UI; keep it event-driven.)
+  const nowTime = Math.max(0, state.frame - state.rate * state.latencySecs) / sr;
   const t0 = nowTime - NOW_FRAC * view; // left edge time
   const t1 = t0 + view;
 
@@ -132,11 +112,13 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
             <g>
               {(() => {
                 const cy = VH / 2;
-                const bw = Math.max(0.7, (binSec / view) * VW);
                 const i0 = Math.max(0, Math.floor(t0 / binSec));
                 const i1 = Math.min(peaks.length - 1, Math.ceil(t1 / binSec));
+                // Cap at ~one line per pixel column so wide zooms stay cheap to render.
+                const step = Math.max(1, Math.ceil((i1 - i0) / VW));
+                const bw = Math.max(0.7, (binSec / view) * VW * step);
                 const bars = [];
-                for (let i = i0; i <= i1; i++) {
+                for (let i = i0; i <= i1; i += step) {
                   const x = xOf(i * binSec);
                   const amp = Math.min(1, peaks[i]) * cy * 0.92;
                   bars.push(
