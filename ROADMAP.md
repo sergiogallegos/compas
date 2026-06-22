@@ -288,8 +288,9 @@ then turn the findings into tests, benchmarks, or small code changes.
 4. ✅ **Beat-tracking benchmark harness** — added `compas-dsp` synthetic regression tests for
    common dance tempos, delayed beatgrid phase, and sparse intros, plus ignored reference cases for
    tempo ramps, half/double-tempo traps, and swung drums. Criterion now also tracks beatgrid cost.
-5. ⬜ **Adopt one algorithmic improvement at a time** — implement only after the summary identifies
-   the target behavior, tests, CPU cost, and rollback path.
+5. ✅ **Adopt one algorithmic improvement at a time** — adoption gate documented in
+   `docs/research/beat-tracking-adoption-plan.md`; next algorithm slice is candidate tempo
+   diagnostics, then confidence calibration, each with tests, cost check, UI contract, and rollback.
 
 ---
 

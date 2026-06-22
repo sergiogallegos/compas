@@ -102,3 +102,7 @@ Create one summary per source under `docs/research/summaries/`:
    - Build a small benchmark/test corpus: synthetic clicks, swung drums, tempo ramps, silence,
      half/double tempo traps, and real music snippets kept out of git if copyrighted.
    - Compare current analysis against Dixon/Laroche/OBTAIN-inspired variants before replacing code.
+4. **Beat tracking adoption gate**
+   - Use `docs/research/beat-tracking-adoption-plan.md` before changing the estimator.
+   - Implement one target behavior at a time with tests, benchmark cost, UI contract, and rollback
+     path documented.

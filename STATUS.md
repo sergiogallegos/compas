@@ -59,6 +59,11 @@ ramp, half/double-tempo trap, and swung-drum cases are present as ignored refere
 algorithm is ready. `crates/compas-dsp/benches/dsp.rs` also benchmarks `estimate_beatgrid_12s`.
 Verified with `cargo test -p compas-dsp --locked`.
 
+**Research point 5 done:** `docs/research/beat-tracking-adoption-plan.md` now defines the gate for
+algorithm changes: source note, target behavior, tests first, benchmark cost, UI contract, RT
+boundary, and rollback path. The planned order is candidate tempo diagnostics first, then confidence
+calibration, before any tempo-selection rewrite.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
