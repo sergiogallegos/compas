@@ -278,8 +278,9 @@ then turn the findings into tests, benchmarks, or small code changes.
 
 1. ✅ **RT-audio paper/talk notes** — initial Bencina/Doumler summary and callback-safety audit
    added in `docs/research/`; direct Bencina re-fetch remains before detailed quotation.
-2. ⬜ **Lock-free/state-handoff design note** — document immutable graph snapshots, SPSC command
-   flow, and control-thread reclamation for retired buffers/processors.
+2. ✅ **Lock-free/state-handoff design note** — documented immutable graph snapshots, SPSC command
+   flow, telemetry counters, and control-thread reclamation for retired buffers/processors in
+   `docs/research/lock-free-state-handoff.md`.
 3. ⬜ **Beat-tracking literature notes** — verify Dixon (2000), Laroche (2003), and the requested
    2024 zero-latency citation; if the 2024 citation cannot be found, use OBTAIN (2017) as the
    online beat-tracking fallback source.

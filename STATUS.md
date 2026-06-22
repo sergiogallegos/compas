@@ -41,6 +41,12 @@ impact decision, and a test/benchmark plan.
 `docs/research/rt-audio-audit.md`. Direct Bencina article re-fetch is still pending before detailed
 quotation, but the implementation guidance is enough to start the reclaim/telemetry hardening slice.
 
+**Research point 2 done:** lock-free/state handoff design lives in
+`docs/research/lock-free-state-handoff.md`. It documents current command, buffer, reclaim,
+telemetry, recording, and cue handoff paths, then defines the next code slice: split diagnostic
+counters, command/reclaim observability, no callback-side large drops, and tests under reclaim
+pressure.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
