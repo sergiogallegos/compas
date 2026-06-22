@@ -14,7 +14,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=2" />
+    <link rel="stylesheet" href="styles.css?v=3" />
   </head>
   <body>
     <header class="nav">
@@ -23,7 +23,10 @@
         <span>compas</span>
         <span class="badge-beta">Beta</span>
       </a>
-      <nav class="nav-links">
+      <button class="nav-burger" aria-label="Menu" aria-controls="nav-links" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="nav-links" id="nav-links">
         <a href="index.html#features">Features</a>
         <a href="manual.html">Manual</a>
         <a href="index.html#download">Download</a>
@@ -128,5 +131,24 @@
         <span class="mono">Open-source · MIT-licensed</span>
       </div>
     </footer>
+
+    <script>
+      (function () {
+        const burger = document.querySelector(".nav-burger");
+        const menu = document.getElementById("nav-links");
+        if (burger && menu) {
+          burger.addEventListener("click", () => {
+            const open = menu.classList.toggle("open");
+            burger.setAttribute("aria-expanded", open ? "true" : "false");
+          });
+          menu.addEventListener("click", (e) => {
+            if (e.target.closest("a")) {
+              menu.classList.remove("open");
+              burger.setAttribute("aria-expanded", "false");
+            }
+          });
+        }
+      })();
+    </script>
   </body>
 </html>

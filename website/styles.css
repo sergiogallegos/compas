@@ -120,22 +120,29 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
 .toc a:hover { color: var(--accent-glow); }
 @media (max-width: 560px) { .toc ol { columns: 1; } }
 
+/* hamburger toggle — hidden on desktop, shown on mobile (see media query) */
+.nav-burger { display: none; flex-direction: column; gap: 5px; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; background: transparent; border: 1px solid var(--hair); border-radius: 9px; cursor: pointer; }
+.nav-burger span { display: block; width: 18px; height: 2px; background: var(--fg); border-radius: 2px; transition: opacity 0.15s ease; }
+.nav-burger:hover { border-color: var(--hair-strong); }
+
 /* ---- mobile ---------------------------------------------------------------- */
 @media (max-width: 640px) {
   body { overflow-x: hidden; }
-  .nav { padding: 12px 16px; }
+  .nav { padding: 12px 16px; position: relative; }
   .brand { font-size: 16px; gap: 7px; }
-  /* beta is already stated in the hero/notice — drop the nav badge so the menu fits */
-  .nav .badge-beta { display: none; }
-  .nav-links { gap: 16px; font-size: 13px; }
-  /* the hero already has download buttons and Features is a same-page anchor —
-     hide those two in the bar so the menu fits without overflowing */
-  .nav-links a[href="#features"],
-  .nav-links a[href="index.html#features"],
-  .nav-links a[href="#download"],
-  .nav-links a[href="index.html#download"],
-  .nav-links .gh { display: none; }
-  .nav-links { white-space: nowrap; }
+  /* show the burger; turn the link list into a dropdown panel under the bar */
+  .nav-burger { display: inline-flex; }
+  .nav-links {
+    position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 0;
+    background: rgba(12, 12, 14, 0.98); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--hair); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    padding: 4px 0; display: none;
+  }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 13px 20px; font-size: 15px; color: var(--fg); border-top: 1px solid var(--hair); }
+  .nav-links a:first-child { border-top: 0; }
+  .nav-links .gh { color: var(--accent-glow); }
   .hero { padding: 52px 0 28px; }
   .eyebrow { font-size: 10px; letter-spacing: 0.08em; }
   .hero .sub { font-size: 16px; }
