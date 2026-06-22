@@ -15,6 +15,7 @@ import {
   type ControlSpec,
   type HidDeviceInfo,
 } from "../lib/ipc";
+import { useMidi } from "../hooks/useMidi";
 
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "controller";
@@ -38,6 +39,8 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
   const [status, setStatus] = useState("");
   const [hidDevices, setHidDevices] = useState<HidDeviceInfo[]>([]);
   const [hidPath, setHidPath] = useState("");
+  const [lastInput, setLastInput] = useState("");
+  const midi = useMidi();
 
   const learningRef = useRef<string | null>(null);
   learningRef.current = learning;
@@ -49,19 +52,22 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
 
   // Capture the next MIDI or HID message into the control being learned.
   useEffect(() => {
-    const capture = (input: ControllerBinding["input"], channel: number) => {
+    const capture = (input: ControllerBinding["input"], channel: number, label: string) => {
+      setLastInput(label);
       const control = learningRef.current;
       if (!control) return;
       setBindings((b) => ({ ...b, [control]: { channel, input, control, soft_takeover: true } }));
       setLearning(null);
       setStatus(`Bound ${control}`);
     };
-    const unCc = onMidiCc((e) => capture({ kind: "cc", cc: e.controller }, e.channel));
+    const unCc = onMidiCc((e) =>
+      capture({ kind: "cc", cc: e.controller }, e.channel, `MIDI ch${e.channel + 1} CC ${e.controller} = ${e.value}`),
+    );
     const unNote = onMidiNote((e) => {
-      if (e.on) capture({ kind: "note", note: e.note }, e.channel);
+      if (e.on) capture({ kind: "note", note: e.note }, e.channel, `MIDI ch${e.channel + 1} Note ${e.note}`);
     });
     // HID reports carry no channel; bind on channel 0 by the report byte that moved.
-    const unHid = onHidInput((i) => capture({ kind: "hid", byte: i.byte }, 0));
+    const unHid = onHidInput((i) => capture({ kind: "hid", byte: i.byte }, 0, `HID byte ${i.byte} = ${i.value}`));
     return () => {
       unCc.then((u) => u());
       unNote.then((u) => u());
@@ -151,9 +157,24 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
+        <div className="ctrl-hid">
+          <span className="overline">MIDI IN</span>
+          <select value={midi.portIdx} onChange={(e) => midi.setPortIdx(Number(e.target.value))} disabled={!!midi.connected}>
+            {midi.ports.length ? (
+              midi.ports.map((p, i) => <option key={p} value={i}>{p}</option>)
+            ) : (
+              <option value={0}>No MIDI devices</option>
+            )}
+          </select>
+          <button className={`chip ${midi.connected ? "chip--on" : ""}`} onClick={midi.toggle}>
+            {midi.connected ? "Disconnect" : midi.ports.length ? "Connect" : "Rescan"}
+          </button>
+          {lastInput && <span className="mono ctrl-last">{lastInput}</span>}
+        </div>
+
         <p className="ctrl-hint">
           Click <strong>Learn</strong> on a control, then move that knob/pad/fader on your controller.
-          The device's own MIDI defines the mapping. Connect your controller in the MIDI panel first.
+          The device's own MIDI/HID messages define the mapping.
         </p>
 
         <div className="ctrl-hid">

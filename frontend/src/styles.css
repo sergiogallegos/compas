@@ -302,6 +302,7 @@
 .ctrl-hint { font-size: 12px; color: var(--text-secondary); margin: 0; }
 .ctrl-hid { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ctrl-hid select { flex: 1; min-width: 140px; }
+.ctrl-last { margin-left: auto; color: var(--accent-glow); font-size: 10px; }
 .ctrl-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
 .ctrl-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr auto auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 6px; }
 .ctrl-row--bound { background: rgba(255,255,255,.05); }
