@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::control::{soft_takeover_ok, ControlId, Registry};
 
-/// A physical control input on a MIDI controller.
+/// A physical control input on a controller (MIDI note/CC, or a raw HID report byte).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum InputKind {
@@ -21,6 +21,19 @@ pub enum InputKind {
     Note { note: u8 },
     /// A continuous controller (knob/fader), identified by CC number.
     Cc { cc: u8 },
+    /// A byte position in a non-MIDI HID input report (knob/fader/jog), read as an absolute
+    /// `0..=255` value. Targets continuous controls; bit-packed buttons are a follow-up.
+    Hid { byte: u8 },
+}
+
+impl InputKind {
+    /// Full-scale raw value for this input kind — MIDI is 7-bit (`127`), HID bytes are 8-bit (`255`).
+    pub fn full_scale(&self) -> f64 {
+        match self {
+            InputKind::Note { .. } | InputKind::Cc { .. } => 127.0,
+            InputKind::Hid { .. } => 255.0,
+        }
+    }
 }
 
 /// One physical-input → engine-control binding.
@@ -114,7 +127,7 @@ impl Mapping {
     ) -> Option<ResolvedUpdate> {
         let binding = self.find(channel, input)?;
         let spec = registry.get(&binding.control)?;
-        let normalized = value.min(127) as f64 / 127.0;
+        let normalized = (value as f64 / input.full_scale()).min(1.0);
         if binding.soft_takeover && !soft_takeover_ok(current_norm, normalized, takeover_threshold) {
             return None;
         }
@@ -205,6 +218,39 @@ mod tests {
         let reg = Registry::defaults(4);
         let u = m.resolve(&reg, 0, InputKind::Cc { cc: 7 }, 127, 1.0, 0.03).unwrap();
         assert_eq!(u.control.as_str(), "deck.0.gain");
+    }
+
+    #[test]
+    fn hid_byte_resolves_at_8bit_scale() {
+        let reg = Registry::defaults(4);
+        let m = Mapping {
+            name: "hid".into(),
+            bindings: vec![Binding {
+                channel: 0,
+                input: InputKind::Hid { byte: 3 },
+                control: ControlId::new("deck.0.gain"),
+                soft_takeover: false,
+            }],
+        };
+        // deck.0.gain is Linear 0..1.5; a full HID byte (255) → full scale → 1.5.
+        let u = m
+            .resolve(&reg, 0, InputKind::Hid { byte: 3 }, 255, 0.0, 0.03)
+            .unwrap();
+        assert!((u.value - 1.5).abs() < 1e-6);
+        assert!((u.normalized - 1.0).abs() < 1e-6);
+        // Half scale (~127/255) → ~0.5 normalized (MIDI would read 127 as full).
+        let half = m
+            .resolve(&reg, 0, InputKind::Hid { byte: 3 }, 127, 0.0, 0.03)
+            .unwrap();
+        assert!((half.normalized - 127.0 / 255.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn hid_input_serde_round_trips() {
+        let json = r#"{ "kind": "hid", "byte": 7 }"#;
+        let k: InputKind = serde_json::from_str(json).unwrap();
+        assert_eq!(k, InputKind::Hid { byte: 7 });
+        assert_eq!(k.full_scale(), 255.0);
     }
 
     #[test]

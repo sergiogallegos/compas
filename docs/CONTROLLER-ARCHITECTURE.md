@@ -31,8 +31,11 @@
 3. **Scripting** — `compas-script`. A sandboxed QuickJS runtime exposing `engine.set(id, value)` /
    `engine.log(...)` and an `onMidi(status, d1, d2)` hook, for device logic declarative bindings
    can't express. Scripts target the same control-bus ids.
-4. **Input layer** — MIDI today (`midir`); **HID** is planned (`hidapi`) for pro controllers whose
-   jog wheels / displays / hi-res controls aren't class-compliant MIDI.
+4. **Input layer** — MIDI (`midir`) and **HID** (`hidapi`). HID reads raw input reports, diffs
+   consecutive reports, and forwards each changed byte through an `InputKind::Hid { byte }` binding
+   (absolute 8-bit) into the same mapping/soft-takeover pipeline as MIDI. Scope today: continuous
+   single-byte axes; bit-packed buttons and device-specific HID **output/LED** reports are per-device
+   follow-ups (clean-room from each device's report layout).
 5. **Feedback/output** — the bus's `to_midi` already converts a control's current value back to
    `0..127` for LED rings / motor faders; output bindings + an engine→controller channel send it.
 
@@ -116,7 +119,8 @@ compas's controller support is **independent and clean-room**:
 4. **Scripting host wiring** — route unclaimed MIDI into the profile's `ScriptRuntime.on_midi`, apply
    the returned control updates through the bus; add `engine.sendMidi` for script-driven feedback.
 5. **Guided learn editor** — in-app capture of bindings into a user profile.
-6. **HID** — `hidapi` input/output for non-MIDI pro controllers (jog wheels, displays, hi-res).
+6. **HID** — `hidapi` input ✅ (report-diff → `InputKind::Hid` bindings, learn-by-wiggle); per-device
+   bit-level buttons + HID output/LEDs are follow-ups.
 
 > Foundations already in place: the typed control bus (`compas-core::control`), the declarative
 > mapping + soft-takeover resolver (`compas-core::mapping`), and the sandboxed scripting runtime

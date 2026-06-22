@@ -270,7 +270,10 @@ export const dbPlanNext = (currentPath: string, limit: number) =>
 // ---- Controllers (mapping profiles) -----------------------------------------------
 export interface ControllerBinding {
   channel: number;
-  input: { kind: "note"; note: number } | { kind: "cc"; cc: number };
+  input:
+    | { kind: "note"; note: number }
+    | { kind: "cc"; cc: number }
+    | { kind: "hid"; byte: number };
   control: string;
   soft_takeover?: boolean;
 }
@@ -310,6 +313,28 @@ export interface ControllerUpdate {
 }
 export const onControllerUpdate = (cb: (u: ControllerUpdate) => void): Promise<UnlistenFn> =>
   listen<ControllerUpdate>("controller:update", (e) => cb(e.payload));
+
+// ---- HID controllers (non-class-compliant: NI Traktor, etc.) ---------------------
+export interface HidDeviceInfo {
+  path: string;
+  vendor_id: number;
+  product_id: number;
+  manufacturer: string;
+  product: string;
+}
+/** A changed byte in an HID input report (for the learn editor). */
+export interface HidInput {
+  byte: number;
+  value: number;
+}
+/** List connected HID devices. */
+export const hidList = () => invoke<HidDeviceInfo[]>("hid_list");
+/** Open an HID device by path; its changed report bytes drive the active profile's `hid` bindings. */
+export const hidConnect = (path: string) => invoke("hid_connect", { path });
+/** Close the active HID connection. */
+export const hidDisconnect = () => invoke("hid_disconnect");
+export const onHidInput = (cb: (i: HidInput) => void): Promise<UnlistenFn> =>
+  listen<HidInput>("hid:input", (e) => cb(e.payload));
 
 export const loadTrack = (deck: number, path: string) => invoke("load_track", { deck, path });
 export const deckPlay = (deck: number) => invoke("deck_play", { deck });

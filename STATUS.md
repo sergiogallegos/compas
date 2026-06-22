@@ -31,9 +31,15 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   reflect *all* changes — the frontend pushes each mapped control's value via `controller_feedback`
   on any UI/controller change; the engine maps engine-value→MIDI through the control behavior and
   sends to every bound address, deduped per address; controller-driven moves still echo immediately;
-  a `controller:resync` window event re-syncs the device on profile activation). **Remaining:**
-  more clean-room starter MIDI profiles (priority list in `docs/CONTROLLERS.md` — DJ controllers
-  next), and **HID input** (`hidapi`).
+  a `controller:resync` window event re-syncs the device on profile activation) + **HID input ✅
+  (foundation)** (`hidapi`: a `hid` backend module enumerates devices, opens by path, and runs a
+  reader thread that diffs input reports and forwards each *changed* byte to the controller engine;
+  a new `InputKind::Hid { byte }` resolves at 8-bit scale through the same mapping/soft-takeover
+  pipeline, so the learn editor binds HID by wiggling — `hid:input` events feed capture; `hid_list`/
+  `hid_connect`/`hid_disconnect` IPC + a device picker in the controller panel). **HID scope:**
+  absolute single-byte axes (knobs/faders/jogs); bit-packed buttons and device-specific **output/LED**
+  reports are hardware-gated per-device follow-ups. **Remaining:** more clean-room starter MIDI
+  profiles (priority list in `docs/CONTROLLERS.md` — DJ controllers next).
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
 OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +

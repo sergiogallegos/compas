@@ -16,6 +16,7 @@ use std::time::Duration;
 
 mod controllers;
 mod db;
+mod hid;
 mod spotify;
 
 use compas_audio::{
@@ -1636,6 +1637,33 @@ fn controller_feedback(ctrl: State<'_, controllers::ControllerEngine>, control: 
     ctrl.send(controllers::ControllerMsg::Feedback { control, value });
 }
 
+/// List connected HID devices (for the controller picker / learn editor).
+#[tauri::command]
+fn hid_list() -> Result<Vec<hid::HidDeviceInfo>, String> {
+    hid::list_devices()
+}
+
+/// Open an HID device by path; its changed report bytes drive the active profile's `hid` bindings
+/// (and surface as `hid:input` events). Replaces any existing HID connection.
+#[tauri::command]
+fn hid_connect(
+    app: AppHandle,
+    ctrl: State<'_, controllers::ControllerEngine>,
+    hid_state: State<'_, hid::HidState>,
+    path: String,
+) -> Result<(), String> {
+    let conn = hid::HidConnection::open(app, ctrl.sender(), path)?;
+    *hid_state.0.lock().map_err(|e| e.to_string())? = Some(conn);
+    Ok(())
+}
+
+/// Close the active HID connection (stops the reader thread).
+#[tauri::command]
+fn hid_disconnect(hid_state: State<'_, hid::HidState>) -> Result<(), String> {
+    *hid_state.0.lock().map_err(|e| e.to_string())? = None;
+    Ok(())
+}
+
 /// Open a MIDI input port; its messages drive the synth (notes) and emit `midi:cc` (knobs).
 #[tauri::command]
 fn midi_connect(
@@ -1795,6 +1823,7 @@ pub fn run() {
         .manage(CueState {
             stop: Mutex::new(None),
         })
+        .manage(hid::HidState::default())
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             // Controller engine: owns the script runtime + active mapping; emits controller:update.
@@ -1902,6 +1931,9 @@ pub fn run() {
             controller_activate,
             controller_deactivate,
             controller_feedback,
+            hid_list,
+            hid_connect,
+            hid_disconnect,
             midi_disconnect,
             set_midi_synth,
             spotify::spotify_listen

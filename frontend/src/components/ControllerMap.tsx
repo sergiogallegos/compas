@@ -4,18 +4,27 @@ import {
   controllerList,
   controllerRegistry,
   controllerSave,
+  hidConnect,
+  hidDisconnect,
+  hidList,
+  onHidInput,
   onMidiCc,
   onMidiNote,
   type ControllerBinding,
   type ControllerProfile,
   type ControlSpec,
+  type HidDeviceInfo,
 } from "../lib/ipc";
 
 const slug = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "controller";
 
 const inputLabel = (b: ControllerBinding) =>
-  b.input.kind === "cc" ? `CC ${b.input.cc}` : `Note ${b.input.note}`;
+  b.input.kind === "cc"
+    ? `CC ${b.input.cc}`
+    : b.input.kind === "hid"
+      ? `HID byte ${b.input.byte}`
+      : `Note ${b.input.note}`;
 
 /** Guided controller-mapping editor: capture a binding by wiggling a control on the hardware
  *  (the device's own MIDI defines the mapping — clean-room by construction), then save/activate
@@ -27,6 +36,8 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
   const [bindings, setBindings] = useState<Record<string, ControllerBinding>>({});
   const [learning, setLearning] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  const [hidDevices, setHidDevices] = useState<HidDeviceInfo[]>([]);
+  const [hidPath, setHidPath] = useState("");
 
   const learningRef = useRef<string | null>(null);
   learningRef.current = learning;
@@ -36,7 +47,7 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
     controllerList().then(setProfiles).catch(() => {});
   }, []);
 
-  // Capture the next MIDI message into the control being learned.
+  // Capture the next MIDI or HID message into the control being learned.
   useEffect(() => {
     const capture = (input: ControllerBinding["input"], channel: number) => {
       const control = learningRef.current;
@@ -49,11 +60,30 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
     const unNote = onMidiNote((e) => {
       if (e.on) capture({ kind: "note", note: e.note }, e.channel);
     });
+    // HID reports carry no channel; bind on channel 0 by the report byte that moved.
+    const unHid = onHidInput((i) => capture({ kind: "hid", byte: i.byte }, 0));
     return () => {
       unCc.then((u) => u());
       unNote.then((u) => u());
+      unHid.then((u) => u());
     };
   }, []);
+
+  const refreshHid = () => hidList().then(setHidDevices).catch(() => {});
+  const connectHid = async () => {
+    if (!hidPath) return;
+    try {
+      await hidConnect(hidPath);
+      const d = hidDevices.find((x) => x.path === hidPath);
+      setStatus(`HID connected: ${d ? d.product || d.path : hidPath}`);
+    } catch (e) {
+      setStatus(`HID connect failed: ${e}`);
+    }
+  };
+  const disconnectHid = async () => {
+    await hidDisconnect().catch(() => {});
+    setStatus("HID disconnected");
+  };
 
   const profile = useMemo<ControllerProfile>(
     () => ({ id: slug(name), name, bindings: Object.values(bindings) }),
@@ -124,6 +154,28 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
         <p className="ctrl-hint">
           Click <strong>Learn</strong> on a control, then move that knob/pad/fader on your controller.
           The device's own MIDI defines the mapping. Connect your controller in the MIDI panel first.
+        </p>
+
+        <div className="ctrl-hid">
+          <span className="overline">HID DEVICE</span>
+          <button className="chip" onClick={refreshHid} title="Scan for HID controllers">Scan</button>
+          <select value={hidPath} onChange={(e) => setHidPath(e.target.value)}>
+            <option value="">{hidDevices.length ? "Select a device…" : "Scan to list devices"}</option>
+            {hidDevices.map((d) => (
+              <option key={d.path} value={d.path}>
+                {(d.product || d.manufacturer || "HID") +
+                  ` (${d.vendor_id.toString(16).padStart(4, "0")}:${d.product_id
+                    .toString(16)
+                    .padStart(4, "0")})`}
+              </option>
+            ))}
+          </select>
+          <button className="chip" onClick={connectHid} disabled={!hidPath}>Connect</button>
+          <button className="chip" onClick={disconnectHid}>Disconnect</button>
+        </div>
+        <p className="ctrl-hint">
+          For non-MIDI controllers (HID), Scan and Connect above, then Learn + wiggle — bindings
+          capture the report byte that moves. (Absolute knobs/faders; LED output is device-specific.)
         </p>
 
         <div className="ctrl-list">

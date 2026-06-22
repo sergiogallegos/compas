@@ -35,4 +35,5 @@ compas-sources = { workspace = true }
 compas-script = { workspace = true }   # sandboxed controller-scripting runtime (QuickJS)
 rtrb = { workspace = true }       # recording ring: master tap → WAV writer thread
 midir = "0.10"                    # cross-platform MIDI input (controllers → synth)
+hidapi = "2"                      # raw HID input for non-class-compliant controllers (NI, etc.)
 rusqlite = { version = "0.32", features = ["bundled"] }  # library + per-track state (cues/loops/grid/history)

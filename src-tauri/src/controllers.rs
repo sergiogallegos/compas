@@ -96,6 +96,9 @@ pub struct ControllerUpdateEvent {
 pub enum ControllerMsg {
     /// A raw MIDI message (status, data1, data2) forwarded from the input port.
     Midi(u8, u8, u8),
+    /// A changed byte in an HID input report (`byte` index, absolute `value`), forwarded from the
+    /// HID reader. Resolved through the active mapping's `InputKind::Hid` bindings (channel 0).
+    Hid { byte: u8, value: u8 },
     /// Activate a profile (declarative bindings + optional script).
     Activate(Box<ControllerProfile>),
     /// Drop the active profile.
@@ -203,36 +206,24 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
                 let mut updates: Vec<ControllerUpdateEvent> = Vec::new();
 
                 if let Some(inp) = input {
-                    if let Some(binding) = mapping.find(channel, inp) {
-                        let (b_channel, b_input) = (binding.channel, binding.input);
-                        // Soft-takeover uses the last value we applied; unknown → adopt immediately.
-                        let cur = current
-                            .get(binding.control.as_str())
-                            .copied()
-                            .unwrap_or(d2 as f64 / 127.0);
-                        if let Some(u) = mapping.resolve(&registry, channel, inp, d2, cur, TAKEOVER) {
-                            // Echo back to the device on the same address (immediate LED/feedback for
-                            // the control the user just moved; UI changes flow via Feedback).
-                            let mv = (u.normalized * 127.0).round().clamp(0.0, 127.0) as u8;
-                            send_feedback(&mut out, &mut fb_last, b_channel, b_input, mv);
-                            current.insert(u.control.as_str().to_string(), u.normalized);
-                            updates.push(ControllerUpdateEvent {
-                                control: u.control.as_str().to_string(),
-                                value: u.value,
-                            });
-                        }
-                    } else if let Some(rt) = script.as_ref() {
-                        // No declarative binding — let the script handle it.
-                        if let Ok(ups) = rt.on_midi(status, d1, d2) {
-                            for cu in ups {
-                                // Script `engine.set` values are normalized by convention.
-                                let norm = cu.value.clamp(0.0, 1.0);
-                                let value = registry
-                                    .get_str(&cu.control)
-                                    .map(|s| s.behavior.from_normalized(norm))
-                                    .unwrap_or(norm);
-                                current.insert(cu.control.clone(), norm);
-                                updates.push(ControllerUpdateEvent { control: cu.control, value });
+                    if let Some(u) = resolve_binding(
+                        &registry, &mapping, &mut current, &mut out, &mut fb_last, channel, inp, d2,
+                    ) {
+                        updates.push(u);
+                    } else if mapping.find(channel, inp).is_none() {
+                        // No declarative binding owns this input — let the script handle it.
+                        if let Some(rt) = script.as_ref() {
+                            if let Ok(ups) = rt.on_midi(status, d1, d2) {
+                                for cu in ups {
+                                    // Script `engine.set` values are normalized by convention.
+                                    let norm = cu.value.clamp(0.0, 1.0);
+                                    let value = registry
+                                        .get_str(&cu.control)
+                                        .map(|s| s.behavior.from_normalized(norm))
+                                        .unwrap_or(norm);
+                                    current.insert(cu.control.clone(), norm);
+                                    updates.push(ControllerUpdateEvent { control: cu.control, value });
+                                }
                             }
                         }
                     }
@@ -242,8 +233,55 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
                     let _ = app.emit("controller:update", u);
                 }
             }
+            ControllerMsg::Hid { byte, value } => {
+                // HID reports carry no MIDI channel; bindings use channel 0 + `InputKind::Hid`.
+                if let Some(u) = resolve_binding(
+                    &registry,
+                    &mapping,
+                    &mut current,
+                    &mut out,
+                    &mut fb_last,
+                    0,
+                    InputKind::Hid { byte },
+                    value,
+                ) {
+                    let _ = app.emit("controller:update", u);
+                }
+            }
         }
     }
+}
+
+/// Resolve one physical input through the active mapping: honor soft-takeover, echo immediate
+/// feedback to the device, remember the applied value (for soft-takeover), and return the control
+/// update to emit — or `None` if no binding matched or soft-takeover blocked the move.
+#[allow(clippy::too_many_arguments)]
+fn resolve_binding(
+    registry: &Registry,
+    mapping: &Mapping,
+    current: &mut HashMap<String, f64>,
+    out: &mut Option<MidiOutputConnection>,
+    fb_last: &mut HashMap<[u8; 2], u8>,
+    channel: u8,
+    input: InputKind,
+    value: u8,
+) -> Option<ControllerUpdateEvent> {
+    let binding = mapping.find(channel, input)?;
+    let (b_channel, b_input) = (binding.channel, binding.input);
+    // Soft-takeover compares against the last value we applied; unknown → adopt immediately.
+    let cur = current
+        .get(binding.control.as_str())
+        .copied()
+        .unwrap_or(value as f64 / input.full_scale());
+    let u = mapping.resolve(registry, channel, input, value, cur, TAKEOVER)?;
+    // Echo to the device address that moved (immediate LED/feedback); UI changes flow via Feedback.
+    let mv = (u.normalized * 127.0).round().clamp(0.0, 127.0) as u8;
+    send_feedback(out, fb_last, b_channel, b_input, mv);
+    current.insert(u.control.as_str().to_string(), u.normalized);
+    Some(ControllerUpdateEvent {
+        control: u.control.as_str().to_string(),
+        value: u.value,
+    })
 }
 
 /// Open a MIDI output port whose name contains `name` (for LED/feedback echo).
@@ -267,7 +305,8 @@ fn send_feedback(
     value: u8,
 ) {
     let Some(conn) = out.as_mut() else { return };
-    let bytes = midi_bytes(channel, input, value);
+    // HID outputs have no MIDI representation (device-specific report; deferred) → skip them.
+    let Some(bytes) = midi_bytes(channel, input, value) else { return };
     let addr = [bytes[0], bytes[1]]; // status (type+channel) + note/cc number
     if feedback_changed(last, addr, value) {
         let _ = conn.send(&bytes);
@@ -284,12 +323,14 @@ fn feedback_changed(last: &mut HashMap<[u8; 2], u8>, addr: [u8; 2], value: u8) -
     true
 }
 
-/// Build a 3-byte MIDI message echoing `value` (0..127) to a binding's input address.
-fn midi_bytes(channel: u8, input: InputKind, value: u8) -> [u8; 3] {
+/// Build a 3-byte MIDI message echoing `value` (0..127) to a binding's input address. Returns
+/// `None` for non-MIDI (HID) inputs, which have no MIDI feedback representation.
+fn midi_bytes(channel: u8, input: InputKind, value: u8) -> Option<[u8; 3]> {
     let ch = channel & 0x0F;
     match input {
-        InputKind::Cc { cc } => [0xB0 | ch, cc, value],
-        InputKind::Note { note } => [0x90 | ch, note, value],
+        InputKind::Cc { cc } => Some([0xB0 | ch, cc, value]),
+        InputKind::Note { note } => Some([0x90 | ch, note, value]),
+        InputKind::Hid { .. } => None,
     }
 }
 
@@ -311,8 +352,10 @@ mod tests {
 
     #[test]
     fn midi_bytes_builds_cc_and_note() {
-        assert_eq!(midi_bytes(0, InputKind::Cc { cc: 7 }, 100), [0xB0, 7, 100]);
-        assert_eq!(midi_bytes(2, InputKind::Note { note: 36 }, 127), [0x92, 36, 127]);
+        assert_eq!(midi_bytes(0, InputKind::Cc { cc: 7 }, 100), Some([0xB0, 7, 100]));
+        assert_eq!(midi_bytes(2, InputKind::Note { note: 36 }, 127), Some([0x92, 36, 127]));
+        // HID inputs have no MIDI feedback representation.
+        assert_eq!(midi_bytes(0, InputKind::Hid { byte: 3 }, 100), None);
     }
 
     #[test]
