@@ -83,6 +83,10 @@ export interface DeckError {
 
 export interface EngineStatus {
   sample_rate: number;
+  audio_online: boolean;
+  audio_restarting: boolean;
+  audio_restarts: number;
+  audio_error: string | null;
   decks: { deck: number; loaded: boolean; playing: boolean; frame: number }[];
 }
 

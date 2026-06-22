@@ -397,6 +397,7 @@ button.src-row:hover { background: rgba(255, 255, 255, 0.04); }
 .st-engine { display: flex; align-items: center; gap: 6px; }
 .st-dot { width: 7px; height: 7px; border-radius: 50%; }
 .st-dot--ok { background: var(--status-ok); animation: compasPulse 2s ease-in-out infinite; }
+.st-dot--warn { background: var(--status-warn); animation: compasPulse 1s ease-in-out infinite; }
 .st-dot--off { background: var(--status-alarm); }
 .st-rt { color: var(--accent); }
 .st-sep { color: var(--text-disabled); }

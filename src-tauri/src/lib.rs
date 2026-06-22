@@ -8,11 +8,11 @@
 
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{channel, Sender};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 mod controllers;
 mod db;
@@ -237,12 +237,11 @@ enum EngineMsg {
     },
 }
 
-/// Tauri-managed handle: a channel to the audio thread plus shared telemetry and the
-/// negotiated device sample rate.
+/// Tauri-managed handle: a channel to the audio thread plus shared telemetry and output health.
 struct EngineHandle {
     tx: Sender<EngineMsg>,
     telemetry: Arc<DeckTelemetry>,
-    sample_rate: u32,
+    audio: Arc<AudioRuntimeStatus>,
     /// True while a master recording is in progress (guards against double-start).
     recording: AtomicBool,
 }
@@ -253,36 +252,137 @@ impl EngineHandle {
     }
 }
 
+struct AudioRuntimeStatus {
+    online: AtomicBool,
+    restarting: AtomicBool,
+    restarts: AtomicU64,
+    sample_rate: AtomicU32,
+    last_error: Mutex<Option<String>>,
+}
+
+impl AudioRuntimeStatus {
+    fn new() -> Self {
+        Self {
+            online: AtomicBool::new(false),
+            restarting: AtomicBool::new(false),
+            restarts: AtomicU64::new(0),
+            sample_rate: AtomicU32::new(0),
+            last_error: Mutex::new(None),
+        }
+    }
+
+    fn mark_online(&self, sample_rate: u32) {
+        self.online.store(true, Ordering::Relaxed);
+        self.restarting.store(false, Ordering::Relaxed);
+        self.sample_rate.store(sample_rate, Ordering::Relaxed);
+        if let Ok(mut last) = self.last_error.lock() {
+            *last = None;
+        }
+    }
+
+    fn mark_restarting(&self) {
+        self.online.store(false, Ordering::Relaxed);
+        self.restarting.store(true, Ordering::Relaxed);
+    }
+
+    fn mark_error(&self, message: String) {
+        self.online.store(false, Ordering::Relaxed);
+        self.restarting.store(false, Ordering::Relaxed);
+        if let Ok(mut last) = self.last_error.lock() {
+            *last = Some(message);
+        }
+    }
+
+    fn count_restart(&self) {
+        self.restarts.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn last_error(&self) -> Option<String> {
+        self.last_error.lock().ok().and_then(|e| e.clone())
+    }
+}
+
 /// Spawn the dedicated audio thread that owns the [`AudioEngine`].
 fn spawn_engine() -> EngineHandle {
     let (tx, rx) = channel::<EngineMsg>();
     let telemetry = Arc::new(DeckTelemetry::new());
+    let audio = Arc::new(AudioRuntimeStatus::new());
 
     // Sample rate is discovered inside the thread; hand it back over a one-shot channel.
     let (sr_tx, sr_rx) = channel::<u32>();
     let telemetry_for_thread = telemetry.clone();
+    let audio_for_thread = audio.clone();
 
     let spawn_result = thread::Builder::new()
         .name("compas-audio".to_string())
         .spawn(move || {
-            let mut engine = match AudioEngine::new(EngineConfig::default(), telemetry_for_thread) {
-                Ok(engine) => {
-                    let sr = engine.sample_rate();
-                    tracing::info!("audio engine started @ {sr} Hz");
-                    let _ = sr_tx.send(sr);
-                    Some(engine)
-                }
-                Err(e) => {
-                    tracing::error!("audio engine failed to start (continuing headless): {e}");
-                    let _ = sr_tx.send(0);
-                    None
+            let mut initial_report = Some(sr_tx);
+            let mut start_engine = |is_restart: bool| {
+                audio_for_thread.mark_restarting();
+                match AudioEngine::new(EngineConfig::default(), telemetry_for_thread.clone()) {
+                    Ok(engine) => {
+                        if is_restart {
+                            audio_for_thread.count_restart();
+                        }
+                        let sr = engine.sample_rate();
+                        tracing::info!("audio engine started @ {sr} Hz");
+                        audio_for_thread.mark_online(sr);
+                        if let Some(tx) = initial_report.take() {
+                            let _ = tx.send(sr);
+                        }
+                        Some(engine)
+                    }
+                    Err(e) => {
+                        let msg = e.to_string();
+                        tracing::error!(
+                            "audio engine failed to start (continuing headless): {msg}"
+                        );
+                        audio_for_thread.mark_error(msg);
+                        if let Some(tx) = initial_report.take() {
+                            let _ = tx.send(0);
+                        }
+                        None
+                    }
                 }
             };
 
-            while let Ok(msg) = rx.recv() {
+            let mut engine = start_engine(false);
+            let mut next_retry = Instant::now() + Duration::from_secs(2);
+
+            loop {
+                if let Some(active) = engine.as_ref() {
+                    if active.stream_failed() {
+                        let msg = active
+                            .last_stream_error()
+                            .unwrap_or_else(|| "audio stream error".to_string());
+                        tracing::warn!("audio stream unhealthy; restarting: {msg}");
+                        audio_for_thread.mark_error(msg);
+                        engine = None;
+                        next_retry = Instant::now();
+                    }
+                }
+
+                if engine.is_none() && Instant::now() >= next_retry {
+                    engine = start_engine(true);
+                    next_retry = Instant::now() + Duration::from_secs(2);
+                }
+
+                let msg = match rx.recv_timeout(Duration::from_millis(250)) {
+                    Ok(msg) => msg,
+                    Err(RecvTimeoutError::Timeout) => continue,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+
+                if engine.is_none() {
+                    engine = start_engine(true);
+                    next_retry = Instant::now() + Duration::from_secs(2);
+                }
+
                 let Some(engine) = engine.as_mut() else {
+                    tracing::warn!("dropped audio command while output device is offline");
                     continue;
                 };
+
                 let cmd = match msg {
                     EngineMsg::SetCrossfader(p) => AudioCommand::SetCrossfader(p),
                     EngineMsg::SetCrossfaderConfig {
@@ -504,12 +604,12 @@ fn spawn_engine() -> EngineHandle {
         tracing::error!("failed to spawn audio thread: {e}");
     }
 
-    let sample_rate = sr_rx.recv_timeout(Duration::from_secs(5)).unwrap_or(0);
+    let _ = sr_rx.recv_timeout(Duration::from_secs(5)).unwrap_or(0);
 
     EngineHandle {
         tx,
         telemetry,
-        sample_rate,
+        audio,
         recording: AtomicBool::new(false),
     }
 }
@@ -590,6 +690,10 @@ struct DeckErrorEvent {
 #[derive(Serialize)]
 struct EngineStatus {
     sample_rate: u32,
+    audio_online: bool,
+    audio_restarting: bool,
+    audio_restarts: u64,
+    audio_error: Option<String>,
     decks: Vec<DeckStatus>,
 }
 
@@ -624,6 +728,7 @@ fn build_info() -> BuildInfo {
 
 #[tauri::command]
 fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
+    let sample_rate = state.audio.sample_rate.load(Ordering::Relaxed);
     let decks = (0..2)
         .map(|deck| DeckStatus {
             deck,
@@ -633,7 +738,11 @@ fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
         })
         .collect();
     EngineStatus {
-        sample_rate: state.sample_rate,
+        sample_rate,
+        audio_online: state.audio.online.load(Ordering::Relaxed),
+        audio_restarting: state.audio.restarting.load(Ordering::Relaxed),
+        audio_restarts: state.audio.restarts.load(Ordering::Relaxed),
+        audio_error: state.audio.last_error(),
         decks,
     }
 }
@@ -1314,7 +1423,12 @@ fn start_recording(state: State<'_, EngineHandle>, path: String) -> Result<(), S
         }
     };
     let (producer, consumer) = RingBuffer::<f32>::new(RECORD_RING_CAPACITY);
-    spawn_wav_writer(consumer, file, state.sample_rate);
+    let sample_rate = state.audio.sample_rate.load(Ordering::Relaxed);
+    if sample_rate == 0 {
+        state.recording.store(false, Ordering::SeqCst);
+        return Err("audio output is offline; cannot start recording".into());
+    }
+    spawn_wav_writer(consumer, file, sample_rate);
     if let Err(e) = state.send(EngineMsg::StartRecording { sink: producer }) {
         state.recording.store(false, Ordering::SeqCst);
         return Err(e);

@@ -429,7 +429,7 @@ mod tests {
         };
         p.bindings.push(compas_core::Binding {
             channel: 0,
-            input: compas_core::InputKind::Cc { cc: 7 },
+            input: InputKind::Cc { cc: 7 },
             control: "deck.0.gain".into(),
             soft_takeover: false,
         });

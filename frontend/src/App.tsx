@@ -18,7 +18,7 @@ import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type EngineStatus, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--deck-a)", "var(--deck-b)", "var(--deck-c)", "var(--deck-d)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -33,6 +33,7 @@ export function App() {
   const decks = [deckA, deckB, deckC, deckD];
 
   const [sampleRate, setSampleRate] = useState<number | null>(null);
+  const [audioStatus, setAudioStatus] = useState<Pick<EngineStatus, "audio_online" | "audio_restarting" | "audio_restarts" | "audio_error"> | null>(null);
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
   const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
   const [xfade, setXfade] = useState(0.5);
@@ -83,10 +84,32 @@ export function App() {
 
   useEffect(() => {
     if (!inTauri()) return;
-    engineStatus().then((s) => setSampleRate(s.sample_rate)).catch(() => setSampleRate(0));
+    let alive = true;
+    const refreshStatus = () => {
+      engineStatus()
+        .then((s) => {
+          if (!alive) return;
+          setSampleRate(s.sample_rate);
+          setAudioStatus({
+            audio_online: s.audio_online,
+            audio_restarting: s.audio_restarting,
+            audio_restarts: s.audio_restarts,
+            audio_error: s.audio_error,
+          });
+        })
+        .catch(() => {
+          if (!alive) return;
+          setSampleRate(0);
+          setAudioStatus({ audio_online: false, audio_restarting: false, audio_restarts: 0, audio_error: "engine status unavailable" });
+        });
+    };
+    refreshStatus();
+    const statusTimer = window.setInterval(refreshStatus, 2000);
     const unMeter = onMasterMeter(setMaster);
     const unLoad = onEngineLoad(setLoad);
     return () => {
+      alive = false;
+      window.clearInterval(statusTimer);
       unMeter.then((u) => u());
       unLoad.then((u) => u());
     };
@@ -304,7 +327,7 @@ export function App() {
           <Library ref={libraryRef} loadedPaths={loadedPaths} focusTarget={libraryFocus.target} focusSeq={libraryFocus.seq} />
         </div>
       </div>
-      <StatusBar sampleRate={sampleRate} />
+      <StatusBar sampleRate={sampleRate} audioStatus={audioStatus} />
       {showKeys && <Instrument midi={midi} onClose={() => setShowKeys(false)} />}
       {showMap && <MidiMap midi={midi} map={midiMap} onClose={() => setShowMap(false)} />}
       {showPads && <Sampler sampler={sampler} onClose={() => setShowPads(false)} />}

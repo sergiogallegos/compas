@@ -24,10 +24,10 @@ engineering practices from `rust-ethernet-ip`, then used the same pass to close 
 - **Docs/status cleanup:** roadmap/status/changelog/website docs now match the above.
 
 **Next recommended workstream:** pro-audio hardening before release. Track it in `ROADMAP.md`
-under "Reliability / Pro-Audio Hardening Backlog": device hot-plug/recovery, split
-underrun/overload counters, booth output, explicit master/cue/booth/record routing, latency
-compensation, no-drop tests for retired `Arc<DeckBuffer>`/graph state, more controller mapping
-profiles, and the modular per-deck processing graph
+under "Reliability / Pro-Audio Hardening Backlog": split underrun/overload counters, booth output,
+explicit master/cue/booth/record routing, latency compensation, no-drop tests for retired
+`Arc<DeckBuffer>`/graph state, more controller mapping profiles, and the modular per-deck
+processing graph
 `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
 
 **Hardening item 1 done:** sync edge-case coverage now exercises paused/empty leaders, unloaded
@@ -35,6 +35,14 @@ followers, sync command cycle-breaking, and loop-roll release while phase-locked
 sync PLL now also requires both leader and follower buffers to be loaded before applying a sync
 tempo. Verified with `cargo test -p compas-audio --locked` and
 `cargo clippy -p compas-audio --all-targets -- -D warnings`.
+
+**Hardening item 2 partial:** the master output stream now records CPAL stream errors, marks audio
+offline/restarting in shared status, and retries the default device from the audio owner thread.
+The footer polls `engine_status` and shows OK/restarting/offline plus the latest error. Recording is
+blocked while the master output is offline. Remaining follow-up: cue/headphone auto-reopen and state
+replay after a full stream rebuild. Verified with `cargo check -p compas-audio --locked`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
+`cd frontend && npx tsc --noEmit`.
 
 **Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
 Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state

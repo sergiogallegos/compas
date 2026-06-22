@@ -255,8 +255,9 @@ then turn the findings into tests, benchmarks, or small code changes.
 1. ✅ **Stronger sync edge-case tests** — added engine tests for paused/empty leaders, unloaded
    followers, sync command cycle-breaking, and loop-roll release while phase-locked; `update_sync`
    now refuses stale sync pulls when either side has no loaded buffer.
-2. ⬜ **Device hot-plug and recovery** — recover cleanly when master/headphone devices disappear,
-   change sample rate, or fail to open; surface status to the UI and avoid callback stalls.
+2. 🔶 **Device hot-plug and recovery** — master output stream errors now mark audio offline,
+   retry the default device on the audio owner thread, and surface online/restarting/error status
+   to the footer. Remaining: cue/headphone auto-reopen and state replay after a full stream rebuild.
 3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists; split the counters
    into callback over-budget, stream underrun, command-ring full, cue-ring underrun, record-ring
    overflow, and telemetry-drop so debugging points to the real failure.

@@ -13,6 +13,9 @@ All notable changes to compas are documented here. Format follows
   loaded-as tag recognises all four.
 - **Sync stale-buffer guard:** the audio sync PLL now refuses to apply a stale sync tempo when the
   leader or follower no longer has a loaded deck buffer.
+- **Master-output recovery foundation:** CPAL stream errors now mark audio offline, trigger default
+  output retry on the audio owner thread, block recording while offline, and surface
+  OK/restarting/error status in the footer.
 
 ### Added
 - **App-shell controls wired:** the left rail now performs real actions (Perform scroll, Library

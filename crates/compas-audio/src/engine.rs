@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use compas_core::{CompasError, DeckBuffer, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -34,6 +35,8 @@ pub struct AudioEngine {
     reclaim: Consumer<Arc<DeckBuffer>>,
     telemetry: Arc<DeckTelemetry>,
     sample_rate: u32,
+    stream_failed: Arc<AtomicBool>,
+    last_stream_error: Arc<Mutex<Option<String>>>,
 }
 
 impl AudioEngine {
@@ -55,11 +58,31 @@ impl AudioEngine {
         let (cmd_tx, cmd_rx) = RingBuffer::<AudioCommand>::new(config.command_capacity);
         let (reclaim_tx, reclaim_rx) = RingBuffer::<Arc<DeckBuffer>>::new(config.reclaim_capacity);
         let mixer = Mixer::new(sample_rate as f32, cmd_rx, reclaim_tx, telemetry.clone());
+        let stream_failed = Arc::new(AtomicBool::new(false));
+        let last_stream_error = Arc::new(Mutex::new(None));
 
         let stream = match sample_format {
-            cpal::SampleFormat::F32 => build_stream::<f32>(&device, &stream_config, mixer),
-            cpal::SampleFormat::I16 => build_stream::<i16>(&device, &stream_config, mixer),
-            cpal::SampleFormat::U16 => build_stream::<u16>(&device, &stream_config, mixer),
+            cpal::SampleFormat::F32 => build_stream::<f32>(
+                &device,
+                &stream_config,
+                mixer,
+                stream_failed.clone(),
+                last_stream_error.clone(),
+            ),
+            cpal::SampleFormat::I16 => build_stream::<i16>(
+                &device,
+                &stream_config,
+                mixer,
+                stream_failed.clone(),
+                last_stream_error.clone(),
+            ),
+            cpal::SampleFormat::U16 => build_stream::<u16>(
+                &device,
+                &stream_config,
+                mixer,
+                stream_failed.clone(),
+                last_stream_error.clone(),
+            ),
             other => Err(CompasError::Device(format!(
                 "unsupported sample format: {other:?}"
             ))),
@@ -75,6 +98,8 @@ impl AudioEngine {
             reclaim: reclaim_rx,
             telemetry,
             sample_rate,
+            stream_failed,
+            last_stream_error,
         })
     }
 
@@ -84,6 +109,17 @@ impl AudioEngine {
 
     pub fn telemetry(&self) -> Arc<DeckTelemetry> {
         self.telemetry.clone()
+    }
+
+    /// Whether cpal has reported a stream/device error after startup. This is set from cpal's
+    /// error callback (not the audio data callback) so the owner thread can rebuild the stream.
+    pub fn stream_failed(&self) -> bool {
+        self.stream_failed.load(Ordering::Relaxed)
+    }
+
+    /// Last stream/device error text, if cpal provided one.
+    pub fn last_stream_error(&self) -> Option<String> {
+        self.last_stream_error.lock().ok().and_then(|e| e.clone())
     }
 
     /// Drop any buffers the audio thread has retired (call periodically / after sends so
@@ -109,13 +145,22 @@ fn build_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mut mixer: Mixer,
+    stream_failed: Arc<AtomicBool>,
+    last_stream_error: Arc<Mutex<Option<String>>>,
 ) -> Result<cpal::Stream>
 where
     T: SizedSample + FromSample<f32> + Send + 'static,
 {
     let channels = config.channels as usize;
     let sample_rate = config.sample_rate.0 as f64;
-    let err_fn = |e| tracing::error!("cpal stream error: {e}");
+    let err_fn = move |e: cpal::StreamError| {
+        let message = e.to_string();
+        stream_failed.store(true, Ordering::Relaxed);
+        if let Ok(mut last) = last_stream_error.lock() {
+            *last = Some(message.clone());
+        }
+        tracing::error!("cpal stream error: {message}");
+    };
 
     let stream = device
         .build_output_stream(
