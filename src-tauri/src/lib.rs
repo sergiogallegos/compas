@@ -680,6 +680,7 @@ struct EngineLoadEvent {
     command_ring_full: u64,
     record_ring_drops: u64,
     cue_ring_drops: u64,
+    reclaim_ring_full: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -2108,6 +2109,7 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
                     command_ring_full: telemetry.command_ring_full(),
                     record_ring_drops: telemetry.record_ring_drops(),
                     cue_ring_drops: telemetry.cue_ring_drops(),
+                    reclaim_ring_full: telemetry.reclaim_ring_full(),
                 },
             );
             thread::sleep(period);

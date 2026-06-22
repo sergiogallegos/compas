@@ -63,6 +63,9 @@ All notable changes to compas are documented here. Format follows
 - **Secondary-output latency telemetry:** cue/headphone and booth output streams now publish
   measured CPAL device latency plus their prime-buffer latency through `engine_status`; the footer
   tooltip exposes those numbers for alignment/debugging.
+- **No-drop buffer reclaim under pressure:** retired deck/sample `Arc<DeckBuffer>` values now use
+  the reclaim ring first, then bounded RT-side parking if the ring is full. Reclaim pressure is
+  exposed in engine-load telemetry and covered by deck/sampler replacement tests.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted

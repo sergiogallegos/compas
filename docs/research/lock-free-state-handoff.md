@@ -42,18 +42,21 @@ Implications:
 Replacing deck buffers, sample buffers, stem buffers, or future graph snapshots can retire large
 state. The callback must not drop the final reference.
 
-Current risk:
+Current implementation:
 
-- `Mixer::retire` pushes into the reclaim ring and ignores failure.
-- sampler replacement does the same.
-- If the ring is full, the old `Arc<DeckBuffer>` can be dropped when the local variable leaves the
-  callback path.
+- `Mixer::retire` pushes retired deck/sample buffers into the control-thread reclaim ring.
+- If that ring is full, the mixer stores the old `Arc<DeckBuffer>` in a fixed-size RT-side parking
+  area and retries after command draining.
+- `DeckTelemetry::reclaim_ring_full` counts those pressure events and the UI title-bar tooltip
+  exposes them separately from audio drops.
+- If parking is pathologically exhausted, the buffer is intentionally leaked rather than dropped on
+  the callback path.
 
-Required next behavior:
+Implemented tests:
 
-- reclaim push failure increments a counter;
-- the old state is retained in a bounded RT-side parking area or the command is deferred/rejected;
-- tests force reclaim pressure and prove no large drop happens on the callback path.
+- deck buffer retirement while the reclaim ring is full;
+- sampler replacement while the reclaim ring is full;
+- parked buffers flush after the reclaim consumer drains.
 
 ### 4. Telemetry is scalar and split by failure mode
 
@@ -87,12 +90,11 @@ Implementation rule:
 
 1. Extend `DeckTelemetry` or a sibling `EngineDiagnostics` with split counters.
 2. Increment command-ring-full in `AudioEngine::send`.
-3. Increment reclaim-ring-full in `Mixer::retire` and sampler replacement.
-4. Prevent callback-side large drops when reclaim is full.
-5. Add tests:
-   - deck load/unload under reclaim pressure;
-   - sampler replace/clear under reclaim pressure;
-   - command-ring full increments a counter or returns a typed error that the caller can count.
+3. Done: increment reclaim-ring-full in `Mixer::retire` and sampler replacement.
+4. Done: prevent callback-side large drops when reclaim is full for current `DeckBuffer` retire
+   paths.
+5. Done: add tests for deck and sampler replacement under reclaim pressure.
+6. Next: route future large graph/stem snapshots through the same retire model.
 
 ## Non-goals for this slice
 

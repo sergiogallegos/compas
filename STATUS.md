@@ -75,6 +75,15 @@ controls need them. Verified with `cargo test -p compas-audio --locked`,
 `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
 `cd frontend && npx tsc --noEmit`.
 
+**Hardening item 7 done for current buffers:** retired deck/sample `Arc<DeckBuffer>` values now
+use the reclaim ring first, then a fixed-size RT-side parking buffer if the ring is full. The
+title-bar RT tooltip exposes reclaim pressure, and tests prove deck and sampler replacement do not
+drop the old buffer on the callback path while reclaim is full. Remaining follow-up: route future
+large graph/stem snapshots through the same retire model. Verified with
+`cargo test -p compas-audio --locked`, `cargo clippy -p compas-audio --all-targets -- -D warnings`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
+`cd frontend && npx tsc --noEmit`.
+
 **Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
 Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state
 handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online beat-tracking source

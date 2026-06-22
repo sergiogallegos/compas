@@ -184,11 +184,13 @@ export function TitleBar({
           const commandDrops = load?.command_ring_full ?? 0;
           const recordDrops = load?.record_ring_drops ?? 0;
           const cueDrops = load?.cue_ring_drops ?? 0;
+          const reclaimPressure = load?.reclaim_ring_full ?? 0;
           const drops = commandDrops + recordDrops + cueDrops;
-          const tone = xruns > 0 || drops > 0 || pct >= 100 ? "var(--status-alarm-2)" : pct >= 70 ? "var(--status-warn)" : "var(--status-ok)";
-          const text = xruns > 0 || drops > 0 ? `RT ⚠ ${xruns + drops}` : `RT ${pct}%`;
+          const pressure = drops + reclaimPressure;
+          const tone = xruns > 0 || pressure > 0 || pct >= 100 ? "var(--status-alarm-2)" : pct >= 70 ? "var(--status-warn)" : "var(--status-ok)";
+          const text = xruns > 0 || pressure > 0 ? `RT ⚠ ${xruns + pressure}` : `RT ${pct}%`;
           return (
-            <span className="mono cpu" style={{ color: tone }} title={`Audio-thread load ${pct}% · callback overruns ${xruns} · command drops ${commandDrops} · record drops ${recordDrops} · cue drops ${cueDrops}`}>
+            <span className="mono cpu" style={{ color: tone }} title={`Audio-thread load ${pct}% · callback overruns ${xruns} · command drops ${commandDrops} · record drops ${recordDrops} · cue drops ${cueDrops} · reclaim pressure ${reclaimPressure}`}>
               {text}
             </span>
           );

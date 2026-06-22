@@ -80,6 +80,8 @@ export interface EngineLoad {
   record_ring_drops: number;
   /** Headphone/cue frames dropped because the cue ring was full. */
   cue_ring_drops: number;
+  /** Reclaim ring pressure events; retired buffers were parked for later off-thread drop. */
+  reclaim_ring_full: number;
 }
 
 export interface DeckError {

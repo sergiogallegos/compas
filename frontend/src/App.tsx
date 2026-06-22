@@ -42,6 +42,7 @@ export function App() {
     command_ring_full: 0,
     record_ring_drops: 0,
     cue_ring_drops: 0,
+    reclaim_ring_full: 0,
   });
   const [xfade, setXfade] = useState(0.5);
   const [showKeys, setShowKeys] = useState(false);

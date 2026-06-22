@@ -129,8 +129,10 @@ Three thread classes; the audio callback is sacred.
 - **Lock-free primitives:** `rtrb` SPSC rings for commands and RT-to-control telemetry/reclaim
   paths. One producer, one consumer, wait-free.
 - **Buffer lifetime rule:** replacing/ejecting a deck must not drop the old `Arc<DeckBuffer>` on
-  the audio callback. Retired buffers are moved to a control-thread reclaim path before their last
-  reference can be released. Tests should cover repeated load/eject while audio is active.
+  the audio callback. Retired buffers are first pushed to a control-thread reclaim ring; if that
+  ring is full, the mixer parks them in a fixed-size RT-side holding area and retries after command
+  draining. Pathological parking overflow intentionally leaks rather than freeing a large buffer on
+  the callback path. Tests force deck and sampler replacement while the reclaim ring is full.
 
 ## 5. Audio data flow (a local deck, end to end)
 
@@ -191,7 +193,9 @@ The next hardening pass should make these guarantees explicit:
 6. **Latency compensation:** master, cue, and booth device/buffer latency are observable. Next,
    apply those offsets where needed so play-heads, sync, cue, and recordings align intentionally.
 7. **No-drop RT guarantee:** any old `Arc<DeckBuffer>` or large processor state retired by load,
-   eject, stem swap, or graph mutation must be reclaimed off the audio thread.
+   eject, stem swap, or graph mutation must be reclaimed off the audio thread. Current deck/sample
+   buffers use a reclaim ring plus bounded RT-side parking; future graph snapshots should use the
+   same retire path or an equivalent preallocated handoff.
 8. **Controller mapping profiles:** profile coverage should expand device-by-device with tests that
    every binding targets a real control, and hot-plug should reactivate the matching profile.
 9. **Modular deck graph:** implement the target graph above so stems, ReplayGain, FX chains, booth,

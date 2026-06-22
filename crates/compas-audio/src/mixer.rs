@@ -16,13 +16,14 @@ const FX_FLANGER: usize = 2;
 const FX_CRUSHER: usize = 3;
 /// Max echo time the delay slot maps its normalized `time` param across.
 const FX_DELAY_MAX_SECS: f32 = 2.0;
-use rtrb::Producer;
+use rtrb::{Producer, PushError};
 
 use crate::sampler::Sampler;
 
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
+const PENDING_RECLAIM_CAP: usize = NUM_DECKS + 8;
 
 /// Sync PLL: how hard the beat-phase error pulls the follower's read rate. The pull is
 /// capped to ±8% (a musical pitch-bend range) so locking in is a smooth glide, not a click.
@@ -390,6 +391,9 @@ pub struct DeckTelemetry {
     record_ring_drops: AtomicU64,
     /// Headphone/cue samples dropped because the cue ring was full.
     cue_ring_drops: AtomicU64,
+    /// Reclaim ring pressure events. These do not drop audio; they mean retired buffers were
+    /// parked on the RT side until the control thread drained the reclaim ring.
+    reclaim_ring_full: AtomicU64,
     /// Per-deck effective play-head advance in **source frames per second** (signed; negative when
     /// scratching backward, 0 when stopped). Lets the UI extrapolate the play-head smoothly between
     /// telemetry updates instead of stepping at the 30 Hz event rate.
@@ -413,6 +417,7 @@ impl DeckTelemetry {
             command_ring_full: AtomicU64::new(0),
             record_ring_drops: AtomicU64::new(0),
             cue_ring_drops: AtomicU64::new(0),
+            reclaim_ring_full: AtomicU64::new(0),
             rate_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             output_latency_bits: AtomicU64::new(0),
         }
@@ -453,8 +458,16 @@ impl DeckTelemetry {
         self.cue_ring_drops.load(Ordering::Relaxed)
     }
 
+    pub fn reclaim_ring_full(&self) -> u64 {
+        self.reclaim_ring_full.load(Ordering::Relaxed)
+    }
+
     pub fn inc_command_ring_full(&self) {
         self.command_ring_full.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn inc_reclaim_ring_full(&self) {
+        self.reclaim_ring_full.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Per-deck output peak in 0..~1 (linear). For VU meters.
@@ -845,6 +858,7 @@ pub struct Mixer {
     master: GainSmoother,
     commands: rtrb::Consumer<AudioCommand>,
     reclaim: Producer<Arc<DeckBuffer>>,
+    pending_reclaim: [Option<Arc<DeckBuffer>>; PENDING_RECLAIM_CAP],
     telemetry: Arc<DeckTelemetry>,
     device_rate: f32,
     // Per-block peak accumulators (reset on publish).
@@ -883,6 +897,7 @@ impl Mixer {
             master: GainSmoother::new(0.85, device_rate, 10.0),
             commands,
             reclaim,
+            pending_reclaim: std::array::from_fn(|_| None),
             telemetry,
             device_rate,
             peak_deck: [0.0; NUM_DECKS],
@@ -925,12 +940,53 @@ impl Mixer {
             .store((secs as f64).to_bits(), Ordering::Relaxed);
     }
 
-    /// Retire a deck's old buffer to the control thread for dropping (RT-safe: if the
-    /// reclaim ring is unexpectedly full we drop here, which is rare and bounded).
+    /// Flush RT-side parked buffers to the control-thread reclaim ring when it has room.
+    /// RT-SAFE: fixed-size scan, no allocation, no locks.
+    #[inline]
+    fn flush_pending_reclaim(&mut self) {
+        for slot in self.pending_reclaim.iter_mut() {
+            let Some(buffer) = slot.take() else {
+                continue;
+            };
+            match self.reclaim.push(buffer) {
+                Ok(()) => {}
+                Err(PushError::Full(buffer)) => {
+                    *slot = Some(buffer);
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Park a retired buffer in a preallocated RT-side holding area when the reclaim ring is full.
+    /// RT-SAFE: bounded linear scan, no allocation, no locks.
+    #[inline]
+    fn park_reclaim(&mut self, buffer: Arc<DeckBuffer>) {
+        self.telemetry.inc_reclaim_ring_full();
+        let mut pending = Some(buffer);
+        for slot in self.pending_reclaim.iter_mut() {
+            if slot.is_none() {
+                *slot = pending.take();
+                return;
+            }
+        }
+        // Pathological case: the control side has stopped draining and the bounded parking area is
+        // full. Leaking is preferable to dropping a large DeckBuffer on the callback path.
+        if let Some(buffer) = pending {
+            std::mem::forget(buffer);
+        }
+    }
+
+    /// Retire a deck/sample buffer to the control thread for dropping. If the reclaim ring is full,
+    /// keep the buffer alive in the bounded parking area and retry on the next command drain.
     #[inline]
     fn retire(&mut self, buffer: Option<Arc<DeckBuffer>>) {
         if let Some(b) = buffer {
-            let _ = self.reclaim.push(b);
+            self.flush_pending_reclaim();
+            match self.reclaim.push(b) {
+                Ok(()) => {}
+                Err(PushError::Full(b)) => self.park_reclaim(b),
+            }
         }
     }
 
@@ -1337,12 +1393,12 @@ impl Mixer {
                 AudioCommand::SetSynthGain { gain } => self.synth.set_gain(gain),
                 AudioCommand::LoadSample { slot, buffer } => {
                     if let Some(old) = self.sampler.set_slot(slot, Some(buffer)) {
-                        let _ = self.reclaim.push(old); // free the replaced buffer off the RT thread
+                        self.retire(Some(old));
                     }
                 }
                 AudioCommand::ClearSample { slot } => {
                     if let Some(old) = self.sampler.set_slot(slot, None) {
-                        let _ = self.reclaim.push(old);
+                        self.retire(Some(old));
                     }
                 }
                 AudioCommand::TriggerSample { slot, velocity } => {
@@ -1372,6 +1428,7 @@ impl Mixer {
                 }
             }
         }
+        self.flush_pending_reclaim();
     }
 
     /// Mix one stereo frame. RT-SAFE. Deck 0 → crossfader A, deck 1 → B; decks 2/3
@@ -1528,6 +1585,10 @@ mod tests {
         d.buffer = Some(Arc::new(DeckBuffer::new(samples, 48_000)));
         d.base_ratio = 1.0;
         d
+    }
+
+    fn small_buffer(value: f32) -> Arc<DeckBuffer> {
+        Arc::new(DeckBuffer::new(vec![value; 2 * 16], 48_000))
     }
 
     fn mixer_with_commands() -> (Producer<AudioCommand>, Mixer) {
@@ -1894,6 +1955,85 @@ mod tests {
 
         assert_eq!(telemetry.record_ring_drops(), 1);
         assert_eq!(telemetry.cue_ring_drops(), 1);
+    }
+
+    #[test]
+    fn retired_deck_buffers_are_parked_when_reclaim_ring_is_full() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, mut rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(1);
+        let telemetry = Arc::new(DeckTelemetry::new());
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, telemetry.clone());
+
+        let first = small_buffer(0.1);
+        let first_weak = Arc::downgrade(&first);
+        mixer.retire(Some(first));
+        assert_eq!(telemetry.reclaim_ring_full(), 0);
+        assert!(first_weak.upgrade().is_some());
+
+        let parked = small_buffer(0.2);
+        let parked_weak = Arc::downgrade(&parked);
+        mixer.retire(Some(parked));
+        assert_eq!(telemetry.reclaim_ring_full(), 1);
+        assert!(
+            parked_weak.upgrade().is_some(),
+            "parked buffer must stay alive on the RT side"
+        );
+
+        drop(
+            rrx.pop()
+                .expect("first retired buffer reaches reclaim ring"),
+        );
+        assert!(first_weak.upgrade().is_none());
+
+        mixer.drain_commands();
+        drop(
+            rrx.pop()
+                .expect("parked buffer flushes after reclaim drains"),
+        );
+        assert!(parked_weak.upgrade().is_none());
+    }
+
+    #[test]
+    fn replaced_sample_buffers_are_parked_when_reclaim_ring_is_full() {
+        let (mut ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, mut rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(1);
+        let telemetry = Arc::new(DeckTelemetry::new());
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, telemetry.clone());
+
+        let old = small_buffer(0.3);
+        let old_weak = Arc::downgrade(&old);
+        ctx.push(AudioCommand::LoadSample {
+            slot: 0,
+            buffer: old,
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+
+        mixer.retire(Some(small_buffer(0.4)));
+        let replacement = small_buffer(0.5);
+        ctx.push(AudioCommand::LoadSample {
+            slot: 0,
+            buffer: replacement,
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+
+        assert_eq!(telemetry.reclaim_ring_full(), 1);
+        assert!(
+            old_weak.upgrade().is_some(),
+            "replaced sample buffer must stay parked while reclaim is full"
+        );
+
+        drop(
+            rrx.pop()
+                .expect("filler retired buffer reaches reclaim ring"),
+        );
+        mixer.drain_commands();
+        drop(
+            rrx.pop()
+                .expect("old sample buffer flushes after reclaim drains"),
+        );
+        assert!(old_weak.upgrade().is_none());
     }
 
     #[test]

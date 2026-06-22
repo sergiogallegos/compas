@@ -270,8 +270,10 @@ then turn the findings into tests, benchmarks, or small code changes.
    streams now publish measured device latency plus their prime-buffer latency through
    `engine_status`. Remaining: recording alignment and applying secondary-output offsets to UI/user
    controls where needed.
-7. 🔶 **No-drop guarantee for old buffers** — keep proving that retired `Arc<DeckBuffer>` values and
-   large graph state are reclaimed off the audio thread during load/eject/stem swap/graph mutation.
+7. ✅ **No-drop guarantee for current old buffers** — retired deck/sample `Arc<DeckBuffer>` values
+   now go through the reclaim ring or bounded RT-side parking when the ring is full; tests force
+   deck and sampler replacement under reclaim pressure. Remaining future work: apply the same
+   retire model to large graph/stem snapshot swaps.
 8. 🔶 **Controller mapping profiles** — continue adding tested profiles (DDJ-SB3, Numark, Hercules,
    more Akai/Korg), plus hot-plug profile activation and per-device HID button/LED support.
 9. ⬜ **Modular per-deck processing graph** — formalize
