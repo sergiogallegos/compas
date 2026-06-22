@@ -1,10 +1,45 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-22 (UI/controller/stems/release polish). See `ROADMAP.md` for the
-> full plan + **competitive feature backlog** (the source of truth for what's next),
-> `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-22 (beat-tracking slices + full stem
+> separation S2/S3). See `ROADMAP.md` for the full plan + **competitive feature backlog** (the source
+> of truth for what's next), `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
-## ▶ Resume here (next up, in order)
+## ▶ Resume here (latest session — 2026-06-22, pushed to `main`)
+
+**Two workstreams landed this session, all committed + pushed to `main`:**
+
+1. **Beat-tracking adoption-plan slices (offline DSP).** Worked the gated queue in order, one small
+   reversible commit each: ① candidate tempo **diagnostics** (`estimate_tempo_diagnostics`) → ②
+   **confidence calibration** (honest periodic-strength × octave × rival, so noise/silence read ~0)
+   → ③ **continuity tests** (offset-invariant phase-drift metric) → ④ **evaluation matrix** +
+   git-ignored **real-track eval** harness → ⑤ first real algorithm change: **octave-aware
+   half/double scoring** (`select_tempo` + dance-tempo prior). Details below under "Research point"
+   / "Beat-tracking TODO" entries. Adoption plan: `docs/research/beat-tracking-adoption-plan.md`.
+
+2. **Stem separation — now functionally complete (the marquee feature).** Six commits:
+   **S2 engine core** (per-deck `Option<[Arc<DeckBuffer>;4]>` + smoothed gains + per-stem WSOLA,
+   RT-safe no-drop retirement) → **S2 IPC + worker job** (`separate_stems`, gated behind a `stems`
+   cargo feature so the default build links no onnxruntime) → **S3 STEMS UI** (Separate + progress,
+   DRUMS/BASS/OTHER/VOX knobs + mute, revert) → **disk cache** (feature-independent reload) →
+   **in-app model download** (GET MODEL button). See the stem-separation section below for the full
+   record. **Two honest caveats:** (a) the default htdemucs model URL/checksum are *flagged
+   placeholders* — verify + bake a sha256 before the first stem-enabled release; (b) nothing in the
+   stem path has been run **live** from here (no 301 MB model / `--features stems` build / network) —
+   all code compiles, lints (`-D warnings`, both feature configs), type-checks, and is unit-tested,
+   but an actual separation/download run is unverified.
+
+**Recommended next (pick one):**
+- **Live stem verification:** on a machine with the model, build `--features stems`, run a real
+  separation + the GET MODEL download, and confirm the URL/checksum (then bake the sha256).
+- **Pro-audio hardening backlog** (`ROADMAP.md`): the **modular per-deck graph refactor** (move
+  `DeckPlayer::next_frame` into staged structs) is the documented next hardening step and would make
+  future stem/FX routing cleaner.
+- **Other roadmap fronts:** microphone & aux inputs, controller LED/output polish, or release
+  readiness (updater signing keypair + secrets).
+
+---
+
+## ▶ Earlier resume notes (pre-2026-06-22 session)
 
 **Seven-item polish/import batch (2026-06-22) — done.** Ported the high-value process and
 engineering practices from `rust-ethernet-ip`, then used the same pass to close real app polish:
