@@ -321,8 +321,13 @@ or docs updated in the same patch.
    half/double ambiguity), and a rival factor (competing in-range tempo). `BeatGrid` additionally
    folds in phase sharpness so an ambiguous downbeat lowers grid trust. Value-only change — no public
    field/IPC/UI change. Calibrated: clean clicks ~0.56-0.62, half/double trap ~0.27, noise ~0.00.
-3. ⬜ **Beat continuity tests** — add tests/assertions that detect unstable beat spacing or bad
-   tempo jumps, not just approximate BPM correctness.
+3. ✅ **Beat continuity tests** — the harness now measures phase drift with an offset-invariant
+   metric (the spread, max−min, of the index-aligned `true_i − pred_i` offset), which cancels the
+   mod-one-beat phase ambiguity and isolates accumulating tempo error / one-off jumps. Active tests:
+   the estimator holds phase over a 40 s track (drift ≈ 0.085 beat) and over a delayed-first-beat
+   track, spacing is uniform, and a deliberately 2%-detuned grid is *detected* (proves the metric has
+   teeth). No estimator change was needed — its tempo precision already holds phase; these tests lock
+   that in against regressions.
 4. ⬜ **Expanded beat-tracking benchmark matrix** — promote or add fixtures for half/double traps,
    tempo ramps, swung drums, misleading sparse intros, silence/noise, and a local real-track
    evaluation list kept out of git if audio is copyrighted.

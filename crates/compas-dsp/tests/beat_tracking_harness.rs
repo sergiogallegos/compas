@@ -1,4 +1,6 @@
-use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo, estimate_tempo_diagnostics};
+use compas_dsp::analysis::{
+    estimate_beatgrid, estimate_tempo, estimate_tempo_diagnostics, BeatGrid,
+};
 
 const SR: u32 = 44_100;
 
@@ -199,6 +201,129 @@ fn confidence_is_lower_for_ambiguous_grids() {
     assert!(
         noise_conf < trap_conf,
         "noise ({noise_conf:.3}) should be the least trustworthy"
+    );
+}
+
+// --- Beat continuity (research-backed TODO 3) ---------------------------------------
+//
+// Approximate BPM correctness is not enough: a tempo that is "close on average" still
+// slips phase over a long track. These helpers compare the *index-aligned* predicted beat
+// against the true beat (beat i vs beat i), so accumulating tempo error and phase slip are
+// visible — nearest-neighbour matching would hide drift by snapping to a neighbouring beat.
+
+/// True beat times for a constant-tempo grid over `[first, until)`.
+fn true_beats(bpm: f32, first: f32, until: f32) -> Vec<f32> {
+    let interval = 60.0 / bpm;
+    let mut beats = Vec::new();
+    let mut t = first;
+    while t < until {
+        beats.push(t);
+        t += interval;
+    }
+    beats
+}
+
+/// Predicted beat times from an estimated grid: `first_beat_sec + i * interval`, `count` beats.
+fn grid_beats(grid: &BeatGrid, count: usize) -> Vec<f32> {
+    (0..count)
+        .map(|i| grid.first_beat_sec + i as f32 * grid.beat_interval_sec)
+        .collect()
+}
+
+/// Drift of the grid against the truth, as a fraction of one beat interval.
+///
+/// We measure the *spread* (max − min) of the signed index-aligned offset `true_i − pred_i`,
+/// not the absolute error. Beat phase is ambiguous modulo one interval (the comb may report
+/// the first beat at ≈0 or ≈one beat later), which only adds a *constant* to every offset;
+/// the spread cancels that constant and isolates accumulating tempo error and one-off phase
+/// jumps. A perfect-tempo grid has constant offset → spread 0; a 2%-off grid ramps linearly.
+/// A spread `>= 0.5` means the grid slips past a neighbouring beat across the track.
+fn drift_spread_beats(truth: &[f32], grid: &BeatGrid) -> f32 {
+    let predicted = grid_beats(grid, truth.len());
+    let offsets = truth.iter().zip(&predicted).map(|(t, p)| t - p);
+    let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+    for d in offsets {
+        lo = lo.min(d);
+        hi = hi.max(d);
+    }
+    (hi - lo) / grid.beat_interval_sec.max(1e-6)
+}
+
+#[test]
+fn beatgrid_holds_phase_over_a_long_track() {
+    // A grid that is only "close on average" drifts over a long track; require it to stay
+    // phase-locked end to end, which is stricter than the +/- 2 BPM average tolerance.
+    let bpm = 128.0;
+    let dur = 40.0;
+    let samples = click_track(bpm, dur, 0.0);
+    let grid = estimate_beatgrid(&samples, SR);
+    let truth = true_beats(bpm, 0.0, dur);
+
+    let drift = drift_spread_beats(&truth, &grid);
+    eprintln!(
+        "long-track: bpm={:.3} interval={:.4} drift_spread={:.3} beats",
+        grid.bpm, grid.beat_interval_sec, drift
+    );
+    assert!(
+        drift < 0.25,
+        "grid drifted {drift:.3} of a beat over {dur}s — tempo not accurate enough to hold phase"
+    );
+}
+
+#[test]
+fn beatgrid_holds_phase_with_delayed_first_beat() {
+    // Continuity must hold even when the track does not start on beat one: the offset-
+    // invariant spread should stay tiny because the tempo, not just the average, is right.
+    let bpm = 124.0;
+    let dur = 30.0;
+    let first = 0.3;
+    let samples = click_track(bpm, dur, first);
+    let grid = estimate_beatgrid(&samples, SR);
+    let truth = true_beats(bpm, first, dur);
+
+    let drift = drift_spread_beats(&truth, &grid);
+    assert!(
+        drift < 0.25,
+        "grid with delayed first beat drifted {drift:.3} of a beat over {dur}s"
+    );
+}
+
+#[test]
+fn beat_drift_metric_detects_a_detuned_grid() {
+    // The continuity metric must have teeth: a grid whose tempo is off by ~2% should slip
+    // a large fraction of a beat over a long track, even though its BPM looks "about right".
+    let bpm = 128.0;
+    let dur = 40.0;
+    let truth = true_beats(bpm, 0.0, dur);
+    let detuned = BeatGrid {
+        bpm: bpm * 1.02,
+        first_beat_sec: 0.0,
+        beat_interval_sec: 60.0 / (bpm * 1.02),
+        confidence: 1.0,
+    };
+    let drift = drift_spread_beats(&truth, &detuned);
+    assert!(
+        drift > 0.5,
+        "a 2% tempo error should slip past a neighbouring beat, got {drift:.3} of a beat"
+    );
+}
+
+#[test]
+fn beatgrid_spacing_is_uniform() {
+    // Spacing must be stable: no unstable inter-beat intervals. (The single-tempo model is
+    // uniform by construction; this pins the contract so a future variable grid can't
+    // silently regress continuity.)
+    let grid = estimate_beatgrid(&click_track(124.0, 24.0, 0.0), SR);
+    let beats = grid_beats(&grid, 32);
+    let intervals: Vec<f32> = beats.windows(2).map(|w| w[1] - w[0]).collect();
+    let mean = intervals.iter().sum::<f32>() / intervals.len() as f32;
+    let max_dev = intervals
+        .iter()
+        .map(|i| (i - mean).abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        max_dev < 1e-4,
+        "inter-beat interval not uniform: max deviation {max_dev:.6}s"
     );
 }
 

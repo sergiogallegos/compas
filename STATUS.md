@@ -155,10 +155,20 @@ clicks ~0.56-0.62, half/double trap ~0.27, noise ~0.00. New tests
 `confidence_is_lower_for_ambiguous_grids` (harness). Verified with `cargo test -p compas-dsp
 --locked`, `cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`, and `cargo fmt`.
 
-**Next beat-tracking task:** research-backed TODO 3 — **beat continuity tests** (detect unstable beat
-spacing / bad tempo jumps, not just approximate BPM correctness). After that, TODO 4 (expanded
-benchmark matrix) and only then any tempo-selection algorithm change (half/double scoring), per the
-adoption gate.
+**Beat-tracking TODO 3 done (beat continuity tests).** The harness now checks phase *continuity*, not
+just average BPM, using an offset-invariant drift metric: the spread (max−min) of the index-aligned
+`true_i − pred_i` beat offset, which cancels the mod-one-beat phase ambiguity and isolates
+accumulating tempo error / one-off jumps. Active tests: the estimator holds phase over a 40 s track
+(drift ≈ 0.085 beat) and a delayed-first-beat track, spacing is uniform, and a deliberately
+2%-detuned grid is *detected* (the metric has teeth). Honest finding: no estimator change was
+needed — its tempo precision already holds phase; these tests lock that in. Verified with
+`cargo test -p compas-dsp --locked`, clippy, and fmt.
+
+**Next beat-tracking task:** research-backed TODO 4 — **expanded beat-tracking benchmark matrix**
+(promote/add fixtures for half/double traps, tempo ramps, swung drums, misleading sparse intros,
+silence/noise, plus a local real-track eval list kept out of git if copyrighted). Only after that
+comes any tempo-selection algorithm change (half/double scoring = adoption-plan slice 3), per the
+gate.
 
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:

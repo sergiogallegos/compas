@@ -27,6 +27,11 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Beat-continuity tests (`compas-dsp`):** the beat-tracking harness now checks phase *continuity*,
+  not just average BPM. An offset-invariant drift metric (the spread of the index-aligned
+  true-vs-predicted beat offset) cancels the mod-one-beat phase ambiguity and isolates accumulating
+  tempo error: the estimator is shown to hold phase over a 40 s track (drift ≈ 0.085 beat) and a
+  delayed-first-beat track, spacing is uniform, and a deliberately 2%-detuned grid is detected.
 - **Candidate tempo diagnostics (`compas-dsp`):** a new `estimate_tempo_diagnostics` exposes the
   ranked autocorrelation candidates, the selected BPM/beat phase, and half/double-octave onset
   support so ambiguous beatgrid decisions are visible before tempo-selection behavior changes. This
