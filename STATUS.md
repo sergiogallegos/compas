@@ -332,8 +332,15 @@ Next, from the ROADMAP backlog:
      minutes-slow); (2) in-app checksum'd model download into `<app-data>/models/`; then S3 UI.
      **Known limitation:** under key-lock the 4 stems stretch independently (own WSOLA each), so
      inter-stem transient phase coherence isn't guaranteed — a shared-grain follow-up is noted.
-   - **S3 — UI:** per-deck STEMS panel (DRUMS/BASS/OTHER/VOCALS faders + mutes), a separate button
-     with progress, and the first-use model-download prompt.
+   - **S3 — UI. ✅ DONE (2026-06-22).** Each local deck has a STEMS control: a separate button (with
+     a live progress strip), DRUMS/BASS/OTHER/VOX level knobs with per-stem mute, and a one-click
+     revert to the full mix. Disabled w/ explanatory tooltip when the build lacks stem support or the
+     model is missing; separation errors surface inline. New `ipc.ts` wrappers
+     (`separateStems`/`clearDeckStems`/`setDeckStemGain`/`stemsModelStatus`) + `stems:*` event
+     listeners; stem state lives in `useDeck` (resets on track load, since the engine clears stems).
+     Verified `npx tsc --noEmit` + `npx vite build` clean. **Remaining for a polished feature:** the
+     in-app first-use **model download** (the panel currently points users to the model path) and the
+     **stem disk/DB cache** for instant reload — both tracked under S2 remainder.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,
    full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
 3. **Release infra — wiring done, secrets pending (2026-06-20).** Auto-update plugin, manual

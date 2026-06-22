@@ -95,8 +95,9 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
   with RT-safe no-drop retirement sized for stem swaps (`LoadDeckStems`/`ClearDeckStems`/
   `SetDeckStemGain`). **S2 IPC + job done:** `separate_stems` runs htdemucs on a worker thread with
   progress events and installs the stems; the native ONNX runtime is behind a `stems` cargo feature
-  so the default build/CI stay pure. Remaining: stem disk/DB cache for instant reload, in-app model
-  download, and the per-deck STEMS UI.
+  so the default build/CI stay pure. **S3 UI done:** per-deck STEMS control — separate button with a
+  progress strip, DRUMS/BASS/OTHER/VOX level knobs + per-stem mute, one-click revert to the mix.
+  Remaining: stem disk/DB cache for instant reload and the in-app model download.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 

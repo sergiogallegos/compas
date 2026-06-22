@@ -552,6 +552,47 @@ export const stopBoothOutput = () => invoke("stop_booth_output");
 /** Booth output level, fed from the post-master mix. */
 export const setBoothVolume = (value: number) => invoke("set_booth_volume", { value });
 
+// ---- Stem separation --------------------------------------------------------------
+
+export interface StemsModelStatus {
+  /** The htdemucs model file is present and usable. */
+  available: boolean;
+  /** This build was compiled with the `stems` feature (the native ONNX runtime). */
+  feature_enabled: boolean;
+  /** Resolved model path (empty when not found). */
+  path: string;
+}
+/** Whether stem separation can run: build feature + model presence. */
+export const stemsModelStatus = () => invoke<StemsModelStatus>("stems_model_status");
+/** Decode + separate `path` into 4 stems on `deck` (worker thread; emits `stems:*` events). */
+export const separateStems = (deck: number, path: string) =>
+  invoke("separate_stems", { deck, path });
+/** Remove a deck's stems, reverting it to the full mix. */
+export const clearDeckStems = (deck: number) => invoke("clear_deck_stems", { deck });
+/** Set one stem's gain (mute/solo). `stem` indexes `[drums, bass, other, vocals]`. */
+export const setDeckStemGain = (deck: number, stem: number, gain: number) =>
+  invoke("set_deck_stem_gain", { deck, stem, gain });
+
+export interface StemsProgress {
+  deck: number;
+  /** Separation progress 0..1. */
+  progress: number;
+}
+export interface StemsReady {
+  deck: number;
+  path: string;
+}
+export interface StemsError {
+  deck: number;
+  message: string;
+}
+export const onStemsProgress = (cb: (e: StemsProgress) => void): Promise<UnlistenFn> =>
+  listen<StemsProgress>("stems:progress", (e) => cb(e.payload));
+export const onStemsReady = (cb: (e: StemsReady) => void): Promise<UnlistenFn> =>
+  listen<StemsReady>("stems:ready", (e) => cb(e.payload));
+export const onStemsError = (cb: (e: StemsError) => void): Promise<UnlistenFn> =>
+  listen<StemsError>("stems:error", (e) => cb(e.payload));
+
 // ---- Event subscriptions ----------------------------------------------------------
 
 export interface DeckLoading {

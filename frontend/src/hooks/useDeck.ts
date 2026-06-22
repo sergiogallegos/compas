@@ -43,8 +43,16 @@ import {
   dbSetLoop,
   dbTrackState,
   dbUpsertAnalysis,
+  separateStems as separateStemsCmd,
+  clearDeckStems as clearDeckStemsCmd,
+  setDeckStemGain as setDeckStemGainCmd,
+  stemsModelStatus,
+  onStemsProgress,
+  onStemsReady,
+  onStemsError,
   type DeckLoaded,
   type FilterMode,
+  type StemsModelStatus,
 } from "../lib/ipc";
 
 export interface LoopState {
@@ -102,6 +110,30 @@ export interface CrusherState {
 /** Fallback echo time (seconds) for one beat when a track has no beatgrid. */
 const NO_GRID_BEAT_SEC = 0.5;
 
+/** Stem indices, in htdemucs output order. */
+export const STEM_COUNT = 4;
+
+export interface StemState {
+  /** `none` = playing the full mix; `separating` = job running; `ready` = stems installed. */
+  status: "none" | "separating" | "ready";
+  /** Separation progress 0..1 while `separating`. */
+  progress: number;
+  /** Per-stem fader gain 0..1 (`[drums, bass, other, vocals]`). */
+  gains: number[];
+  /** Per-stem mute state. */
+  muted: boolean[];
+  /** Last separation error, if any. */
+  error: string | null;
+}
+
+const STEM_INIT: StemState = {
+  status: "none",
+  progress: 0,
+  gains: Array(STEM_COUNT).fill(1),
+  muted: Array(STEM_COUNT).fill(false),
+  error: null,
+};
+
 export interface DeckState {
   meta: DeckLoaded | null;
   frame: number;
@@ -144,6 +176,10 @@ export interface DeckState {
   loading: boolean;
   /** Whether this deck supports full DSP (local) vs control-only (streaming). */
   dsp: boolean;
+  /** Per-deck stem separation/mix state. */
+  stems: StemState;
+  /** Stem-separation availability (build feature + model presence), or null until probed. */
+  stemsModel: StemsModelStatus | null;
 }
 
 function filterParams(x: number): { mode: FilterMode; cutoff: number; resonance: number } {
@@ -184,6 +220,8 @@ export function useDeck(deck: number, dsp = true) {
   const [crusher, setCrusherState] = useState<CrusherState>({ active: false, crush: 0.5, down: 0.3 });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [stems, setStems] = useState<StemState>(STEM_INIT);
+  const [stemsModel, setStemsModel] = useState<StemsModelStatus | null>(null);
   const frameRef = useRef(0);
   const tempoRef = useRef(tempo);
   tempoRef.current = tempo;
@@ -240,6 +278,7 @@ export function useDeck(deck: number, dsp = true) {
         setCrusherState((c) => ({ ...c, active: false }));
         setError(null);
         setLoading(false);
+        setStems(STEM_INIT); // engine clears stems on load
         pathRef.current = e.path;
         playedRef.current = false;
 
@@ -303,12 +342,44 @@ export function useDeck(deck: number, dsp = true) {
         setLoading(false);
       }),
     );
+    track(
+      onStemsProgress((e) => {
+        if (e.deck !== deck) return;
+        setStems((s) => ({ ...s, status: "separating", progress: e.progress, error: null }));
+      }),
+    );
+    track(
+      onStemsReady((e) => {
+        if (e.deck !== deck) return;
+        setStems({ ...STEM_INIT, status: "ready", progress: 1 });
+      }),
+    );
+    track(
+      onStemsError((e) => {
+        if (e.deck !== deck) return;
+        setStems((s) => ({ ...s, status: "none", progress: 0, error: e.message }));
+      }),
+    );
 
     return () => {
       active = false;
       unlistens.forEach((u) => u());
     };
   }, [deck]);
+
+  // Probe stem-separation availability once (build feature + model presence), local decks only.
+  useEffect(() => {
+    if (!inTauri() || !dsp) return;
+    let live = true;
+    stemsModelStatus()
+      .then((s) => {
+        if (live) setStemsModel(s);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [dsp]);
 
   const actions = useMemo(() => {
     const swallow = () => {};
@@ -628,10 +699,39 @@ export function useDeck(deck: number, dsp = true) {
         setCrusherState(next);
         if (next.active) pushCrusher(next);
       },
+      // --- Stems: separate the loaded track, then mute/solo/level the 4 parts ---
+      separateStems: () => {
+        if (!path) return;
+        setStems((s) => ({ ...s, status: "separating", progress: 0, error: null }));
+        separateStemsCmd(deck, path).catch((e) =>
+          setStems((s) => ({ ...s, status: "none", error: String(e) })),
+        );
+      },
+      clearStems: () => {
+        clearDeckStemsCmd(deck).catch(swallow);
+        setStems(STEM_INIT);
+      },
+      setStemGain: (i: number, gain: number) => {
+        setStems((s) => {
+          const gains = [...s.gains];
+          gains[i] = gain;
+          // A muted stem stays at 0; the fader only takes effect when unmuted.
+          setDeckStemGainCmd(deck, i, s.muted[i] ? 0 : gain).catch(swallow);
+          return { ...s, gains };
+        });
+      },
+      toggleStemMute: (i: number) => {
+        setStems((s) => {
+          const muted = [...s.muted];
+          muted[i] = !muted[i];
+          setDeckStemGainCmd(deck, i, muted[i] ? 0 : s.gains[i]).catch(swallow);
+          return { ...s, muted };
+        });
+      },
     };
   }, [deck, playing, tempo, meta, isLeader]);
 
-  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel };
   return { state, actions, deck };
 }
 

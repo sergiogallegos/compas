@@ -35,6 +35,12 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Per-deck STEMS panel (S3, UI):** each local deck now has a STEMS control that separates the
+  loaded track (showing a live progress strip), then exposes DRUMS/BASS/OTHER/VOX level knobs with
+  per-stem mute and a one-click revert to the full mix. The button is disabled with an explanatory
+  tooltip when the build lacks stem support or the model is missing, and separation errors surface
+  inline. Wired through new `separateStems`/`clearDeckStems`/`setDeckStemGain`/`stemsModelStatus` IPC
+  and the `stems:progress`/`ready`/`error` events.
 - **Stem separation IPC + job (S2, app):** a `separate_stems` command decodes a track and runs
   htdemucs on a worker thread, emitting `stems:progress` → `stems:ready`/`stems:error` and installing
   the four stems on a deck; `clear_deck_stems` and `set_deck_stem_gain` drive mute/solo, and

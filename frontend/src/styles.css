@@ -189,6 +189,14 @@
 .fx-detail { display: flex; align-items: center; gap: 10px; margin-top: 6px; padding: 6px; border-radius: var(--r-pad); background: rgba(255,255,255,.025); border: 1px solid var(--border-hairline); }
 .fx-beats { display: flex; gap: 4px; flex: 1; }
 .fx-label { flex: 1; color: var(--text-tertiary); }
+/* Stems: 4 part columns (knob + mute) and the separation progress strip. */
+.stems-detail { justify-content: space-between; gap: 6px; }
+.stem-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex: 1; }
+.stem-mute { width: 100%; padding: 3px 0; font-size: 9px; }
+.stem-progress { position: relative; flex: 1; height: 26px; border-radius: var(--r-pad); border: 1px solid var(--border-hairline); background: var(--surface-control); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.stem-progress-bar { position: absolute; inset: 0 auto 0 0; opacity: 0.35; transition: width 140ms linear; }
+.stem-progress-label { position: relative; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; color: var(--text-primary); }
+.stem-error { margin: 4px 0 0; font-size: 9.5px; line-height: 1.4; color: var(--status-warn, #ff8c1a); }
 .stream-note { flex: 1; border: 1px dashed rgba(40, 224, 255, 0.4); border-radius: var(--r-tile); padding: 12px; font-size: 11px; line-height: 1.5; color: var(--stream); background: rgba(40, 224, 255, 0.05); }
 
 .tempo-col { width: 54px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 8px; }
