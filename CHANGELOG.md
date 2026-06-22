@@ -35,6 +35,12 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Stem disk cache (S2, app):** separated stems are now cached to `<app-data>/stems/<key>` as four
+  WAVs (the key hashes the source path + size + mtime, so editing the file invalidates the cache).
+  A re-separate of a cached track loads in seconds by decoding the WAVs instead of re-running the
+  minutes-long ONNX job — and because the cache-load path needs no ONNX runtime, even a build without
+  the `stems` feature can replay a previously-separated track. Each WAV is written via a temp file +
+  rename so a crash never leaves a partial cache that reads as a hit.
 - **Per-deck STEMS panel (S3, UI):** each local deck now has a STEMS control that separates the
   loaded track (showing a live progress strip), then exposes DRUMS/BASS/OTHER/VOX level knobs with
   per-stem mute and a one-click revert to the full mix. The button is disabled with an explanatory

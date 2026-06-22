@@ -240,8 +240,6 @@ enum EngineMsg {
     SamplerGain {
         gain: f32,
     },
-    // Constructed only by the stem-separation job, which is gated on the `stems` feature.
-    #[cfg_attr(not(feature = "stems"), allow(dead_code))]
     LoadDeckStems {
         deck: usize,
         stems: [Arc<DeckBuffer>; compas_audio::NUM_STEMS],
@@ -920,8 +918,6 @@ struct StemsProgressEvent {
     progress: f32,
 }
 
-// Emitted only by the stem-separation job (gated on the `stems` feature).
-#[cfg_attr(not(feature = "stems"), allow(dead_code))]
 #[derive(Serialize, Clone)]
 struct StemsReadyEvent {
     deck: usize,
@@ -989,14 +985,131 @@ fn separate_stems(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, p
     });
 }
 
-/// Decode `path`, run htdemucs with progress callbacks, and send the four stems to the engine.
-#[cfg(feature = "stems")]
+/// Install stems on `deck`: from the on-disk cache when present (no ONNX runtime needed), else by
+/// running htdemucs and then caching the result so the next load is instant.
 fn run_separation(
     app: &AppHandle,
     tx: &Sender<EngineMsg>,
     deck: usize,
     path: &str,
 ) -> Result<(), String> {
+    let cache_dir = stems_cache_dir(app, path);
+
+    // Fast path: cached stems decode straight to buffers — this works even without the `stems`
+    // feature, so a build that can't separate can still replay a previously-separated track.
+    if let Some(dir) = cache_dir.as_deref() {
+        if let Some(stems) = load_cached_stems(dir) {
+            let _ = app.emit(
+                "stems:progress",
+                StemsProgressEvent {
+                    deck,
+                    progress: 1.0,
+                },
+            );
+            tx.send(EngineMsg::LoadDeckStems { deck, stems })
+                .map_err(|e| e.to_string())?;
+            let _ = app.emit(
+                "stems:ready",
+                StemsReadyEvent {
+                    deck,
+                    path: path.to_string(),
+                },
+            );
+            return Ok(());
+        }
+    }
+
+    // Slow path: separate (requires the `stems` feature), then cache for next time.
+    let stems = separate_uncached(app, deck, path)?;
+    if let Some(dir) = cache_dir.as_deref() {
+        if let Err(e) = write_stem_cache(dir, &stems) {
+            tracing::warn!("stem cache write failed: {e}");
+        }
+    }
+    tx.send(EngineMsg::LoadDeckStems { deck, stems })
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(
+        "stems:ready",
+        StemsReadyEvent {
+            deck,
+            path: path.to_string(),
+        },
+    );
+    Ok(())
+}
+
+/// Deterministic stem cache directory: `<app-data>/stems/<key>`, where the key hashes the source
+/// path + size + mtime so the cache invalidates if the underlying file changes.
+fn stems_cache_dir(app: &AppHandle, path: &str) -> Option<std::path::PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let base = app.path().app_data_dir().ok()?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut h);
+    if let Ok(meta) = std::fs::metadata(path) {
+        meta.len().hash(&mut h);
+        if let Ok(mtime) = meta.modified() {
+            if let Ok(d) = mtime.duration_since(std::time::UNIX_EPOCH) {
+                d.as_secs().hash(&mut h);
+            }
+        }
+    }
+    Some(base.join("stems").join(format!("{:016x}", h.finish())))
+}
+
+/// Load cached stems from `dir` if all four WAVs are present and decode cleanly. A partial or
+/// corrupt cache reads as a miss (returns `None`) so separation re-runs. Feature-independent.
+fn load_cached_stems(dir: &std::path::Path) -> Option<[Arc<DeckBuffer>; compas_audio::NUM_STEMS]> {
+    let mut bufs: Vec<Arc<DeckBuffer>> = Vec::with_capacity(compas_audio::NUM_STEMS);
+    for name in compas_stems::SOURCES {
+        let p = dir.join(format!("{name}.wav"));
+        if !p.is_file() {
+            return None;
+        }
+        let (buffer, _meta) = compas_sources::decode_full(p.to_str()?).ok()?;
+        bufs.push(Arc::new(buffer));
+    }
+    bufs.try_into().ok()
+}
+
+/// Write the four stem buffers to `dir` as 32-bit-float WAVs. Each is written to a `.tmp` file then
+/// renamed, so a crash mid-write never leaves a partial `.wav` that would read as a cache hit.
+fn write_stem_cache(
+    dir: &std::path::Path,
+    stems: &[Arc<DeckBuffer>; compas_audio::NUM_STEMS],
+) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    for (i, name) in compas_stems::SOURCES.iter().enumerate() {
+        let final_path = dir.join(format!("{name}.wav"));
+        let tmp = dir.join(format!("{name}.wav.tmp"));
+        write_wav_file(&tmp, &stems[i].samples, stems[i].source_rate)?;
+        std::fs::rename(&tmp, &final_path)?;
+    }
+    Ok(())
+}
+
+/// Write a complete 32-bit-float stereo WAV from an in-memory buffer.
+fn write_wav_file(
+    path: &std::path::Path,
+    samples: &[f32],
+    sample_rate: u32,
+) -> std::io::Result<()> {
+    let mut w = BufWriter::new(File::create(path)?);
+    write_wav_header(&mut w, sample_rate)?;
+    let mut data_bytes = 0u32;
+    for s in samples {
+        w.write_all(&s.to_le_bytes())?;
+        data_bytes = data_bytes.saturating_add(4);
+    }
+    finalize_wav(w, data_bytes)
+}
+
+/// Run htdemucs on `path` and return the four stem buffers. Requires the `stems` feature.
+#[cfg(feature = "stems")]
+fn separate_uncached(
+    app: &AppHandle,
+    deck: usize,
+    path: &str,
+) -> Result<[Arc<DeckBuffer>; compas_audio::NUM_STEMS], String> {
     let model = stems_model_path(app).ok_or_else(|| {
         "htdemucs model not found — download it first (expected <app-data>/models/htdemucs.onnx \
          or set COMPAS_HTDEMUCS_ONNX)"
@@ -1015,29 +1128,19 @@ fn run_separation(
 
     let source_rate = buffer.source_rate;
     let ordered = set.in_order();
-    let stems: [Arc<DeckBuffer>; compas_audio::NUM_STEMS] =
-        std::array::from_fn(|i| Arc::new(DeckBuffer::new(ordered[i].clone(), source_rate)));
-
-    tx.send(EngineMsg::LoadDeckStems { deck, stems })
-        .map_err(|e| e.to_string())?;
-    let _ = app.emit(
-        "stems:ready",
-        StemsReadyEvent {
-            deck,
-            path: path.to_string(),
-        },
-    );
-    Ok(())
+    Ok(std::array::from_fn(|i| {
+        Arc::new(DeckBuffer::new(ordered[i].clone(), source_rate))
+    }))
 }
 
-/// Stub when built without the `stems` feature (no native ONNX runtime linked).
+/// Stub when built without the `stems` feature (no native ONNX runtime linked). Cached stems still
+/// load via [`load_cached_stems`]; only fresh separation is unavailable.
 #[cfg(not(feature = "stems"))]
-fn run_separation(
+fn separate_uncached(
     _app: &AppHandle,
-    _tx: &Sender<EngineMsg>,
     _deck: usize,
     _path: &str,
-) -> Result<(), String> {
+) -> Result<[Arc<DeckBuffer>; compas_audio::NUM_STEMS], String> {
     Err(
         "stem separation is not available in this build (rebuild with `--features stems`)"
             .to_string(),
