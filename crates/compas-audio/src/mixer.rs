@@ -799,6 +799,45 @@ fn hermite(p0: f32, p1: f32, p2: f32, p3: f32, t: f32) -> f32 {
     ((c3 * t + c2) * t + c1) * t + c0
 }
 
+/// Explicit output-bus taps owned by the audio thread.
+struct OutputRouting {
+    /// When recording, the post-master output is pushed here for the writer thread to drain.
+    record_sink: Option<Producer<f32>>,
+    /// Headphone cue bus: blend (0 = cued decks only, 1 = master only), output level, and sink.
+    cue: CueRouting,
+    /// Booth/monitor output: independent post-master level and optional 3rd output stream.
+    booth: BoothRouting,
+}
+
+struct CueRouting {
+    mix: f32,
+    volume: GainSmoother,
+    sink: Option<Producer<f32>>,
+}
+
+struct BoothRouting {
+    volume: GainSmoother,
+    sink: Option<Producer<f32>>,
+}
+
+impl OutputRouting {
+    fn new(device_rate: f32) -> Self {
+        Self {
+            record_sink: None,
+            cue: CueRouting {
+                // Default cue blend at the "cue" end so PFL'd decks are audible immediately.
+                mix: 0.0,
+                volume: GainSmoother::new(0.8, device_rate, 10.0),
+                sink: None,
+            },
+            booth: BoothRouting {
+                volume: GainSmoother::new(0.8, device_rate, 10.0),
+                sink: None,
+            },
+        }
+    }
+}
+
 /// The audio-thread mixer: N decks → crossfader → master gain → output.
 pub struct Mixer {
     decks: [DeckPlayer; NUM_DECKS],
@@ -812,16 +851,7 @@ pub struct Mixer {
     peak_deck: [f32; NUM_DECKS],
     peak_l: f32,
     peak_r: f32,
-    /// When recording, the master output is pushed here for the writer thread to drain.
-    record_sink: Option<Producer<f32>>,
-    /// Headphone cue bus: blend (0 = cued decks only, 1 = master only) and output level.
-    cue_mix: f32,
-    cue_vol: GainSmoother,
-    /// When cue monitoring is on, the headphone mix is pushed here for the 2nd output stream.
-    cue_sink: Option<Producer<f32>>,
-    /// Booth output: independent post-master monitor level and optional 3rd output stream.
-    booth_vol: GainSmoother,
-    booth_sink: Option<Producer<f32>>,
+    routing: OutputRouting,
     /// Smoothed audio-callback load, and the running overrun count.
     rt_load: f32,
     xrun_count: u64,
@@ -858,13 +888,7 @@ impl Mixer {
             peak_deck: [0.0; NUM_DECKS],
             peak_l: 0.0,
             peak_r: 0.0,
-            record_sink: None,
-            // Default cue blend at the "cue" end so PFL'd decks are audible immediately.
-            cue_mix: 0.0,
-            cue_vol: GainSmoother::new(0.8, device_rate, 10.0),
-            cue_sink: None,
-            booth_vol: GainSmoother::new(0.8, device_rate, 10.0),
-            booth_sink: None,
+            routing: OutputRouting::new(device_rate),
             rt_load: 0.0,
             xrun_count: 0,
             synth: Synth::new(device_rate),
@@ -1130,13 +1154,15 @@ impl Mixer {
                         d.cue = active;
                     }
                 }
-                AudioCommand::SetCueMix(m) => self.cue_mix = m.clamp(0.0, 1.0),
-                AudioCommand::SetCueVolume(v) => self.cue_vol.set_target(v.max(0.0)),
-                AudioCommand::StartCueOutput { sink } => self.cue_sink = Some(sink),
-                AudioCommand::StopCueOutput => self.cue_sink = None,
-                AudioCommand::SetBoothVolume(v) => self.booth_vol.set_target(v.max(0.0)),
-                AudioCommand::StartBoothOutput { sink } => self.booth_sink = Some(sink),
-                AudioCommand::StopBoothOutput => self.booth_sink = None,
+                AudioCommand::SetCueMix(m) => self.routing.cue.mix = m.clamp(0.0, 1.0),
+                AudioCommand::SetCueVolume(v) => self.routing.cue.volume.set_target(v.max(0.0)),
+                AudioCommand::StartCueOutput { sink } => self.routing.cue.sink = Some(sink),
+                AudioCommand::StopCueOutput => self.routing.cue.sink = None,
+                AudioCommand::SetBoothVolume(v) => {
+                    self.routing.booth.volume.set_target(v.max(0.0));
+                }
+                AudioCommand::StartBoothOutput { sink } => self.routing.booth.sink = Some(sink),
+                AudioCommand::StopBoothOutput => self.routing.booth.sink = None,
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
@@ -1294,13 +1320,13 @@ impl Mixer {
                     }
                 }
                 AudioCommand::StartRecording { sink } => {
-                    self.record_sink = Some(sink);
+                    self.routing.record_sink = Some(sink);
                 }
                 AudioCommand::StopRecording => {
                     // Dropping the producer makes the writer thread see `is_abandoned`
                     // and finalize the WAV. Drop happens here on the audio thread, but the
                     // consumer is still alive so it only decrements a refcount (RT-safe).
-                    self.record_sink = None;
+                    self.routing.record_sink = None;
                 }
                 AudioCommand::NoteOn { note, velocity } => self.synth.note_on(note, velocity),
                 AudioCommand::NoteOff { note } => self.synth.note_off(note),
@@ -1392,8 +1418,8 @@ impl Mixer {
         self.peak_r = self.peak_r.max(or.abs());
         // Booth tap: independent monitor level fed from the post-master mix.
         // Advance the smoother every frame even when disconnected so connecting later is click-free.
-        let bvol = self.booth_vol.next_gain();
-        if let Some(sink) = self.booth_sink.as_mut() {
+        let bvol = self.routing.booth.volume.next_gain();
+        if let Some(sink) = self.routing.booth.sink.as_mut() {
             if sink.slots() >= 2 {
                 let _ = sink.push(ol * bvol);
                 let _ = sink.push(or * bvol);
@@ -1401,7 +1427,7 @@ impl Mixer {
         }
         // Recording tap: push the master frame for the writer thread. Push both samples
         // together (or neither) so L/R never split across a full-ring drop. RT-safe.
-        if let Some(sink) = self.record_sink.as_mut() {
+        if let Some(sink) = self.routing.record_sink.as_mut() {
             if sink.slots() >= 2 {
                 let _ = sink.push(ol);
                 let _ = sink.push(or);
@@ -1411,12 +1437,12 @@ impl Mixer {
                     .fetch_add(1, Ordering::Relaxed);
             }
         }
-        // Headphone cue tap: blend the cue bus with the master (cue_mix) at the headphone
+        // Headphone cue tap: blend the cue bus with the master at the headphone
         // level, and push for the 2nd output stream. Advance the smoother every frame
         // (click-free) whether or not the sink is connected. RT-safe.
-        let cvol = self.cue_vol.next_gain();
-        if let Some(sink) = self.cue_sink.as_mut() {
-            let mix = self.cue_mix;
+        let cvol = self.routing.cue.volume.next_gain();
+        if let Some(sink) = self.routing.cue.sink.as_mut() {
+            let mix = self.routing.cue.mix;
             let hl = (cl * (1.0 - mix) + ol * mix) * cvol;
             let hr = (cr * (1.0 - mix) + or * mix) * cvol;
             if sink.slots() >= 2 {
@@ -1804,10 +1830,10 @@ mod tests {
         }
         // Cue only deck 1; full cue (no master bleed), unity headphone level.
         mixer.decks[1].cue = true;
-        mixer.cue_mix = 0.0;
-        mixer.cue_vol = GainSmoother::new(1.0, 48_000.0, 10.0);
+        mixer.routing.cue.mix = 0.0;
+        mixer.routing.cue.volume = GainSmoother::new(1.0, 48_000.0, 10.0);
         let (cue_tx, mut cue_rx) = rtrb::RingBuffer::<f32>::new(64);
-        mixer.cue_sink = Some(cue_tx);
+        mixer.routing.cue.sink = Some(cue_tx);
 
         let (ml, _mr) = mixer.next_frame();
         let hl = cue_rx.pop().expect("cue L pushed");
@@ -1840,9 +1866,9 @@ mod tests {
         mixer.decks[0].base_ratio = 1.0;
         mixer.decks[0].playing = true;
         mixer.decks[0].xfader_assign = XfaderAssign::Thru;
-        mixer.booth_vol = GainSmoother::new(0.5, 48_000.0, 10.0);
+        mixer.routing.booth.volume = GainSmoother::new(0.5, 48_000.0, 10.0);
         let (booth_tx, mut booth_rx) = rtrb::RingBuffer::<f32>::new(64);
-        mixer.booth_sink = Some(booth_tx);
+        mixer.routing.booth.sink = Some(booth_tx);
 
         let (ml, mr) = mixer.next_frame();
         let bl = booth_rx.pop().expect("booth L pushed");
@@ -1860,8 +1886,8 @@ mod tests {
         let mut mixer = Mixer::new(48_000.0, crx, rtx, telemetry.clone());
         let (record_tx, _record_rx) = rtrb::RingBuffer::<f32>::new(2);
         let (cue_tx, _cue_rx) = rtrb::RingBuffer::<f32>::new(2);
-        mixer.record_sink = Some(record_tx);
-        mixer.cue_sink = Some(cue_tx);
+        mixer.routing.record_sink = Some(record_tx);
+        mixer.routing.cue.sink = Some(cue_tx);
 
         mixer.next_frame(); // fills both tiny rings
         mixer.next_frame(); // no space left: both paths drop a stereo frame

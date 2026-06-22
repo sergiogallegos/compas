@@ -58,6 +58,8 @@ All notable changes to compas are documented here. Format follows
 - **Booth output:** added an optional post-master booth monitor path with independent output device
   selection and BOOTH level. The mixer pushes the booth tap through a lock-free ring to a dedicated
   CPAL output thread; frontend controls sit under the crossfader next to headphone cue.
+- **Explicit output routing model:** grouped record, cue/headphone, and booth sinks under
+  `OutputRouting` in the audio mixer, giving future bus/routing policy work one clear owner.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted

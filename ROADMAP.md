@@ -263,8 +263,9 @@ then turn the findings into tests, benchmarks, or small code changes.
    payload/UI tooltip. Remaining: true stream underrun detection and dropped UI telemetry events.
 4. ✅ **Booth output** — optional third output stream with independent gain/device selection, fed
    from the post-master mix by default.
-5. ⬜ **Master/headphone/record routing model** — make routing bus-based: master, cue/headphones,
-   booth, and record taps are explicit outputs instead of scattered one-off paths.
+5. 🔶 **Master/headphone/record routing model** — mixer taps are now grouped under explicit
+   `OutputRouting` buses for record, cue/headphones, and booth. Remaining: user-selectable record
+   source/policy and a fuller bus matrix for future mic/aux/stems routing.
 6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; extend it to output-device
    latency, cue-device latency, buffering, and recording alignment.
 7. 🔶 **No-drop guarantee for old buffers** — keep proving that retired `Arc<DeckBuffer>` values and

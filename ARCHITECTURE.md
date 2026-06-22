@@ -167,9 +167,11 @@ preallocated processors, smoothed parameters, and stable buffer references.
 ## 5a. Routing, devices, and reliability backlog
 
 The current mixer exposes master output, headphone/PFL output, booth output, recording, and
-telemetry. Secondary outputs are fed by lock-free rings from the one RT mixer so decks and DSP are
-never double-advanced: cue/headphones receive a PFL/master blend, booth receives the post-master
-mix with its own smoothed gain, and recording taps the post-master mix for the writer thread.
+telemetry. `compas-audio::Mixer` groups the secondary taps under `OutputRouting`: record,
+cue/headphones, and booth each have one explicit owner. Secondary outputs are fed by lock-free
+rings from the one RT mixer so decks and DSP are never double-advanced: cue/headphones receive a
+PFL/master blend, booth receives the post-master mix with its own smoothed gain, and recording taps
+the post-master mix for the writer thread.
 The next hardening pass should make these guarantees explicit:
 
 1. **Sync edge-case tests:** cover empty decks, late/early beatgrid anchors, tempo extremes,
