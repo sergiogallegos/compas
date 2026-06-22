@@ -84,6 +84,12 @@ large graph/stem snapshots through the same retire model. Verified with
 `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
 `cd frontend && npx tsc --noEmit`.
 
+**Hardening item 8 partial:** sampler pads are now first-class control-bus targets
+(`sampler.N.trigger` plus `sampler.gain`), and the bundled Akai MPK Mini MK3 / LPD8 profiles route
+their factory pad notes to sampler pads instead of the stale cue/sync bindings. Bundled profile
+validation continues to assert every binding targets a real registered control. Remaining follow-up:
+more hardware-authored profiles (DDJ-SB3, Numark, Hercules) and per-device HID/LED behavior.
+
 **Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
 Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state
 handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online beat-tracking source
@@ -138,7 +144,7 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   controller-bus dispatcher + activate/deactivate IPC + the **guided learn editor** (wiggle-to-bind
   over the control registry; MIDI events now carry channel; save/activate profiles) + **bundled
   starter profiles** (Korg nanoKONTROL2, Akai MPK Mini MK3, Akai LPD8 — knobs→gains/filters,
-  pads→cue/sync, from each device's factory-default map; a `controllers::tests` check asserts every
+  Akai pads→sampler triggers, from each device's factory-default map; a `controllers::tests` check asserts every
   bundled binding targets a real control) + **output/LED feedback ✅** (design fork resolved:
   reflect *all* changes — the frontend pushes each mapped control's value via `controller_feedback`
   on any UI/controller change; the engine maps engine-value→MIDI through the control behavior and

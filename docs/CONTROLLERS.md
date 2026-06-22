@@ -23,8 +23,8 @@ own. (See the IP section of `CONTROLLER-ARCHITECTURE.md`.)
 
 ## Akai
 - ✅ **MPK Mini MK3** (bundled starter; 8 knobs CC 70–77 → deck gains + filters, pads notes 36–43 →
-  cue/sync — Akai factory default map) · ✅ **LPD8** (bundled starter; 8 knobs CC 1–8 → deck gains +
-  filters, 8 pads notes 36–43 → cue/sync — Program-1 factory default) · ⬜ MPD24
+  sampler pads 1–8 — Akai factory default map) · ✅ **LPD8** (bundled starter; 8 knobs CC 1–8 →
+  deck gains + filters, 8 pads notes 36–43 → sampler pads 1–8 — Program-1 factory default) · ⬜ MPD24
 
 > The two Akai starters above are authored from each device's documented factory-default program
 > (a hardware fact, not a copied mapping). Pad/program defaults vary by firmware revision and editor

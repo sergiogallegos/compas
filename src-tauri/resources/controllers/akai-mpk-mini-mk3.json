@@ -13,14 +13,14 @@
     { "channel": 0, "input": { "kind": "cc", "cc": 76 }, "control": "deck.2.filter", "soft_takeover": true },
     { "channel": 0, "input": { "kind": "cc", "cc": 77 }, "control": "deck.3.filter", "soft_takeover": true },
 
-    { "channel": 0, "input": { "kind": "note", "note": 36 }, "control": "deck.0.cue" },
-    { "channel": 0, "input": { "kind": "note", "note": 37 }, "control": "deck.1.cue" },
-    { "channel": 0, "input": { "kind": "note", "note": 38 }, "control": "deck.2.cue" },
-    { "channel": 0, "input": { "kind": "note", "note": 39 }, "control": "deck.3.cue" },
+    { "channel": 0, "input": { "kind": "note", "note": 36 }, "control": "sampler.0.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 37 }, "control": "sampler.1.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 38 }, "control": "sampler.2.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 39 }, "control": "sampler.3.trigger" },
 
-    { "channel": 0, "input": { "kind": "note", "note": 40 }, "control": "deck.0.sync" },
-    { "channel": 0, "input": { "kind": "note", "note": 41 }, "control": "deck.1.sync" },
-    { "channel": 0, "input": { "kind": "note", "note": 42 }, "control": "deck.2.sync" },
-    { "channel": 0, "input": { "kind": "note", "note": 43 }, "control": "deck.3.sync" }
+    { "channel": 0, "input": { "kind": "note", "note": 40 }, "control": "sampler.4.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 41 }, "control": "sampler.5.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 42 }, "control": "sampler.6.trigger" },
+    { "channel": 0, "input": { "kind": "note", "note": 43 }, "control": "sampler.7.trigger" }
   ]
 }

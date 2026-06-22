@@ -274,8 +274,10 @@ then turn the findings into tests, benchmarks, or small code changes.
    now go through the reclaim ring or bounded RT-side parking when the ring is full; tests force
    deck and sampler replacement under reclaim pressure. Remaining future work: apply the same
    retire model to large graph/stem snapshot swaps.
-8. 🔶 **Controller mapping profiles** — continue adding tested profiles (DDJ-SB3, Numark, Hercules,
-   more Akai/Korg), plus hot-plug profile activation and per-device HID button/LED support.
+8. 🔶 **Controller mapping profiles** — sampler pads are now registered control-bus targets, and
+   the bundled Akai MPK Mini MK3 / LPD8 starter profiles map factory pad notes to sampler triggers.
+   Continue adding tested profiles (DDJ-SB3, Numark, Hercules, more Akai/Korg), plus hot-plug
+   profile activation and per-device HID button/LED support.
 9. ⬜ **Modular per-deck processing graph** — formalize
    `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`
    so stems, ReplayGain, FX chains, booth, mic/aux, and recording all compose cleanly.

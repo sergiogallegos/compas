@@ -252,6 +252,20 @@ impl Registry {
             "Phones",
             Unit::Ratio,
         ));
+        r.add(ControlSpec::new(
+            "sampler.gain",
+            Behavior::Linear { min: 0.0, max: 1.5 },
+            "Sampler",
+            Unit::Ratio,
+        ));
+        for pad in 0..8 {
+            r.add(ControlSpec::new(
+                ControlId(Cow::Owned(format!("sampler.{pad}.trigger"))),
+                Behavior::Toggle,
+                "Sampler Pad",
+                Unit::Boolean,
+            ));
+        }
         // Per-deck controls.
         for d in 0..deck_count {
             let p = |suffix: &str| ControlId(Cow::Owned(format!("deck.{d}.{suffix}")));
@@ -435,6 +449,18 @@ mod tests {
         assert!(soft_takeover_ok(0.50, 0.51, 0.03));
         assert!(!soft_takeover_ok(0.20, 0.80, 0.03));
         assert!(soft_takeover_ok(0.20, 0.20, 0.0));
+    }
+
+    #[test]
+    fn registry_exposes_sampler_pad_targets() {
+        let r = Registry::defaults(4);
+        assert!(r.get_str("sampler.gain").is_some());
+        for pad in 0..8 {
+            assert!(
+                r.get_str(&format!("sampler.{pad}.trigger")).is_some(),
+                "sampler pad {pad} should be mappable"
+            );
+        }
     }
 
     #[test]

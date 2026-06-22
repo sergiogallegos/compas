@@ -228,6 +228,15 @@ export function App() {
       setMasterGain(value).catch(() => {});
       return;
     }
+    if (control === "sampler.gain") {
+      sampler.setGain(value);
+      return;
+    }
+    const sm = control.match(/^sampler\.(\d+)\.trigger$/);
+    if (sm) {
+      if (value >= 0.5) sampler.trigger(parseInt(sm[1], 10));
+      return;
+    }
     const m = control.match(/^deck\.(\d+)\.(.+)$/);
     if (!m) return;
     const d = decks[parseInt(m[1], 10)];
@@ -274,6 +283,7 @@ export function App() {
       controllerFeedback(`deck.${d.deck}.sync`, s.synced ? 1 : 0).catch(() => {});
     }
     controllerFeedback("mixer.crossfader", xfade).catch(() => {});
+    controllerFeedback("sampler.gain", sampler.gain).catch(() => {});
     // Depend on the mapped scalars only (not the `decks` array, which is a new identity each
     // render, nor frame/level which tick at 30 Hz) so this re-runs only on real control changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,7 +292,7 @@ export function App() {
     deckB.state.gain, deckB.state.filter, deckB.state.eq.low, deckB.state.eq.mid, deckB.state.eq.hi, deckB.state.tempo, deckB.state.playing, deckB.state.keylock, deckB.state.synced,
     deckC.state.gain, deckC.state.filter, deckC.state.eq.low, deckC.state.eq.mid, deckC.state.eq.hi, deckC.state.tempo, deckC.state.playing, deckC.state.keylock, deckC.state.synced,
     deckD.state.gain, deckD.state.filter, deckD.state.eq.low, deckD.state.eq.mid, deckD.state.eq.hi, deckD.state.tempo, deckD.state.playing, deckD.state.keylock, deckD.state.synced,
-    xfade,
+    xfade, sampler.gain,
   ]);
 
   // Re-push on any mapped value change…
