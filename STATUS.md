@@ -321,11 +321,17 @@ Next, from the ROADMAP backlog:
      `DeckTelemetry::stems_loaded` exposes state. 4 new tests (sum/mute, clear-reverts,
      load-clears-stems, no-drop stem parking). Verified `cargo test/clippy --all-targets/fmt` on
      `compas-audio` + `cargo check` on the Tauri app.
-     **Remaining S2 (next):** `separate_stems` IPC job (run `compas-stems` on a worker thread,
-     progress events) + checksum'd model optional-download; cache 4 stem WAVs to app-data + reference
-     from SQLite for instant reload; `set_deck_stem`/`set_deck_stem_gain` IPC → the new commands.
-     **Known limitation:** under key-lock, the 4 stems stretch independently (own WSOLA each), so
-     transient phase coherence between stems isn't guaranteed — a shared-grain follow-up is noted.
+     **S2 IPC + separation job DONE (2026-06-22).** `separate_stems` (Tauri command) decodes on a
+     worker thread, runs htdemucs with `stems:progress` events, and installs the 4 stems via
+     `EngineMsg::LoadDeckStems`; `clear_deck_stems`/`set_deck_stem_gain`/`stems_model_status` round it
+     out. The native ONNX runtime is behind a new **`stems` cargo feature** (`compas-stems/onnx`), so
+     the default build/CI link no onnxruntime (verified: default `cargo clippy -D warnings` clean; and
+     `--features stems` `cargo check`+clippy clean too). Model path = `COMPAS_HTDEMUCS_ONNX` or
+     `<app-data>/models/htdemucs.onnx`; missing → clear error.
+     **Remaining S2:** (1) disk + SQLite cache of the 4 stem WAVs so reload is instant (separation is
+     minutes-slow); (2) in-app checksum'd model download into `<app-data>/models/`; then S3 UI.
+     **Known limitation:** under key-lock the 4 stems stretch independently (own WSOLA each), so
+     inter-stem transient phase coherence isn't guaranteed — a shared-grain follow-up is noted.
    - **S3 — UI:** per-deck STEMS panel (DRUMS/BASS/OTHER/VOCALS faders + mutes), a separate button
      with progress, and the first-use model-download prompt.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,

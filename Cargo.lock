@@ -649,6 +649,7 @@ dependencies = [
  "compas-dsp",
  "compas-script",
  "compas-sources",
+ "compas-stems",
  "hidapi",
  "midir",
  "rtrb",

@@ -35,6 +35,15 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Stem separation IPC + job (S2, app):** a `separate_stems` command decodes a track and runs
+  htdemucs on a worker thread, emitting `stems:progress` → `stems:ready`/`stems:error` and installing
+  the four stems on a deck; `clear_deck_stems` and `set_deck_stem_gain` drive mute/solo, and
+  `stems_model_status` reports model presence + whether the build has stem support. The native ONNX
+  runtime stays optional: it's behind a new `stems` cargo feature (`compas-stems/onnx`), so the
+  default build and CI link no onnxruntime and `separate_stems` returns a clear "rebuild with
+  --features stems" message. The model path resolves from `COMPAS_HTDEMUCS_ONNX` or
+  `<app-data>/models/htdemucs.onnx`. (Disk/DB caching for instant reload and an in-app model download
+  are follow-ups.)
 - **Stem playback in the audio engine (S2, `compas-audio`):** each deck can now hold four separated
   stems (`drums, bass, other, vocals`) that overlay its mix buffer — when present, the deck reads and
   sums the stems at the same play-head, each through a smoothed per-stem gain and (under key-lock) its

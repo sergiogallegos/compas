@@ -240,6 +240,20 @@ enum EngineMsg {
     SamplerGain {
         gain: f32,
     },
+    // Constructed only by the stem-separation job, which is gated on the `stems` feature.
+    #[cfg_attr(not(feature = "stems"), allow(dead_code))]
+    LoadDeckStems {
+        deck: usize,
+        stems: [Arc<DeckBuffer>; compas_audio::NUM_STEMS],
+    },
+    ClearDeckStems {
+        deck: usize,
+    },
+    SetDeckStemGain {
+        deck: usize,
+        stem: usize,
+        gain: f32,
+    },
 }
 
 /// Tauri-managed handle: a channel to the audio thread plus shared telemetry and output health.
@@ -601,6 +615,13 @@ fn spawn_engine() -> EngineHandle {
                         AudioCommand::SetSampleLoop { slot, looping }
                     }
                     EngineMsg::SamplerGain { gain } => AudioCommand::SetSamplerGain { gain },
+                    EngineMsg::LoadDeckStems { deck, stems } => {
+                        AudioCommand::LoadDeckStems { deck, stems }
+                    }
+                    EngineMsg::ClearDeckStems { deck } => AudioCommand::ClearDeckStems { deck },
+                    EngineMsg::SetDeckStemGain { deck, stem, gain } => {
+                        AudioCommand::SetDeckStemGain { deck, stem, gain }
+                    }
                 };
                 if let Err(e) = engine.send(cmd) {
                     tracing::warn!("dropped audio command: {e}");
@@ -886,6 +907,158 @@ fn probe_track(path: String) -> Result<ProbedTrack, String> {
         duration_ms: m.duration_ms.unwrap_or(0),
         path,
     })
+}
+
+// ----------------------------------------------------------------------------------
+// Stem separation (S2): decode → htdemucs (worker thread) → install 4 stems on a deck
+// ----------------------------------------------------------------------------------
+
+#[derive(Serialize, Clone)]
+struct StemsProgressEvent {
+    deck: usize,
+    /// Separation progress 0.0..=1.0.
+    progress: f32,
+}
+
+// Emitted only by the stem-separation job (gated on the `stems` feature).
+#[cfg_attr(not(feature = "stems"), allow(dead_code))]
+#[derive(Serialize, Clone)]
+struct StemsReadyEvent {
+    deck: usize,
+    path: String,
+}
+
+#[derive(Serialize, Clone)]
+struct StemsErrorEvent {
+    deck: usize,
+    message: String,
+}
+
+#[derive(Serialize)]
+struct StemsModelStatus {
+    /// Whether the htdemucs model file is present and usable.
+    available: bool,
+    /// Whether this build was compiled with the `stems` feature (the native ONNX runtime).
+    feature_enabled: bool,
+    /// Resolved model path (empty if not found).
+    path: String,
+}
+
+/// Resolve the htdemucs ONNX model path: an explicit `COMPAS_HTDEMUCS_ONNX` override, else
+/// `<app-data>/models/htdemucs.onnx`. Returns `Some` only if the file actually exists.
+fn stems_model_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    if let Ok(p) = std::env::var("COMPAS_HTDEMUCS_ONNX") {
+        let p = std::path::PathBuf::from(p);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+    let base = app.path().app_data_dir().ok()?;
+    let p = base.join("models").join("htdemucs.onnx");
+    p.is_file().then_some(p)
+}
+
+/// Report whether stem separation can run: the build feature and the model file presence.
+#[tauri::command]
+fn stems_model_status(app: AppHandle) -> StemsModelStatus {
+    let path = stems_model_path(&app);
+    StemsModelStatus {
+        available: path.is_some(),
+        feature_enabled: cfg!(feature = "stems"),
+        path: path.map(|p| p.display().to_string()).unwrap_or_default(),
+    }
+}
+
+/// Separate `path` into four stems on a worker thread, emitting `stems:progress` updates then
+/// `stems:ready` (or `stems:error`), and install them on `deck`. Heavy and slow (offline ONNX);
+/// returns immediately. Caching the result to disk for instant reload is a follow-up.
+#[tauri::command]
+fn separate_stems(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path: String) {
+    let tx = state.tx.clone();
+    let _ = app.emit(
+        "stems:progress",
+        StemsProgressEvent {
+            deck,
+            progress: 0.0,
+        },
+    );
+    thread::spawn(move || {
+        if let Err(message) = run_separation(&app, &tx, deck, &path) {
+            let _ = app.emit("stems:error", StemsErrorEvent { deck, message });
+        }
+    });
+}
+
+/// Decode `path`, run htdemucs with progress callbacks, and send the four stems to the engine.
+#[cfg(feature = "stems")]
+fn run_separation(
+    app: &AppHandle,
+    tx: &Sender<EngineMsg>,
+    deck: usize,
+    path: &str,
+) -> Result<(), String> {
+    let model = stems_model_path(app).ok_or_else(|| {
+        "htdemucs model not found — download it first (expected <app-data>/models/htdemucs.onnx \
+         or set COMPAS_HTDEMUCS_ONNX)"
+            .to_string()
+    })?;
+    let (buffer, _meta) =
+        compas_sources::decode_full(path).map_err(|e| format!("decode failed: {e}"))?;
+    let mut separator = compas_stems::StemSeparator::load(&model).map_err(|e| e.to_string())?;
+
+    let app_progress = app.clone();
+    let set = separator
+        .separate(&buffer.samples, buffer.source_rate, |p| {
+            let _ = app_progress.emit("stems:progress", StemsProgressEvent { deck, progress: p });
+        })
+        .map_err(|e| e.to_string())?;
+
+    let source_rate = buffer.source_rate;
+    let ordered = set.in_order();
+    let stems: [Arc<DeckBuffer>; compas_audio::NUM_STEMS] =
+        std::array::from_fn(|i| Arc::new(DeckBuffer::new(ordered[i].clone(), source_rate)));
+
+    tx.send(EngineMsg::LoadDeckStems { deck, stems })
+        .map_err(|e| e.to_string())?;
+    let _ = app.emit(
+        "stems:ready",
+        StemsReadyEvent {
+            deck,
+            path: path.to_string(),
+        },
+    );
+    Ok(())
+}
+
+/// Stub when built without the `stems` feature (no native ONNX runtime linked).
+#[cfg(not(feature = "stems"))]
+fn run_separation(
+    _app: &AppHandle,
+    _tx: &Sender<EngineMsg>,
+    _deck: usize,
+    _path: &str,
+) -> Result<(), String> {
+    Err(
+        "stem separation is not available in this build (rebuild with `--features stems`)"
+            .to_string(),
+    )
+}
+
+/// Remove a deck's stems, reverting it to the mix buffer.
+#[tauri::command]
+fn clear_deck_stems(state: State<'_, EngineHandle>, deck: usize) -> Result<(), String> {
+    state.send(EngineMsg::ClearDeckStems { deck })
+}
+
+/// Set one stem's gain (mute/solo). `stem` indexes `[drums, bass, other, vocals]`.
+#[tauri::command]
+fn set_deck_stem_gain(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    stem: usize,
+    gain: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckStemGain { deck, stem, gain })
 }
 
 // ----------------------------------------------------------------------------------
@@ -2249,6 +2422,10 @@ pub fn run() {
             set_sample_loop,
             set_sampler_gain,
             sampler_pad_count,
+            separate_stems,
+            clear_deck_stems,
+            set_deck_stem_gain,
+            stems_model_status,
             midi_list_ports,
             midi_connect,
             controller_registry,

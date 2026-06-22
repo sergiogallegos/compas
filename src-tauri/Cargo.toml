@@ -14,6 +14,12 @@ default-run = "compas"
 name = "compas_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+default = []
+# Enable real stem separation (links the native ONNX Runtime via compas-stems). Off by default so
+# `cargo build`/CI stay pure; turn on for stem-enabled release builds: `cargo build --features stems`.
+stems = ["compas-stems/onnx"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -33,6 +39,9 @@ compas-audio = { workspace = true }
 compas-dsp = { workspace = true }
 compas-sources = { workspace = true }
 compas-script = { workspace = true }   # sandboxed controller-scripting runtime (QuickJS)
+# Offline stem separation. Pure by default (no native onnxruntime link); the `stems` feature
+# below pulls in `compas-stems/onnx` so the default build + CI never need a local runtime.
+compas-stems = { workspace = true }
 rtrb = { workspace = true }       # recording ring: master tap → WAV writer thread
 midir = "0.10"                    # cross-platform MIDI input (controllers → synth)
 hidapi = "2"                      # raw HID input for non-class-compliant controllers (NI, etc.)

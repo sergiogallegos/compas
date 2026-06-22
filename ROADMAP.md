@@ -93,8 +93,10 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
   implemented (model-rate/source-rate resampling). **S2 engine-core done:** each deck overlays four
   `Arc<DeckBuffer>` stems read/summed at the play-head (per-stem smoothed gain + key-lock stretch),
   with RT-safe no-drop retirement sized for stem swaps (`LoadDeckStems`/`ClearDeckStems`/
-  `SetDeckStemGain`). Remaining: model download, the separate-stems IPC job + DB cache, and the
-  per-deck STEMS UI.
+  `SetDeckStemGain`). **S2 IPC + job done:** `separate_stems` runs htdemucs on a worker thread with
+  progress events and installs the stems; the native ONNX runtime is behind a `stems` cargo feature
+  so the default build/CI stay pure. Remaining: stem disk/DB cache for instant reload, in-app model
+  download, and the per-deck STEMS UI.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 
