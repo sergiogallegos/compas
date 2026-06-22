@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   dbAddToCrate,
   dbCrateTracks,
@@ -29,9 +29,16 @@ function fmtMs(ms: number): string {
 }
 
 /** `loadedPaths[0]` = Deck A's file path, `[1]` = Deck B's — for A/B row tags. */
-export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }) {
+export const Library = forwardRef<
+  HTMLElement,
+  { loadedPaths: (string | undefined)[]; focusTarget?: "library" | "crates" | null; focusSeq?: number }
+>(function Library({ loadedPaths, focusTarget = null, focusSeq = 0 }, ref) {
   const lib = useLibrary();
   const [q, setQ] = useState("");
+  const rootRef = useRef<HTMLElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [cratesPulse, setCratesPulse] = useState(false);
+  useImperativeHandle(ref, () => rootRef.current as HTMLElement);
   // Search results (engine grammar) and a "suggest next" override; null = show the full library.
   const [results, setResults] = useState<DbTrack[] | null>(null);
   const [suggestFor, setSuggestFor] = useState<string | null>(null);
@@ -96,9 +103,22 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
 
   const filtered = results ?? lib.tracks;
 
+  useEffect(() => {
+    if (!focusTarget) return;
+    rootRef.current?.scrollIntoView({ block: "nearest" });
+    if (focusTarget === "library") {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+      return;
+    }
+    setCratesPulse(true);
+    const id = window.setTimeout(() => setCratesPulse(false), 850);
+    return () => window.clearTimeout(id);
+  }, [focusSeq, focusTarget]);
+
   return (
-    <section className="library">
-      <aside className="sources">
+    <section className="library" ref={rootRef}>
+      <aside className={`sources ${cratesPulse ? "sources--focus" : ""}`}>
         <div className="overline src-group">SOURCES</div>
         <div className="src-row src-row--active">
           <span className="src-dot" style={{ background: MAGENTA }} />
@@ -139,6 +159,7 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
           <div className="search">
             <Icon name="search" size={14} />
             <input
+              ref={searchRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search… e.g. bpm:120-128 key:8A artist:daft -live"
@@ -231,4 +252,4 @@ export function Library({ loadedPaths }: { loadedPaths: (string | undefined)[] }
       </div>
     </section>
   );
-}
+});

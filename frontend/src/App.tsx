@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
-import { NavRail } from "./components/NavRail";
+import { NavRail, type NavTarget } from "./components/NavRail";
 import { StatusBar } from "./components/StatusBar";
 import { WaveformZone } from "./components/WaveformZone";
 import { Deck } from "./components/Deck";
@@ -10,13 +10,15 @@ import { Instrument } from "./components/Instrument";
 import { MidiMap } from "./components/MidiMap";
 import { ControllerMap } from "./components/ControllerMap";
 import { Sampler } from "./components/Sampler";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { ProfilePanel } from "./components/ProfilePanel";
 import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
 import { useCue } from "./hooks/useCue";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
+import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--deck-a)", "var(--deck-b)", "var(--deck-c)", "var(--deck-d)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -38,6 +40,17 @@ export function App() {
   const [showMap, setShowMap] = useState(false);
   const [showPads, setShowPads] = useState(false);
   const [showControllers, setShowControllers] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [navTarget, setNavTarget] = useState<NavTarget>("perform");
+  const [contrast, setContrast] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recBusy, setRecBusy] = useState(false);
+  const [libraryFocus, setLibraryFocus] = useState<{ target: "library" | "crates" | null; seq: number }>({ target: null, seq: 0 });
+  const [fxFocus, setFxFocus] = useState(false);
+  const [profileName, setProfileName] = useState(() => localStorage.getItem("compas.profileName") ?? "Main");
+  const libraryRef = useRef<HTMLElement | null>(null);
+  const deckRowRef = useRef<HTMLDivElement | null>(null);
   const midi = useMidi();
   const cue = useCue();
   const sampler = useSampler();
@@ -81,6 +94,56 @@ export function App() {
 
   const masterBpm = leftDeck.state.meta ? leftDeck.state.meta.bpm * leftDeck.state.tempo : null;
   const loadedPaths = decks.map((d) => d.state.meta?.path);
+  const profileInitial = profileName.trim().charAt(0).toUpperCase() || "M";
+
+  useEffect(() => {
+    localStorage.setItem("compas.profileName", profileName);
+  }, [profileName]);
+
+  const toggleRecord = useCallback(async () => {
+    if (!inTauri() || recBusy) return;
+    setRecBusy(true);
+    try {
+      if (recording) {
+        await stopRecording();
+        setRecording(false);
+      } else {
+        const path = await pickRecordingPath();
+        if (path) {
+          await startRecording(path);
+          setRecording(true);
+        }
+      }
+    } catch {
+      setRecording(false);
+    } finally {
+      setRecBusy(false);
+    }
+  }, [recBusy, recording]);
+
+  const openPanel = (setter: (open: boolean) => void) => {
+    setter(true);
+    setShowSettings(false);
+  };
+
+  const selectNav = (target: NavTarget) => {
+    setNavTarget(target);
+    if (target === "perform") {
+      deckRowRef.current?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (target === "library" || target === "crates") {
+      setLibraryFocus({ target, seq: Date.now() });
+      return;
+    }
+    if (target === "fx") {
+      deckRowRef.current?.scrollIntoView({ block: "nearest" });
+      setFxFocus(true);
+      window.setTimeout(() => setFxFocus(false), 900);
+      return;
+    }
+    void toggleRecord();
+  };
 
   // Two decks are sync-pairable when both visible slots are loaded with a tempo.
   const pairReady =
@@ -198,13 +261,13 @@ export function App() {
   });
 
   return (
-    <div className="app">
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} />
+    <div className="app" data-contrast={contrast ? "high" : "standard"}>
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} recording={recording} recBusy={recBusy} onToggleRecord={toggleRecord} onOpenSettings={() => setShowSettings(true)} onOpenProfile={() => setShowProfile(true)} profileInitial={profileInitial} />
       <div className="body">
-        <NavRail />
+        <NavRail active={navTarget} onSelect={selectNav} contrast={contrast} onToggleContrast={() => setContrast((v) => !v)} />
         <div className="content">
           <WaveformZone lanes={[slotLane(leftDeck), slotLane(rightDeck)]} />
-          <div className="deck-row">
+          <div className={`deck-row ${fxFocus ? "deck-row--focus" : ""}`} ref={deckRowRef}>
             <Deck
               ctrl={leftDeck}
               color={DECK_COLORS[leftDeck.deck]}
@@ -238,7 +301,7 @@ export function App() {
               ]}
             />
           </div>
-          <Library loadedPaths={loadedPaths} />
+          <Library ref={libraryRef} loadedPaths={loadedPaths} focusTarget={libraryFocus.target} focusSeq={libraryFocus.seq} />
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} />
@@ -246,6 +309,24 @@ export function App() {
       {showMap && <MidiMap midi={midi} map={midiMap} onClose={() => setShowMap(false)} />}
       {showPads && <Sampler sampler={sampler} onClose={() => setShowPads(false)} />}
       {showControllers && <ControllerMap onClose={() => setShowControllers(false)} />}
+      {showSettings && (
+        <SettingsPanel
+          contrast={contrast}
+          onToggleContrast={() => setContrast((v) => !v)}
+          onOpenKeys={() => openPanel(setShowKeys)}
+          onOpenMap={() => openPanel(setShowMap)}
+          onOpenPads={() => openPanel(setShowPads)}
+          onOpenControllers={() => openPanel(setShowControllers)}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showProfile && (
+        <ProfilePanel
+          name={profileName}
+          onName={setProfileName}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
     </div>
   );
 }

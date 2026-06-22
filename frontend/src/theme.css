@@ -54,6 +54,20 @@
   --shadow-window: 0 40px 120px rgba(0, 0, 0, 0.7);
 }
 
+.app[data-contrast="high"] {
+  --bg-window: #050607;
+  --bg-rail: #0d1014;
+  --surface-1-top: #242a32;
+  --surface-1-bot: #15191f;
+  --surface-sunken: #050607;
+  --surface-control: #2b323c;
+  --border-hairline: rgba(255, 255, 255, 0.14);
+  --border-hairline-strong: rgba(255, 255, 255, 0.28);
+  --text-secondary: #b7beca;
+  --text-tertiary: #8992a0;
+  --text-disabled: #5f6875;
+}
+
 * {
   box-sizing: border-box;
 }

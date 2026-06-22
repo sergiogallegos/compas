@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Logo } from "./Logo";
 import { Icon } from "./icons";
-import { buildInfo, checkForUpdate, inTauri, pickRecordingPath, startRecording, stopRecording, type BuildInfo, type EngineLoad, type MasterMeter } from "../lib/ipc";
+import { buildInfo, checkForUpdate, inTauri, type BuildInfo, type EngineLoad, type MasterMeter } from "../lib/ipc";
 
 export function TitleBar({
   masterBpm,
@@ -19,6 +19,12 @@ export function TitleBar({
   onTogglePads,
   controllersOpen = false,
   onToggleControllers,
+  recording = false,
+  recBusy = false,
+  onToggleRecord,
+  onOpenSettings,
+  onOpenProfile,
+  profileInitial = "M",
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -34,18 +40,51 @@ export function TitleBar({
   onTogglePads?: () => void;
   controllersOpen?: boolean;
   onToggleControllers?: () => void;
+  recording?: boolean;
+  recBusy?: boolean;
+  onToggleRecord?: () => void;
+  onOpenSettings?: () => void;
+  onOpenProfile?: () => void;
+  profileInitial?: string;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
 
-  const [recording, setRecording] = useState(false);
-  const [recBusy, setRecBusy] = useState(false);
   const [build, setBuild] = useState<BuildInfo | null>(null);
   const [updBusy, setUpdBusy] = useState(false);
+  const [metronomeOn, setMetronomeOn] = useState(false);
+  const metronomeBeat = useRef(0);
   useEffect(() => {
     if (!inTauri()) return;
     buildInfo().then(setBuild).catch(() => setBuild(null));
   }, []);
+  useEffect(() => {
+    if (!metronomeOn) return;
+    let ctx: AudioContext | null = null;
+    const bpm = masterBpm && masterBpm > 0 ? masterBpm : 120;
+    const ms = Math.max(125, 60_000 / bpm);
+    const click = () => {
+      ctx ??= new AudioContext();
+      const now = ctx.currentTime;
+      const accent = metronomeBeat.current === 0;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = accent ? 1320 : 880;
+      gain.gain.setValueAtTime(accent ? 0.08 : 0.045, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.04);
+      metronomeBeat.current = (metronomeBeat.current + 1) % 4;
+    };
+    click();
+    const timer = window.setInterval(click, ms);
+    return () => {
+      window.clearInterval(timer);
+      ctx?.close().catch(() => {});
+      metronomeBeat.current = 0;
+    };
+  }, [masterBpm, metronomeOn]);
   const onCheckUpdate = async () => {
     if (!inTauri() || updBusy) return;
     setUpdBusy(true);
@@ -53,27 +92,6 @@ export function TitleBar({
       await checkForUpdate();
     } finally {
       setUpdBusy(false);
-    }
-  };
-  const toggleRecord = async () => {
-    if (!inTauri() || recBusy) return;
-    setRecBusy(true);
-    try {
-      if (recording) {
-        await stopRecording();
-        setRecording(false);
-      } else {
-        const path = await pickRecordingPath();
-        if (path) {
-          await startRecording(path);
-          setRecording(true);
-        }
-      }
-    } catch {
-      // Failed to start/stop — reset to a safe state.
-      setRecording(false);
-    } finally {
-      setRecBusy(false);
     }
   };
   return (
@@ -112,7 +130,13 @@ export function TitleBar({
           </div>
         </div>
         <div className="mini-transport">
-          <button className="mt-btn" disabled title="Metronome: later"><Icon name="play" size={13} /></button>
+          <button
+            className={`mt-btn ${metronomeOn ? "mt-rec--on" : ""}`}
+            onClick={() => setMetronomeOn((v) => !v)}
+            title={metronomeOn ? "Stop metronome" : "Start metronome"}
+          >
+            <Icon name="play" size={13} />
+          </button>
           <span className="mt-btn mono">4/4</span>
           <button
             className={`mt-btn ${keysOpen ? "mt-rec--on" : ""}`}
@@ -144,7 +168,7 @@ export function TitleBar({
           </button>
           <button
             className={`mt-btn mt-rec ${recording ? "mt-rec--on" : ""}`}
-            onClick={toggleRecord}
+            onClick={onToggleRecord}
             disabled={recBusy}
             title={recording ? "Stop recording the master mix" : "Record the master mix to a WAV"}
           >
@@ -177,8 +201,8 @@ export function TitleBar({
             {updBusy ? "…" : `v${build.version} · ${build.sha}`}
           </button>
         )}
-        <button className="icon-btn" disabled title="Settings"><Icon name="settings" size={16} /></button>
-        <span className="avatar">M</span>
+        <button className="icon-btn" onClick={onOpenSettings} title="Settings"><Icon name="settings" size={16} /></button>
+        <button className="avatar" onClick={onOpenProfile} title="Profile">{profileInitial}</button>
       </div>
     </header>
   );
