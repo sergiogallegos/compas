@@ -90,8 +90,11 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 - 🔨 **Stem separation** — **decided 2026-06-20** (see "Decisions made"): offline pre-computed
   stems via `ort` (ONNX Runtime) + htdemucs, optional-download model. S1 offline pipeline is
-  implemented, including model-rate/source-rate resampling; model download + engine/UI integration
-  remain.
+  implemented (model-rate/source-rate resampling). **S2 engine-core done:** each deck overlays four
+  `Arc<DeckBuffer>` stems read/summed at the play-head (per-stem smoothed gain + key-lock stretch),
+  with RT-safe no-drop retirement sized for stem swaps (`LoadDeckStems`/`ClearDeckStems`/
+  `SetDeckStemGain`). Remaining: model download, the separate-stems IPC job + DB cache, and the
+  per-deck STEMS UI.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 

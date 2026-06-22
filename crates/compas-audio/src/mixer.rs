@@ -23,7 +23,12 @@ use crate::sampler::Sampler;
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
-const PENDING_RECLAIM_CAP: usize = NUM_DECKS + 8;
+/// Stems per deck (drums, bass, other, vocals) — matches `compas_stems::SOURCES`. Kept as a
+/// local constant so the real-time crate never depends on `compas-stems` (and its `ort`).
+pub const NUM_STEMS: usize = 4;
+/// RT-side parking capacity for retired buffers when the reclaim ring is briefly full. Sized for
+/// the worst-case burst: every deck swapping its mix **and** its four stems at once.
+const PENDING_RECLAIM_CAP: usize = NUM_DECKS * (1 + NUM_STEMS) + 8;
 
 /// Sync PLL: how hard the beat-phase error pulls the follower's read rate. The pull is
 /// capped to ±8% (a musical pitch-bend range) so locking in is a smooth glide, not a click.
@@ -369,6 +374,24 @@ pub enum AudioCommand {
     SetSamplerGain {
         gain: f32,
     },
+    /// Install separated stems (`[drums, bass, other, vocals]`) on a deck. The deck reads and
+    /// sums these instead of its mix buffer until cleared; all four stem gains reset to unity.
+    /// Any previously-installed stems are pushed to the reclaim ring (no RT-thread drop).
+    LoadDeckStems {
+        deck: usize,
+        stems: [Arc<DeckBuffer>; NUM_STEMS],
+    },
+    /// Remove a deck's stems, reverting it to its mix buffer. Retires the stems via reclaim.
+    ClearDeckStems {
+        deck: usize,
+    },
+    /// Set one stem's smoothed gain (mute/solo without clicks). `stem` indexes
+    /// `[drums, bass, other, vocals]`.
+    SetDeckStemGain {
+        deck: usize,
+        stem: usize,
+        gain: f32,
+    },
 }
 
 /// Shared, lock-free telemetry the control thread samples to drive the UI (position,
@@ -377,6 +400,8 @@ pub struct DeckTelemetry {
     playhead_bits: [AtomicU64; NUM_DECKS],
     playing: [AtomicBool; NUM_DECKS],
     loaded: [AtomicBool; NUM_DECKS],
+    /// Whether a deck currently has separated stems installed (drives the STEMS UI state).
+    stems_loaded: [AtomicBool; NUM_DECKS],
     /// Per-deck output peak (pre-crossfader), f32 bits in an AtomicU64-as-u32 slot.
     level_bits: [AtomicU64; NUM_DECKS],
     master_l_bits: AtomicU64,
@@ -409,6 +434,7 @@ impl DeckTelemetry {
             playhead_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             playing: std::array::from_fn(|_| AtomicBool::new(false)),
             loaded: std::array::from_fn(|_| AtomicBool::new(false)),
+            stems_loaded: std::array::from_fn(|_| AtomicBool::new(false)),
             level_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             master_l_bits: AtomicU64::new(0),
             master_r_bits: AtomicU64::new(0),
@@ -507,6 +533,14 @@ impl DeckTelemetry {
             .map(|a| a.load(Ordering::Relaxed))
             .unwrap_or(false)
     }
+
+    /// Whether `deck` currently has separated stems installed.
+    pub fn stems_loaded(&self, deck: usize) -> bool {
+        self.stems_loaded
+            .get(deck)
+            .map(|a| a.load(Ordering::Relaxed))
+            .unwrap_or(false)
+    }
 }
 
 impl Default for DeckTelemetry {
@@ -576,6 +610,14 @@ struct DeckPlayer {
     cue_previewing: bool,
     /// Loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 = off.
     replay_gain: f32,
+    /// Optional separated stems (`[drums, bass, other, vocals]`) overlaying the mix. When present,
+    /// the deck reads and sums these instead of `buffer`; the mix `buffer` still drives length,
+    /// play-head, beatgrid, and `base_ratio`. Retired through the reclaim ring like `buffer`.
+    stems: Option<[Arc<DeckBuffer>; NUM_STEMS]>,
+    /// Per-stem smoothed gains (mute/solo without clicks), indexed `[drums, bass, other, vocals]`.
+    stem_gains: [GainSmoother; NUM_STEMS],
+    /// Per-stem WSOLA stretchers, so key-lock applies to each stem independently.
+    stem_stretch: [TimeStretch; NUM_STEMS],
 }
 
 impl DeckPlayer {
@@ -616,6 +658,9 @@ impl DeckPlayer {
             cue_mode: CueMode::Cdj,
             cue_previewing: false,
             replay_gain: 1.0,
+            stems: None,
+            stem_gains: std::array::from_fn(|_| GainSmoother::new(1.0, device_rate, 8.0)),
+            stem_stretch: std::array::from_fn(|_| TimeStretch::new()),
         }
     }
 
@@ -718,10 +763,43 @@ impl DeckPlayer {
         let engaged = self.keylock && !self.scratching;
         if engaged && !self.stretch_engaged {
             self.stretch.reset();
+            for s in self.stem_stretch.iter_mut() {
+                s.reset();
+            }
         }
         self.stretch_engaged = engaged;
 
-        let (mut l, mut r) = if engaged {
+        let (mut l, mut r) = if let Some(stems) = self.stems.as_ref() {
+            // Stems overlay: read each separated buffer at the same play-head and sum by its
+            // smoothed gain. Key-lock stretches each stem independently. The mix `buffer` still
+            // governs `frames`/`max`/advance above, so play-head math is unchanged.
+            let mut sl = 0.0f32;
+            let mut sr = 0.0f32;
+            for (i, stem) in stems.iter().enumerate() {
+                let g = self.stem_gains[i].next_gain();
+                let sframes = stem.frames();
+                if sframes == 0 {
+                    continue;
+                }
+                let (xl, xr) = if engaged {
+                    self.stem_stretch[i].next_frame(
+                        &stem.samples,
+                        sframes,
+                        self.base_ratio,
+                        self.playhead,
+                    )
+                } else {
+                    interp_stereo(
+                        &stem.samples,
+                        sframes,
+                        self.playhead.clamp(0.0, sframes as f64 - 1.0),
+                    )
+                };
+                sl += xl * g;
+                sr += xr * g;
+            }
+            (sl, sr)
+        } else if engaged {
             self.stretch
                 .next_frame(&buf.samples, frames, self.base_ratio, self.playhead)
         } else {
@@ -986,6 +1064,16 @@ impl Mixer {
             match self.reclaim.push(b) {
                 Ok(()) => {}
                 Err(PushError::Full(b)) => self.park_reclaim(b),
+            }
+        }
+    }
+
+    /// Retire a whole stem set (each buffer individually) through the reclaim path. RT-SAFE.
+    #[inline]
+    fn retire_stems(&mut self, stems: Option<[Arc<DeckBuffer>; NUM_STEMS]>) {
+        if let Some(stems) = stems {
+            for s in stems {
+                self.retire(Some(s));
             }
         }
     }
@@ -1266,7 +1354,9 @@ impl Mixer {
                         d.sync_master = None;
                         d.sync_tempo = None;
                         let old = d.buffer.replace(buffer);
+                        let old_stems = d.stems.take(); // a new track invalidates old stems
                         self.retire(old);
+                        self.retire_stems(old_stems);
                     }
                 }
                 AudioCommand::SetBeatgrid {
@@ -1409,6 +1499,33 @@ impl Mixer {
                     self.sampler.set_loop(slot, looping)
                 }
                 AudioCommand::SetSamplerGain { gain } => self.sampler.set_gain(gain),
+                AudioCommand::LoadDeckStems { deck, stems } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        // Fresh stems play at unity; ramp from the current smoother value (click-free)
+                        // and re-prime the stretchers so key-lock reads cleanly from the new buffers.
+                        for g in d.stem_gains.iter_mut() {
+                            g.set_target(1.0);
+                        }
+                        for s in d.stem_stretch.iter_mut() {
+                            s.reset();
+                        }
+                        let old = d.stems.replace(stems);
+                        self.retire_stems(old);
+                    }
+                }
+                AudioCommand::ClearDeckStems { deck } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        let old = d.stems.take();
+                        self.retire_stems(old);
+                    }
+                }
+                AudioCommand::SetDeckStemGain { deck, stem, gain } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        if let Some(g) = d.stem_gains.get_mut(stem) {
+                            g.set_target(gain.clamp(0.0, 4.0));
+                        }
+                    }
+                }
                 AudioCommand::UnloadDeck { deck } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playing = false;
@@ -1423,7 +1540,9 @@ impl Mixer {
                         d.sync_tempo = None;
                         d.beat_interval = 0.0;
                         let old = d.buffer.take();
+                        let old_stems = d.stems.take();
                         self.retire(old);
+                        self.retire_stems(old_stems);
                     }
                 }
             }
@@ -1522,6 +1641,7 @@ impl Mixer {
             self.telemetry.playhead_bits[i].store(d.playhead.to_bits(), Ordering::Relaxed);
             self.telemetry.playing[i].store(d.playing, Ordering::Relaxed);
             self.telemetry.loaded[i].store(d.buffer.is_some(), Ordering::Relaxed);
+            self.telemetry.stems_loaded[i].store(d.stems.is_some(), Ordering::Relaxed);
             self.telemetry.level_bits[i]
                 .store((self.peak_deck[i] as f64).to_bits(), Ordering::Relaxed);
             // Effective advance in source frames/sec for UI play-head extrapolation.
@@ -2034,6 +2154,121 @@ mod tests {
                 .expect("old sample buffer flushes after reclaim drains"),
         );
         assert!(old_weak.upgrade().is_none());
+    }
+
+    fn stem_set(values: [f32; NUM_STEMS], frames: usize) -> [Arc<DeckBuffer>; NUM_STEMS] {
+        std::array::from_fn(|i| Arc::new(DeckBuffer::new(vec![values[i]; 2 * frames], 48_000)))
+    }
+
+    #[test]
+    fn stems_overlay_sums_and_mutes() {
+        let mut d = DeckPlayer::new(48_000.0);
+        // Mix buffer drives length/play-head; stems are read instead of it.
+        d.buffer = Some(Arc::new(DeckBuffer::new(vec![1.0; 2 * 10_000], 48_000)));
+        d.base_ratio = 1.0;
+        d.playing = true;
+        d.stems = Some(stem_set([0.1, 0.2, 0.3, 0.4], 10_000));
+
+        // All four stems at unity → the sum of their values, not the mix value.
+        let (l, _r) = d.next_frame();
+        assert!((l - 1.0).abs() < 1e-3, "stem sum was {l}");
+
+        // Mute vocals (index 3); after the gain smoother settles, that stem drops out.
+        d.stem_gains[3].set_target(0.0);
+        let mut last = 0.0;
+        for _ in 0..4_000 {
+            last = d.next_frame().0;
+        }
+        assert!((last - 0.6).abs() < 1e-2, "muted-vocals sum was {last}");
+    }
+
+    #[test]
+    fn clear_stems_reverts_to_mix_buffer() {
+        let (mut tx, mut mixer) = mixer_with_commands();
+        mixer.decks[0].buffer = Some(Arc::new(DeckBuffer::new(vec![0.5; 2 * 10_000], 48_000)));
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].playing = true;
+
+        tx.push(AudioCommand::LoadDeckStems {
+            deck: 0,
+            stems: stem_set([0.1, 0.1, 0.1, 0.1], 10_000),
+        })
+        .ok();
+        mixer.drain_commands();
+        assert!(mixer.decks[0].stems.is_some());
+        let (l, _) = mixer.decks[0].next_frame();
+        assert!((l - 0.4).abs() < 1e-2, "stems should sum to 0.4, got {l}");
+
+        tx.push(AudioCommand::ClearDeckStems { deck: 0 }).ok();
+        mixer.drain_commands();
+        assert!(mixer.decks[0].stems.is_none());
+        let (l, _) = mixer.decks[0].next_frame();
+        assert!(
+            (l - 0.5).abs() < 1e-2,
+            "should read the mix (0.5) after clear, got {l}"
+        );
+    }
+
+    #[test]
+    fn load_deck_clears_existing_stems() {
+        let (mut tx, mut mixer) = mixer_with_commands();
+        tx.push(AudioCommand::LoadDeckStems {
+            deck: 0,
+            stems: stem_set([0.1, 0.1, 0.1, 0.1], 1_000),
+        })
+        .ok();
+        mixer.drain_commands();
+        assert!(mixer.decks[0].stems.is_some());
+
+        tx.push(AudioCommand::LoadDeck {
+            deck: 0,
+            buffer: Arc::new(DeckBuffer::new(vec![0.7; 2 * 1_000], 48_000)),
+            beat_offset: 0.0,
+            beat_interval: 0.0,
+        })
+        .ok();
+        mixer.drain_commands();
+        assert!(
+            mixer.decks[0].stems.is_none(),
+            "loading a new track must clear stale stems"
+        );
+    }
+
+    #[test]
+    fn retired_stems_are_parked_when_reclaim_ring_is_full() {
+        let (mut ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, mut rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(1);
+        let telemetry = Arc::new(DeckTelemetry::new());
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, telemetry.clone());
+
+        let stems = stem_set([0.1, 0.2, 0.3, 0.4], 16);
+        let weaks: Vec<_> = stems.iter().map(Arc::downgrade).collect();
+        ctx.push(AudioCommand::LoadDeckStems { deck: 0, stems })
+            .ok();
+        mixer.drain_commands(); // installs; retires nothing
+
+        // Clearing retires all four stems into a capacity-1 reclaim ring → 1 pushed, 3 parked.
+        ctx.push(AudioCommand::ClearDeckStems { deck: 0 }).ok();
+        mixer.drain_commands();
+        assert!(
+            telemetry.reclaim_ring_full() >= 1,
+            "parking should have engaged under a full reclaim ring"
+        );
+        assert!(
+            weaks.iter().all(|w| w.upgrade().is_some()),
+            "no stem may be dropped on the RT thread"
+        );
+
+        // Drain the ring + re-run command drain (which flushes parked buffers) until all freed.
+        for _ in 0..8 {
+            while rrx.pop().is_ok() {}
+            mixer.drain_commands();
+        }
+        while rrx.pop().is_ok() {}
+        assert!(
+            weaks.iter().all(|w| w.upgrade().is_none()),
+            "all stems must free off the RT thread"
+        );
     }
 
     #[test]

@@ -26,7 +26,7 @@ pub use cue::{
     open_cue_output_with_latency, output_device_names, CueOutput, MonitorLatency,
 };
 pub use engine::{AudioEngine, EngineConfig};
-pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS};
+pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS, NUM_STEMS};
 pub use sampler::NUM_PADS as NUM_SAMPLER_PADS;
 pub use waveform::compute_peaks;
 

@@ -309,10 +309,23 @@ Next, from the ROADMAP backlog:
      `StemSplitio/htdemucs-onnx` or our own mirror) into the app-data dir; switch `ort` to
      `load-dynamic` so the runtime ships via that download path; consider swapping the lightweight
      linear offline resampler for `rubato` before release.
-   - **S2 — engine integration:** deck holds `Option<[Arc<DeckBuffer>; 4]>`; mixer reads 4
-     play-heads × 4 gains (RT-safe, same play-head math); `AudioCommand::SetDeckStemGain` +
-     `separate_stems`/`set_deck_stem` IPC (separation job emits progress, results cached to disk +
-     referenced from the SQLite DB so reload is instant).
+   - **S2 — engine integration. 🔨 Engine-core DONE (2026-06-22).** `DeckPlayer` now holds
+     `stems: Option<[Arc<DeckBuffer>; 4]>` + 4 smoothed `stem_gains` + 4 WSOLA `stem_stretch`. When
+     stems are present, `next_frame` reads & sums them at the deck play-head (per-stem key-lock),
+     instead of the mix `buffer` (which still drives length/play-head/grid/`base_ratio`). New RT-safe
+     `AudioCommand`s `LoadDeckStems`/`ClearDeckStems`/`SetDeckStemGain`; `LoadDeck`/`UnloadDeck`
+     retire stems too. Stem-sized retirement goes through the **no-drop reclaim/parking path**, now
+     sized for a whole deck (mix + 4 stems) swapping at once (`PENDING_RECLAIM_CAP`,
+     `EngineConfig.reclaim_capacity = 48`) — this folds in hardening **TODO 7** for stems.
+     `compas-audio` stays free of `compas-stems`/`ort` (stems arrive as `[Arc<DeckBuffer>; 4]`);
+     `DeckTelemetry::stems_loaded` exposes state. 4 new tests (sum/mute, clear-reverts,
+     load-clears-stems, no-drop stem parking). Verified `cargo test/clippy --all-targets/fmt` on
+     `compas-audio` + `cargo check` on the Tauri app.
+     **Remaining S2 (next):** `separate_stems` IPC job (run `compas-stems` on a worker thread,
+     progress events) + checksum'd model optional-download; cache 4 stem WAVs to app-data + reference
+     from SQLite for instant reload; `set_deck_stem`/`set_deck_stem_gain` IPC → the new commands.
+     **Known limitation:** under key-lock, the 4 stems stretch independently (own WSOLA each), so
+     transient phase coherence between stems isn't guaranteed — a shared-grain follow-up is noted.
    - **S3 — UI:** per-deck STEMS panel (DRUMS/BASS/OTHER/VOCALS faders + mutes), a separate button
      with progress, and the first-use model-download prompt.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,

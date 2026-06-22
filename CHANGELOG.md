@@ -35,6 +35,16 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Stem playback in the audio engine (S2, `compas-audio`):** each deck can now hold four separated
+  stems (`drums, bass, other, vocals`) that overlay its mix buffer — when present, the deck reads and
+  sums the stems at the same play-head, each through a smoothed per-stem gain and (under key-lock) its
+  own WSOLA stretcher, so all the existing play-head/loop/sync math is unchanged. New RT-safe commands
+  `LoadDeckStems`/`ClearDeckStems`/`SetDeckStemGain`; loading a track or unloading a deck retires its
+  stems. Retirement of stem-sized buffer swaps goes through the no-drop reclaim/parking path (the
+  reclaim ring and RT parking area are sized for a whole deck — mix plus four stems — swapping at
+  once), so nothing is ever freed on the callback thread. The audio crate stays free of
+  `compas-stems`/`ort`: stems arrive as plain `[Arc<DeckBuffer>; 4]`. (IPC + separation job + UI land
+  next.)
 - **Beat-tracking evaluation matrix (`compas-dsp`):** a tiered `beat_evaluation_matrix` test now
   exercises the estimator across clean tempos, delayed phase, sparse intros, silence, noise,
   half/double traps, tempo ramps, swung drums, and misleading sparse intros. Solid-tier cases are
