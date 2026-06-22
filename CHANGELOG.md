@@ -17,6 +17,15 @@ All notable changes to compas are documented here. Format follows
   output retry on the audio owner thread, block recording while offline, and surface
   OK/restarting/error status in the footer.
 
+### Changed
+- **Calibrated beatgrid confidence (`compas-dsp`):** `TempoEstimate.confidence` /
+  `BeatGrid.confidence` now reflect ambiguity honestly. They combine periodic strength (the fraction
+  of onset energy that actually repeats — so noise, silence, and weak onsets read as untrustworthy,
+  which the old peak-prominence measure could not detect), a half/double octave discount, and a
+  competing-tempo discount; the beatgrid value additionally folds in downbeat-phase sharpness. This
+  is a value-only change (no public field, IPC, or UI change). Clean clicks land ~0.56-0.62, the
+  half/double trap ~0.27, and noise ~0.00.
+
 ### Added
 - **Candidate tempo diagnostics (`compas-dsp`):** a new `estimate_tempo_diagnostics` exposes the
   ranked autocorrelation candidates, the selected BPM/beat phase, and half/double-octave onset

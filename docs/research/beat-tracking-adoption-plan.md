@@ -37,7 +37,7 @@ Every beat-tracking algorithm change needs all of the following before it lands:
 
 ## Candidate slices
 
-### 1. Candidate tempo diagnostics
+### 1. Candidate tempo diagnostics — DONE
 
 Expose internal tempo candidates in test-only or debug-only code so half/double decisions can be
 seen instead of guessed. This should not change the public app contract.
@@ -48,7 +48,11 @@ Acceptance:
 - Ignored half/double fixture prints or asserts candidate ranking in a local debug path.
 - No public API change unless the UI is updated to consume candidate confidence.
 
-### 2. Confidence calibration
+Landed as `estimate_tempo_diagnostics` (additive; shared `analyze_tempo` core keeps it in lockstep
+with the estimator). `diagnostics_expose_half_double_candidates` asserts the 64 BPM octave's support
+is visible while the estimator still picks 128.
+
+### 2. Confidence calibration — DONE
 
 Make `TempoEstimate.confidence` and `BeatGrid.confidence` reflect ambiguity more honestly. A track
 with competing half/double candidates should not look as trustworthy as a clean click track.
@@ -58,6 +62,14 @@ Acceptance:
 - Existing clean click fixtures keep non-zero confidence.
 - New ambiguous fixture has lower confidence than the clean fixture.
 - Sync and automix can treat low confidence as "verify grid" without changing deck playback.
+
+Landed in `TempoAnalysis::confidence()`: periodic strength (saturating map of `best_r`, the fraction
+of onset energy that repeats — this is what collapses confidence for noise/silence/weak onsets, which
+peak prominence alone could not because the max of many near-zero lags still towers over their mean) ×
+octave factor (half/double discount) × rival factor (competing in-range tempo). `estimate_beatgrid`
+further scales by phase sharpness from the comb. Measured: clean clicks ~0.56-0.62, half/double trap
+~0.27, noise ~0.00. Value-only — no struct/IPC/UI change; `bpm_confidence` is stored but not yet
+gated on, so nothing downstream changes behavior.
 
 ### 3. Half/double tempo scoring
 

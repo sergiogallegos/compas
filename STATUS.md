@@ -144,10 +144,21 @@ active harness test `diagnostics_expose_half_double_candidates` plus unit tests 
 diagnostics never drift from the public API. Verified with `cargo test -p compas-dsp --locked` and
 `cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`.
 
-**Next beat-tracking task:** research-backed TODO 2 — **beatgrid confidence calibration** (make
-`TempoEstimate.confidence`/`BeatGrid.confidence` lower for half/double ambiguity, weak onsets, sparse
-intros, silence/noise, or competing phases). The new diagnostics give the inputs (octave support,
-candidate spread) to drive that.
+**Beat-tracking TODO 2 done (confidence calibration).** `TempoAnalysis::confidence()` now combines
+periodic strength (a saturating map of `best_r`, the fraction of onset energy that repeats — this is
+what finally drops noise/silence/weak-onset tracks to ~0, which the old peak-prominence measure
+could not), an octave factor (half/double discount), and a rival factor (competing in-range tempo).
+`estimate_beatgrid` additionally folds in downbeat-phase sharpness from the comb. Value-only change:
+no public field/IPC/UI change, and `bpm_confidence` is stored but not yet gated on. Measured: clean
+clicks ~0.56-0.62, half/double trap ~0.27, noise ~0.00. New tests
+`confidence_calibration_orders_clean_above_ambiguous_above_noise` (unit) and
+`confidence_is_lower_for_ambiguous_grids` (harness). Verified with `cargo test -p compas-dsp
+--locked`, `cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`, and `cargo fmt`.
+
+**Next beat-tracking task:** research-backed TODO 3 — **beat continuity tests** (detect unstable beat
+spacing / bad tempo jumps, not just approximate BPM correctness). After that, TODO 4 (expanded
+benchmark matrix) and only then any tempo-selection algorithm change (half/double scoring), per the
+adoption gate.
 
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:

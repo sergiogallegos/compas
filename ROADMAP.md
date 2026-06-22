@@ -315,9 +315,12 @@ or docs updated in the same patch.
    `estimate_beatgrid` are unchanged (a shared `analyze_tempo` core keeps them in lockstep). The
    half/double trap fixture now has an active diagnostic test asserting the 64 BPM octave's support
    is visible even while the estimator still picks 128.
-2. ⬜ **Beatgrid confidence calibration** — make `TempoEstimate.confidence` and
-   `BeatGrid.confidence` lower for half/double ambiguity, weak onsets, sparse intros, silence/noise,
-   or competing candidate phases.
+2. ✅ **Beatgrid confidence calibration** — `TempoEstimate.confidence`/`BeatGrid.confidence` are now
+   built from periodic strength (`best_r`, the fraction of onset energy that repeats — collapses for
+   noise/silence/weak onsets where peak prominence alone could not), an octave factor (discounts
+   half/double ambiguity), and a rival factor (competing in-range tempo). `BeatGrid` additionally
+   folds in phase sharpness so an ambiguous downbeat lowers grid trust. Value-only change — no public
+   field/IPC/UI change. Calibrated: clean clicks ~0.56-0.62, half/double trap ~0.27, noise ~0.00.
 3. ⬜ **Beat continuity tests** — add tests/assertions that detect unstable beat spacing or bad
    tempo jumps, not just approximate BPM correctness.
 4. ⬜ **Expanded beat-tracking benchmark matrix** — promote or add fixtures for half/double traps,

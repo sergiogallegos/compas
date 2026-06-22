@@ -162,6 +162,47 @@ fn diagnostics_expose_half_double_candidates() {
 }
 
 #[test]
+fn confidence_is_lower_for_ambiguous_grids() {
+    // A clean, unambiguous click track.
+    let clean = click_track(128.0, 16.0, 0.0);
+    let clean_conf = estimate_tempo(&clean, SR).confidence;
+
+    // The half/double trap: the estimator's pick has a stronger octave it can't see.
+    let mut trap = vec![0.0f32; (SR as f32 * 16.0) as usize];
+    add_clicks(&mut trap, 64.0, 0.0, 16.0, 1.0);
+    add_clicks(&mut trap, 128.0, 60.0 / 128.0, 16.0, 0.35);
+    let trap_conf = estimate_tempo(&trap, SR).confidence;
+
+    // Band-limited-ish noise: no real periodicity.
+    let mut state = 0x1234_5678u32;
+    let noise: Vec<f32> = (0..(SR as usize * 8))
+        .map(|_| {
+            // Cheap deterministic LCG noise in [-0.5, 0.5].
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 8) as f32 / u32::MAX as f32 - 0.5
+        })
+        .collect();
+    let noise_conf = estimate_tempo(&noise, SR).confidence;
+
+    eprintln!("clean={clean_conf:.3} trap={trap_conf:.3} noise={noise_conf:.3}");
+
+    // Clean fixtures stay usable; the ambiguous grid is demonstrably less trustworthy;
+    // and unstructured noise should look untrustworthy.
+    assert!(
+        clean_conf > 0.1,
+        "clean click confidence too low: {clean_conf:.3}"
+    );
+    assert!(
+        trap_conf < clean_conf,
+        "ambiguous trap ({trap_conf:.3}) should score below clean ({clean_conf:.3})"
+    );
+    assert!(
+        noise_conf < trap_conf,
+        "noise ({noise_conf:.3}) should be the least trustworthy"
+    );
+}
+
+#[test]
 #[ignore = "reference case: swung subdivisions need onset grouping before tempo scoring"]
 fn beat_tracking_reference_swung_drums() {
     let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];

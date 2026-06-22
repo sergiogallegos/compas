@@ -73,7 +73,9 @@ pub struct TempoDiagnostics {
     pub selected_bpm: f32,
     /// Selected beat phase: first beat time in seconds (== [`BeatGrid::first_beat_sec`]).
     pub first_beat_sec: f32,
-    /// Confidence, identical to [`TempoEstimate`] / [`BeatGrid`].
+    /// Calibrated tempo confidence (== [`TempoEstimate::confidence`]). Note
+    /// [`BeatGrid::confidence`] is this value *further* scaled by phase sharpness, so it
+    /// can be lower when the downbeat position is itself ambiguous.
     pub confidence: f32,
     /// Onset support at the half-tempo octave (double the period), peak-relative.
     /// `None` if that lag falls outside the envelope. May exceed `1.0` when the true
@@ -106,10 +108,9 @@ struct TempoAnalysis {
     lag_min: usize,
     /// Lag of the winning (largest-score) autocorrelation peak.
     best_lag: usize,
-    /// Score of the winning peak.
+    /// Score of the winning peak (== fraction of envelope energy repeating at that lag,
+    /// since the autocorrelation is normalized so `r(0) == 1`).
     best_r: f32,
-    /// Mean autocorrelation score across the searched lag range.
-    mean_r: f32,
 }
 
 /// Shared first stage: onset envelope → autocorrelation over the BPM search range.
@@ -137,7 +138,6 @@ fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
     let mut r_by_lag = Vec::with_capacity(lag_max - lag_min + 1);
     let mut best_lag = lag_min;
     let mut best_r = f32::MIN;
-    let mut sum_r = 0.0f32;
     for lag in lag_min..=lag_max {
         let mut acc = 0.0f32;
         for i in 0..(env.len() - lag) {
@@ -145,13 +145,11 @@ fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
         }
         let r = acc / energy;
         r_by_lag.push(r);
-        sum_r += r;
         if r > best_r {
             best_r = r;
             best_lag = lag;
         }
     }
-    let mean_r = sum_r / r_by_lag.len() as f32;
 
     Some(TempoAnalysis {
         env,
@@ -161,16 +159,71 @@ fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
         lag_min,
         best_lag,
         best_r,
-        mean_r,
     })
 }
 
-/// Peak-relative-spread confidence: how much the winning peak stands above the mean.
-fn confidence_from(best_r: f32, mean_r: f32) -> f32 {
-    if best_r > 0.0 {
-        (1.0 - mean_r / best_r).clamp(0.0, 1.0)
-    } else {
-        0.0
+impl TempoAnalysis {
+    /// Strongest in-range autocorrelation peak that is neither the winner's own lobe nor
+    /// one of its octave (½×, 2×) lobes, as a fraction of the winning peak (0..1). A high
+    /// value means a genuinely *different* tempo competes with the selection. Octave lobes
+    /// are excluded here so they are not double-counted — they are scored by
+    /// [`Self::octave_support`].
+    fn rival_score(&self) -> f32 {
+        if self.best_r <= 0.0 {
+            return 0.0;
+        }
+        const GUARD: f32 = 3.0;
+        let best = self.best_lag as f32;
+        let skip = [best, best * 0.5, best * 2.0];
+        let mut rival = 0.0f32;
+        for (i, &r) in self.r_by_lag.iter().enumerate() {
+            let lag = (self.lag_min + i) as f32;
+            if skip.iter().any(|&c| (lag - c).abs() <= GUARD) {
+                continue;
+            }
+            rival = rival.max(r);
+        }
+        (rival / self.best_r).clamp(0.0, 1.0)
+    }
+
+    /// Peak-relative onset support at the half-tempo and double-tempo octaves, taking the
+    /// larger of the two. `> 1` means a stronger octave sits outside the search range — a
+    /// likely-wrong octave pick (the half/double trap).
+    fn octave_support(&self) -> f32 {
+        [
+            (2.0 * self.best_lag as f32).round() as usize,
+            (0.5 * self.best_lag as f32).round() as usize,
+        ]
+        .into_iter()
+        .filter_map(|lag| autocorr_score(&self.env, lag, self.energy, self.best_r))
+        .fold(0.0f32, f32::max)
+    }
+
+    /// Calibrated 0..1 tempo confidence.
+    ///
+    /// Built from three honest signals, multiplied together:
+    /// * **periodic strength** — `best_r` is the fraction of onset-envelope energy that
+    ///   repeats at the chosen period (the autocorrelation is normalized so `r(0) == 1`),
+    ///   passed through a saturating map. This is what collapses confidence for noise,
+    ///   silence, and weak/sparse onsets — peak *prominence* alone cannot, because the max
+    ///   of many near-zero lags still towers over their mean.
+    /// * **octave factor** — discounts half/double ambiguity; gentle near 2:1 parity
+    ///   (a genuine click ambiguity), steep once an unseen octave dominates the winner.
+    /// * **rival factor** — discounts a competing in-range tempo.
+    ///
+    /// The net effect: a clean click reads as trustworthy, an octave-ambiguous track less
+    /// so, and noise/silence near zero — an honest input for "verify beatgrid" logic.
+    fn confidence(&self) -> f32 {
+        if self.best_r <= 0.0 {
+            return 0.0;
+        }
+        // Saturating: best_r 0.15 -> 0.5, 0.45 -> 0.75, ~0.9 -> 0.86. Tracks with weakly
+        // periodic envelopes still earn moderate confidence; noise (best_r ~1e-3) -> ~0.
+        const STRENGTH_HALF: f32 = 0.15;
+        let strength = self.best_r / (self.best_r + STRENGTH_HALF);
+        let octave_factor = 1.0 / (1.0 + 0.6 * self.octave_support().powi(2));
+        let rival_factor = (1.0 - 0.5 * self.rival_score()).clamp(0.0, 1.0);
+        (strength * octave_factor * rival_factor).clamp(0.0, 1.0)
     }
 }
 
@@ -202,14 +255,17 @@ fn autocorr_score(env: &[f32], lag: usize, energy: f32, best_r: f32) -> Option<f
 }
 
 /// Comb candidate phases [0, period) over the onset envelope and return the first-beat
-/// time (seconds) with the most accumulated onset energy.
-fn comb_first_beat(env: &[f32], period: f32, sample_rate: u32) -> f32 {
+/// time (seconds) with the most accumulated onset energy, plus a 0..1 phase confidence:
+/// how sharply the winning phase stands above the mean phase energy. A flat comb (many
+/// competing downbeat positions) yields low phase confidence.
+fn comb_first_beat(env: &[f32], period: f32, sample_rate: u32) -> (f32, f32) {
     if period <= 0.0 {
-        return 0.0;
+        return (0.0, 0.0);
     }
     let mut best_phi = 0usize;
     let mut best_score = f32::MIN;
-    let phi_max = period.ceil() as usize;
+    let mut sum_score = 0.0f32;
+    let phi_max = period.ceil().max(1.0) as usize;
     for phi in 0..phi_max {
         let mut score = 0.0f32;
         let mut idx = phi as f32;
@@ -217,12 +273,22 @@ fn comb_first_beat(env: &[f32], period: f32, sample_rate: u32) -> f32 {
             score += env[idx as usize];
             idx += period;
         }
+        sum_score += score;
         if score > best_score {
             best_score = score;
             best_phi = phi;
         }
     }
-    best_phi as f32 * (HOP as f32 / sample_rate as f32)
+    let mean_score = sum_score / phi_max as f32;
+    let phase_confidence = if best_score > 0.0 {
+        (1.0 - mean_score / best_score).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (
+        best_phi as f32 * (HOP as f32 / sample_rate as f32),
+        phase_confidence,
+    )
 }
 
 /// Shared core: onset envelope → autocorrelation tempo. Returns the (mean-subtracted)
@@ -240,7 +306,7 @@ fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, 
         bpm /= 2.0;
         period /= 2.0;
     }
-    let confidence = confidence_from(a.best_r, a.mean_r);
+    let confidence = a.confidence();
     Some((a.env, a.env_rate, period, bpm, confidence))
 }
 
@@ -277,11 +343,14 @@ pub fn estimate_beatgrid(samples: &[f32], sample_rate: u32) -> BeatGrid {
         };
     };
 
+    // A beatgrid needs both tempo *and* phase right, so fold the phase sharpness into the
+    // tempo confidence — an ambiguous downbeat position lowers the grid's trustworthiness.
+    let (first_beat_sec, phase_confidence) = comb_first_beat(&env, period, sample_rate);
     BeatGrid {
         bpm,
-        first_beat_sec: comb_first_beat(&env, period, sample_rate),
+        first_beat_sec,
         beat_interval_sec: if bpm > 0.0 { 60.0 / bpm } else { 0.0 },
-        confidence,
+        confidence: confidence * phase_confidence,
     }
 }
 
@@ -370,8 +439,8 @@ pub fn estimate_tempo_diagnostics(samples: &[f32], sample_rate: u32) -> Option<T
         candidates,
         selected,
         selected_bpm,
-        first_beat_sec: comb_first_beat(&a.env, period, sample_rate),
-        confidence: confidence_from(a.best_r, a.mean_r),
+        first_beat_sec: comb_first_beat(&a.env, period, sample_rate).0,
+        confidence: a.confidence(),
         half_tempo_score,
         double_tempo_score,
     })
@@ -803,6 +872,45 @@ mod tests {
         assert_eq!(diag.candidates[diag.selected].score, 1.0);
         // A clean 120 BPM click has no real half/double competitor near the winning peak.
         assert!(diag.double_tempo_score.unwrap_or(0.0) < 1.0);
+    }
+
+    #[test]
+    fn confidence_calibration_orders_clean_above_ambiguous_above_noise() {
+        let sr = 44_100u32;
+        let click = |bpm: f32| -> Vec<f32> {
+            let n = sr as usize * 16;
+            let mut s = vec![0.0f32; n];
+            let period = (sr as f32 * 60.0 / bpm) as usize;
+            let mut t = 0;
+            while t < n {
+                for k in 0..64 {
+                    if t + k < n {
+                        s[t + k] = (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                    }
+                }
+                t += period;
+            }
+            s
+        };
+        let clean = estimate_tempo(&click(128.0), sr).confidence;
+
+        let mut state = 0x1234_5678u32;
+        let noise: Vec<f32> = (0..(sr as usize * 8))
+            .map(|_| {
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (state >> 8) as f32 / u32::MAX as f32 - 0.5
+            })
+            .collect();
+        let noise_conf = estimate_tempo(&noise, sr).confidence;
+
+        // Unstructured noise has almost no repeating onset energy -> near-zero confidence,
+        // even though its best autocorrelation lag still towers over the mean.
+        assert!(clean > 0.3, "clean click should stay trustworthy: {clean}");
+        assert!(
+            noise_conf < 0.05,
+            "noise should be untrustworthy: {noise_conf}"
+        );
+        assert!(clean > noise_conf);
     }
 
     #[test]
