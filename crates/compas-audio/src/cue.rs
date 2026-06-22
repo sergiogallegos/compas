@@ -43,6 +43,19 @@ pub struct CueOutput {
 /// — the cue mix the mixer pushes (interleaved stereo f32). Must be called on, and the result
 /// kept on, a dedicated thread (`cpal::Stream` is not `Send`).
 pub fn open_cue_output(device_name: Option<&str>, consumer: Consumer<f32>) -> Result<CueOutput> {
+    open_monitor_output("cue", device_name, consumer)
+}
+
+/// Open a booth/monitor output stream that drains the post-master booth tap.
+pub fn open_booth_output(device_name: Option<&str>, consumer: Consumer<f32>) -> Result<CueOutput> {
+    open_monitor_output("booth", device_name, consumer)
+}
+
+fn open_monitor_output(
+    label: &str,
+    device_name: Option<&str>,
+    consumer: Consumer<f32>,
+) -> Result<CueOutput> {
     let host = cpal::default_host();
     let device = match device_name {
         Some(want) => host
@@ -50,12 +63,14 @@ pub fn open_cue_output(device_name: Option<&str>, consumer: Consumer<f32>) -> Re
             .map_err(|e| CompasError::Device(e.to_string()))?
             .find(|d| d.name().map(|n| n == want).unwrap_or(false))
             .or_else(|| host.default_output_device())
-            .ok_or_else(|| CompasError::Device(format!("cue output device '{want}' not found")))?,
+            .ok_or_else(|| {
+                CompasError::Device(format!("{label} output device '{want}' not found"))
+            })?,
         None => host
             .default_output_device()
             .ok_or_else(|| CompasError::Device("no default output device".into()))?,
     };
-    let name = device.name().unwrap_or_else(|_| "cue output".into());
+    let name = device.name().unwrap_or_else(|_| format!("{label} output"));
     let supported = device
         .default_output_config()
         .map_err(|e| CompasError::Device(e.to_string()))?;

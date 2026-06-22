@@ -200,6 +200,11 @@ enum EngineMsg {
         sink: Producer<f32>,
     },
     StopCueOutput,
+    BoothVolume(f32),
+    StartBoothOutput {
+        sink: Producer<f32>,
+    },
+    StopBoothOutput,
     NoteOn {
         note: u8,
         velocity: u8,
@@ -576,6 +581,9 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::CueVolume(v) => AudioCommand::SetCueVolume(v),
                     EngineMsg::StartCueOutput { sink } => AudioCommand::StartCueOutput { sink },
                     EngineMsg::StopCueOutput => AudioCommand::StopCueOutput,
+                    EngineMsg::BoothVolume(v) => AudioCommand::SetBoothVolume(v),
+                    EngineMsg::StartBoothOutput { sink } => AudioCommand::StartBoothOutput { sink },
+                    EngineMsg::StopBoothOutput => AudioCommand::StopBoothOutput,
                     EngineMsg::NoteOn { note, velocity } => AudioCommand::NoteOn { note, velocity },
                     EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
                     EngineMsg::AllNotesOff => AudioCommand::AllNotesOff,
@@ -1538,6 +1546,11 @@ struct CueState {
     stop: Mutex<Option<Sender<()>>>,
 }
 
+/// Same ownership model as [`CueState`], but for the booth/monitor output.
+struct BoothState {
+    stop: Mutex<Option<Sender<()>>>,
+}
+
 /// List available output devices the headphone cue can target (first is usually the default).
 #[tauri::command]
 fn list_output_devices() -> Vec<String> {
@@ -1629,6 +1642,82 @@ fn set_cue_mix(state: State<'_, EngineHandle>, value: f32) -> Result<(), String>
 #[tauri::command]
 fn set_cue_volume(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::CueVolume(value))
+}
+
+/// Stop the active booth-output thread (if any) and tell the mixer to stop pushing.
+fn stop_booth_internal(state: &EngineHandle, booth: &BoothState) {
+    let _ = state.send(EngineMsg::StopBoothOutput);
+    if let Ok(mut guard) = booth.stop.lock() {
+        guard.take();
+    }
+}
+
+/// Start booth monitoring on `device` (None = default output). The mixer pushes the post-master
+/// booth tap into a ring; a dedicated thread drains it through another cpal output stream.
+#[tauri::command]
+fn start_booth_output(
+    state: State<'_, EngineHandle>,
+    booth: State<'_, BoothState>,
+    device: Option<String>,
+) -> Result<String, String> {
+    stop_booth_internal(&state, &booth);
+
+    let (producer, consumer) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
+    state.send(EngineMsg::StartBoothOutput { sink: producer })?;
+
+    let (stop_tx, stop_rx) = channel::<()>();
+    let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let spawn = thread::Builder::new()
+        .name("compas-booth".to_string())
+        .spawn(
+            move || match compas_audio::open_booth_output(device.as_deref(), consumer) {
+                Ok(out) => {
+                    let _ = ready_tx.send(Ok(out.device_name.clone()));
+                    let _ = stop_rx.recv();
+                    drop(out);
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.to_string()));
+                }
+            },
+        );
+    if let Err(e) = spawn {
+        let _ = state.send(EngineMsg::StopBoothOutput);
+        return Err(format!("could not spawn booth thread: {e}"));
+    }
+
+    match ready_rx.recv() {
+        Ok(Ok(name)) => {
+            if let Ok(mut guard) = booth.stop.lock() {
+                *guard = Some(stop_tx);
+            }
+            tracing::info!("booth output started → {name}");
+            Ok(name)
+        }
+        Ok(Err(e)) => {
+            let _ = state.send(EngineMsg::StopBoothOutput);
+            Err(e)
+        }
+        Err(_) => {
+            let _ = state.send(EngineMsg::StopBoothOutput);
+            Err("booth output thread exited before reporting".into())
+        }
+    }
+}
+
+#[tauri::command]
+fn stop_booth_output(
+    state: State<'_, EngineHandle>,
+    booth: State<'_, BoothState>,
+) -> Result<(), String> {
+    stop_booth_internal(&state, &booth);
+    Ok(())
+}
+
+/// Booth/monitor output level.
+#[tauri::command]
+fn set_booth_volume(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::BoothVolume(value))
 }
 
 // ----------------------------------------------------------------------------------
@@ -2033,6 +2122,9 @@ pub fn run() {
         .manage(CueState {
             stop: Mutex::new(None),
         })
+        .manage(BoothState {
+            stop: Mutex::new(None),
+        })
         .manage(hid::HidState::default())
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
@@ -2121,6 +2213,9 @@ pub fn run() {
             set_deck_cue,
             set_cue_mix,
             set_cue_volume,
+            start_booth_output,
+            stop_booth_output,
+            set_booth_volume,
             note_on,
             note_off,
             all_notes_off,

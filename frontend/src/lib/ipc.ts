@@ -539,6 +539,12 @@ export const setDeckCue = (deck: number, active: boolean) =>
 export const setCueMix = (value: number) => invoke("set_cue_mix", { value });
 /** Headphone output level. */
 export const setCueVolume = (value: number) => invoke("set_cue_volume", { value });
+/** Start booth monitoring on `device` (omit for the default output); returns the device name. */
+export const startBoothOutput = (device?: string) =>
+  invoke<string>("start_booth_output", { device: device ?? null });
+export const stopBoothOutput = () => invoke("stop_booth_output");
+/** Booth output level, fed from the post-master mix. */
+export const setBoothVolume = (value: number) => invoke("set_booth_volume", { value });
 
 // ---- Event subscriptions ----------------------------------------------------------
 

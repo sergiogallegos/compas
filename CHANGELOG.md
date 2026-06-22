@@ -55,6 +55,9 @@ All notable changes to compas are documented here. Format follows
 - **Split realtime drop counters:** engine load telemetry now reports command-ring-full drops,
   master-record ring drops, and cue/headphone ring drops separately from callback overruns; the
   title-bar RT tooltip shows each counter for faster diagnosis.
+- **Booth output:** added an optional post-master booth monitor path with independent output device
+  selection and BOOTH level. The mixer pushes the booth tap through a lock-free ring to a dedicated
+  CPAL output thread; frontend controls sit under the crossfader next to headphone cue.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted

@@ -21,7 +21,7 @@ mod mixer;
 mod sampler;
 mod waveform;
 
-pub use cue::{open_cue_output, output_device_names, CueOutput};
+pub use cue::{open_booth_output, open_cue_output, output_device_names, CueOutput};
 pub use engine::{AudioEngine, EngineConfig};
 pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS};
 pub use sampler::NUM_PADS as NUM_SAMPLER_PADS;

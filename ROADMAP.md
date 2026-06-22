@@ -261,8 +261,8 @@ then turn the findings into tests, benchmarks, or small code changes.
 3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists and now separates
    callback over-budget, command-ring full, record-ring drops, and cue-ring drops in the telemetry
    payload/UI tooltip. Remaining: true stream underrun detection and dropped UI telemetry events.
-4. ⬜ **Booth output** — optional third output bus with independent gain/device selection, fed from
-   the post-master mix by default.
+4. ✅ **Booth output** — optional third output stream with independent gain/device selection, fed
+   from the post-master mix by default.
 5. ⬜ **Master/headphone/record routing model** — make routing bus-based: master, cue/headphones,
    booth, and record taps are explicit outputs instead of scattered one-off paths.
 6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; extend it to output-device

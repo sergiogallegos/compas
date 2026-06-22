@@ -24,8 +24,8 @@ engineering practices from `rust-ethernet-ip`, then used the same pass to close 
 - **Docs/status cleanup:** roadmap/status/changelog/website docs now match the above.
 
 **Next recommended workstream:** pro-audio hardening before release. Track it in `ROADMAP.md`
-under "Reliability / Pro-Audio Hardening Backlog": booth output, explicit master/cue/booth/record
-routing, latency compensation, no-drop tests for retired
+under "Reliability / Pro-Audio Hardening Backlog": explicit master/cue/booth/record routing,
+latency compensation, no-drop tests for retired
 `Arc<DeckBuffer>`/graph state, more controller mapping profiles, and the modular per-deck
 processing graph
 `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
@@ -49,6 +49,14 @@ drops, master-record ring drops, and cue/headphone ring drops. The title-bar RT 
 counter instead of collapsing every problem into one xrun number. Remaining follow-up: true hardware
 stream underrun detection and dropped UI telemetry-event accounting. Verified with
 `cargo test -p compas-audio --locked`, `cargo clippy -p compas-audio --all-targets -- -D warnings`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
+`cd frontend && npx tsc --noEmit`.
+
+**Hardening item 4 done:** booth output is now an optional third output stream fed from the
+post-master mix. The mixer owns an independent smoothed booth gain and pushes the booth tap through
+a lock-free ring to a dedicated CPAL output thread; the UI exposes device selection, ON/OFF, and
+BOOTH level. Verified with `cargo test -p compas-audio --locked`,
+`cargo clippy -p compas-audio --all-targets -- -D warnings`,
 `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
 `cd frontend && npx tsc --noEmit`.
 
@@ -271,6 +279,9 @@ gain (`SYNC_PHASE_GAIN`); auto-mix `TRANSITION_BEATS`/`LEAD_BEATS`.
   master, pushes through a ring to a 2nd cpal output stream (`compas-audio::cue`) on its own
   thread (prime + re-prime on underrun for clock drift). `start/stop_cue_output`,
   `set_deck_cue`/`set_cue_mix`/`set_cue_volume`, `list_output_devices`. Unit-tested cue summing.
+- **Booth output** — optional post-master monitor output with independent device selection and
+  BOOTH level. The mixer pushes through a ring to a 3rd cpal output stream; UI controls live under
+  the crossfader next to headphone cue.
 - Scrolling **zoom waveforms** (fixed NOW, beat grid, 4–32 s), VU metering; **manual
   beatgrid-anchor nudge**. **RT-load + xrun meter** in the title bar.
 - **Local library + SQLite track DB** (`rusqlite` bundled; `db.rs`) — library persists in

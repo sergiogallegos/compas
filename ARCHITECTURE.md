@@ -166,7 +166,10 @@ preallocated processors, smoothed parameters, and stable buffer references.
 
 ## 5a. Routing, devices, and reliability backlog
 
-The current mixer already exposes master output, headphone/PFL output, recording, and telemetry.
+The current mixer exposes master output, headphone/PFL output, booth output, recording, and
+telemetry. Secondary outputs are fed by lock-free rings from the one RT mixer so decks and DSP are
+never double-advanced: cue/headphones receive a PFL/master blend, booth receives the post-master
+mix with its own smoothed gain, and recording taps the post-master mix for the writer thread.
 The next hardening pass should make these guarantees explicit:
 
 1. **Sync edge-case tests:** cover empty decks, late/early beatgrid anchors, tempo extremes,
@@ -176,11 +179,11 @@ The next hardening pass should make these guarantees explicit:
    without hanging the UI or callback.
 3. **Underrun/overload counters:** keep separate counters for stream underrun, callback over-budget,
    command-ring full, telemetry drop, cue-ring underrun, and record-ring overflow.
-4. **Booth output:** add an optional third output bus with independent gain and device selection,
+4. **Booth output:** optional third output stream exists with independent gain/device selection,
    fed from the post-master mix unless a future preference says otherwise.
 5. **Master/headphone/record routing:** define routing as buses, not one-off taps. Recording should
-   choose master or pre-master where supported; headphones should remain PFL/cue-aware; future booth
-   output should not interfere with either.
+   choose master or pre-master where supported; headphones should remain PFL/cue-aware; booth should
+   stay independent from both.
 6. **Latency compensation:** track output-device latency, cue-device latency, buffering, and UI
    render offset so play-heads, sync, cue, and recordings can be aligned intentionally.
 7. **No-drop RT guarantee:** any old `Arc<DeckBuffer>` or large processor state retired by load,

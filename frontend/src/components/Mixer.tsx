@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import type { CueApi } from "../hooks/useCue";
+import type { BoothApi } from "../hooks/useBooth";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { Meter } from "./Meter";
@@ -34,6 +35,7 @@ export function Mixer({
   onFxMacro,
   auto,
   cue,
+  booth,
 }: {
   channels: Channel[];
   crossfader: number;
@@ -42,6 +44,7 @@ export function Mixer({
   onFxMacro?: (deck: number, v: number) => void;
   auto?: AutoMixProps;
   cue?: CueApi;
+  booth?: BoothApi;
 }) {
   return (
     <section className="mixer">
@@ -88,6 +91,7 @@ export function Mixer({
       </div>
       {xfader && <XfaderConfigRow {...xfader} />}
       {cue && <Phones cue={cue} />}
+      {booth && <Booth booth={booth} />}
     </section>
   );
 }
@@ -151,6 +155,35 @@ function Phones({ cue }: { cue: CueApi }) {
       </button>
       <Knob value={cue.mix} min={0} max={1} size={26} label="CUE◁▷MAS" onChange={cue.setMix} />
       <Knob value={cue.volume} min={0} max={1} size={26} label="PHONES" onChange={cue.setVolume} />
+    </div>
+  );
+}
+
+/** Booth monitor controls: post-master output on a separate device with its own level. */
+function Booth({ booth }: { booth: BoothApi }) {
+  return (
+    <div className="phones booth">
+      <Icon name="sliders" size={14} />
+      <select
+        className="phones-dev"
+        value={booth.device ?? ""}
+        onChange={(e) => booth.setDevice(e.target.value || null)}
+        disabled={booth.enabled}
+        title="Booth output device"
+      >
+        <option value="">Default output</option>
+        {booth.devices.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+      <button
+        className={`chip phones-on ${booth.enabled ? "chip--on" : ""}`}
+        onClick={booth.toggle}
+        title={booth.enabled ? `Booth on: ${booth.connectedName ?? ""}` : "Start booth output"}
+      >
+        {booth.enabled ? "ON" : "OFF"}
+      </button>
+      <Knob value={booth.volume} min={0} max={1} size={26} label="BOOTH" onChange={booth.setVolume} />
     </div>
   );
 }

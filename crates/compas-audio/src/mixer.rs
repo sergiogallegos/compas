@@ -218,6 +218,14 @@ pub enum AudioCommand {
     },
     /// Stop pushing the cue mix; dropping the producer lets the cue stream wind down.
     StopCueOutput,
+    /// Booth/monitor output level (0..~1), fed from the post-master mix.
+    SetBoothVolume(f32),
+    /// Begin pushing the post-master booth mix into `sink` (interleaved stereo f32).
+    StartBoothOutput {
+        sink: Producer<f32>,
+    },
+    /// Stop pushing the booth mix; dropping the producer lets the booth stream wind down.
+    StopBoothOutput,
     /// Seek to an absolute position in source frames.
     SeekDeck {
         deck: usize,
@@ -811,6 +819,9 @@ pub struct Mixer {
     cue_vol: GainSmoother,
     /// When cue monitoring is on, the headphone mix is pushed here for the 2nd output stream.
     cue_sink: Option<Producer<f32>>,
+    /// Booth output: independent post-master monitor level and optional 3rd output stream.
+    booth_vol: GainSmoother,
+    booth_sink: Option<Producer<f32>>,
     /// Smoothed audio-callback load, and the running overrun count.
     rt_load: f32,
     xrun_count: u64,
@@ -852,6 +863,8 @@ impl Mixer {
             cue_mix: 0.0,
             cue_vol: GainSmoother::new(0.8, device_rate, 10.0),
             cue_sink: None,
+            booth_vol: GainSmoother::new(0.8, device_rate, 10.0),
+            booth_sink: None,
             rt_load: 0.0,
             xrun_count: 0,
             synth: Synth::new(device_rate),
@@ -1121,6 +1134,9 @@ impl Mixer {
                 AudioCommand::SetCueVolume(v) => self.cue_vol.set_target(v.max(0.0)),
                 AudioCommand::StartCueOutput { sink } => self.cue_sink = Some(sink),
                 AudioCommand::StopCueOutput => self.cue_sink = None,
+                AudioCommand::SetBoothVolume(v) => self.booth_vol.set_target(v.max(0.0)),
+                AudioCommand::StartBoothOutput { sink } => self.booth_sink = Some(sink),
+                AudioCommand::StopBoothOutput => self.booth_sink = None,
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
@@ -1374,6 +1390,15 @@ impl Mixer {
         let (ol, or) = (l * m, r * m);
         self.peak_l = self.peak_l.max(ol.abs());
         self.peak_r = self.peak_r.max(or.abs());
+        // Booth tap: independent monitor level fed from the post-master mix.
+        // Advance the smoother every frame even when disconnected so connecting later is click-free.
+        let bvol = self.booth_vol.next_gain();
+        if let Some(sink) = self.booth_sink.as_mut() {
+            if sink.slots() >= 2 {
+                let _ = sink.push(ol * bvol);
+                let _ = sink.push(or * bvol);
+            }
+        }
         // Recording tap: push the master frame for the writer thread. Push both samples
         // together (or neither) so L/R never split across a full-ring drop. RT-safe.
         if let Some(sink) = self.record_sink.as_mut() {
@@ -1803,6 +1828,28 @@ mod tests {
         mixer.decks[0].playing = true;
         mixer.decks[0].cue = true; // cued, but nowhere to send
         let _ = mixer.next_frame();
+    }
+
+    #[test]
+    fn booth_output_follows_post_master_with_independent_gain() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        let buf = Arc::new(DeckBuffer::new(vec![0.5; 2 * 100], 48_000));
+        mixer.decks[0].buffer = Some(buf);
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].playing = true;
+        mixer.decks[0].xfader_assign = XfaderAssign::Thru;
+        mixer.booth_vol = GainSmoother::new(0.5, 48_000.0, 10.0);
+        let (booth_tx, mut booth_rx) = rtrb::RingBuffer::<f32>::new(64);
+        mixer.booth_sink = Some(booth_tx);
+
+        let (ml, mr) = mixer.next_frame();
+        let bl = booth_rx.pop().expect("booth L pushed");
+        let br = booth_rx.pop().expect("booth R pushed");
+
+        assert!((bl - ml * 0.5).abs() < 1e-6);
+        assert!((br - mr * 0.5).abs() < 1e-6);
     }
 
     #[test]
