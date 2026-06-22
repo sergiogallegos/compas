@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="512" height="512">
+  <!-- compas app icon — "Needle & Rose" compass mark on a dark app tile, electric-blue accent
+       (matches the in-app theme). Regenerate platform icons with: tauri icon src-tauri/app-icon.svg -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e1e28"/>
+      <stop offset="1" stop-color="#0e0e13"/>
+    </linearGradient>
+    <linearGradient id="needle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4fcdf6"/>
+      <stop offset="1" stop-color="#18b4e8"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="108" height="108" rx="25" fill="url(#tile)" stroke="rgba(255,255,255,.08)" stroke-width="1.5"/>
+  <circle cx="60" cy="60" r="43" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="5"/>
+  <g stroke="#18b4e8" stroke-width="6" stroke-linecap="round">
+    <line x1="60" y1="15" x2="60" y2="28"/>
+    <line x1="105" y1="60" x2="92" y2="60"/>
+    <line x1="60" y1="105" x2="60" y2="92"/>
+    <line x1="15" y1="60" x2="28" y2="60"/>
+  </g>
+  <polygon points="60,27 71,61 60,69 49,61" fill="url(#needle)"/>
+  <polygon points="60,93 49,59 60,51 71,59" fill="#3a3a47"/>
+  <circle cx="60" cy="60" r="8" fill="#13131a" stroke="#18b4e8" stroke-width="4.5"/>
+</svg>
