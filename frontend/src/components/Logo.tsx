@@ -23,7 +23,7 @@ export function Logo({
       viewBox="0 0 120 120"
       width={size}
       height={size}
-      style={glow ? { filter: "drop-shadow(0 0 6px rgba(255,46,126,.5))" } : undefined}
+      style={glow ? { filter: "drop-shadow(0 0 6px rgba(var(--accent-rgb),.5))" } : undefined}
       aria-label="compas"
     >
       <circle cx="60" cy="60" r="54" fill="none" stroke={ring} strokeWidth="6" />

@@ -27,7 +27,9 @@ const ROLLS: { v: number; label: string }[] = [
   { v: 0.5, label: "½" },
 ];
 
-const CUE_COLORS = ["var(--accent)", "var(--stream)", "var(--status-warn)", "var(--status-ok)"];
+// Per-slot hot-cue colors (Serato-style 8-color palette). Hex so an alpha suffix (`${c}30`) is
+// valid CSS — a CSS var like `var(--accent)` can't take an appended alpha.
+const CUE_COLORS = ["#ff5b4c", "#ff8c1a", "#ffcf3a", "#3ddc97", "#28e0ff", "#2ea6ff", "#9b6bff", "#ff5bbf"];
 
 /// Degrees of platter rotation per second of audio (≈33⅓ RPM). Matches the play-head
 /// `spin` mapping so a scratch gesture converts cleanly to a read-rate: speed = ω / this.
@@ -308,7 +310,11 @@ export function Deck({
               className="btn-play"
               onClick={actions.togglePlay}
               disabled={!meta}
-              style={{ background: `linear-gradient(180deg, ${color}, ${color}cc)`, boxShadow: playing ? `0 0 16px ${color}73` : "none" }}
+              style={
+                playing
+                  ? { background: "linear-gradient(180deg, #44e6a4, #2bb37a)", color: "#06251a", boxShadow: "0 0 16px rgba(var(--status-ok-rgb), 0.5)" }
+                  : { background: "linear-gradient(180deg, #2b2b34, #1c1c23)", color: "#fff", boxShadow: "none" }
+              }
             >
               <Icon name={playing ? "pause" : "play"} size={16} />
             </button>
@@ -329,7 +335,7 @@ export function Deck({
                   disabled={navOnly || !meta}
                   onClick={() => actions.setHotCue(i)}
                   onContextMenu={(e) => { e.preventDefault(); actions.clearHotCue(i); }}
-                  style={set ? { color: c, borderColor: `${c}80`, background: `${c}26` } : undefined}
+                  style={set ? { color: "#fff", borderColor: c, background: `${c}33`, boxShadow: `0 0 7px ${c}66, inset 0 0 0 1px ${c}` } : undefined}
                   title={set ? "Jump (right-click clears)" : "Set hot cue"}
                 >
                   {i + 1}
@@ -342,11 +348,18 @@ export function Deck({
             <>
               <div className="chip-row">
                 <button className="chip" onClick={actions.loopIn} disabled={!meta} title="Set loop in">IN</button>
-                <button className="chip" onClick={actions.loopOut} disabled={!meta} title="Set loop out & enable">OUT</button>
+                <button
+                  className={`chip ${state.loop.active ? "chip--loopon" : ""}`}
+                  onClick={actions.loopOut}
+                  disabled={!meta}
+                  title="Set loop out & enable"
+                >
+                  OUT
+                </button>
                 {[4, 8, 16].map((n) => (
                   <button
                     key={n}
-                    className={`chip ${state.loop.active && state.loop.beats === n ? "chip--on" : ""}`}
+                    className={`chip ${state.loop.active && state.loop.beats === n ? "chip--loopon" : ""}`}
                     onClick={() => actions.beatLoop(n)}
                     disabled={!meta || (meta.beat_interval_sec ?? 0) <= 0}
                     title={`${n}-beat loop`}

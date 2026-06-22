@@ -1,31 +1,41 @@
-/* compas design tokens — derived from the design handoff (docs/design). The single
-   interactive/brand color is magenta; cyan marks all streaming/control-only affordances. */
+/* compas design tokens — Traktor-style palette: deep near-black neutral chrome, a single
+   electric-blue interactive/brand accent, amber for cue affordances, cyan for streaming. */
 :root {
-  /* surfaces & text — matte charcoal (lifted off pure black for friendlier contrast) */
-  --bg-window: #16161d;
-  --bg-rail: #1b1b23;
-  --surface-1-top: #24242f;
-  --surface-1-bot: #1d1d26;
-  --surface-sunken: #15151c;
-  --surface-control: #2a2a35;
-  --border-hairline: rgba(255, 255, 255, 0.09);
-  --border-hairline-strong: rgba(255, 255, 255, 0.14);
-  --text-primary: #ededf2;
-  --text-secondary: #9a9aa5;
-  --text-tertiary: #6b6b76;
-  --text-disabled: #45454f;
+  /* surfaces & text — deep neutral near-black (Traktor-style flat chrome) */
+  --bg-window: #0c0c0e;
+  --bg-rail: #131316;
+  --surface-1-top: #1e1e22;
+  --surface-1-bot: #151518;
+  --surface-sunken: #0f0f12;
+  --surface-control: #232329;
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-hairline-strong: rgba(255, 255, 255, 0.15);
+  --text-primary: #eef0f3;
+  --text-secondary: #9498a2;
+  --text-tertiary: #686c76;
+  --text-disabled: #41444c;
 
-  /* brand & semantic */
-  --accent: #ff2e7e;
-  --accent-glow: #ff5c9b;
-  --accent-deep: #e01464;
+  /* brand & semantic — electric blue accent (rgb triplet for alpha tints), amber cue */
+  --accent: #18b4e8;
+  --accent-rgb: 24, 180, 232;
+  --accent-glow: #4fcdf6;
+  --accent-deep: #0e8fc0;
   --stream: #28e0ff;
   --stream-dim: #1d8fa8;
-  --violet: #7a1fff;
+  --violet: #4a64ff;
+  --cue: #ff8c1a;
+  --cue-rgb: 255, 140, 26;
   --status-ok: #3ddc97;
+  --status-ok-rgb: 61, 220, 151;
   --status-warn: #ffb020;
   --status-alarm: #ff3b5c;
   --status-alarm-2: #ff6b84;
+
+  /* deck identity colors (Traktor-style: blue / red / amber / green) */
+  --deck-a: #2ea6ff;
+  --deck-b: #ff5b4c;
+  --deck-c: #ffb020;
+  --deck-d: #3ddc97;
 
   /* type */
   --font-display: "Space Grotesk", system-ui, sans-serif;

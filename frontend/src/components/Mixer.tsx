@@ -191,11 +191,11 @@ function ChannelStrip({
       <div className={`knob-stack ${dsp ? "" : "knob-stack--locked"}`}>
         <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setGain(v)} />
-        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={28} disabled={!dsp}
+        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, hi: v })} />
-        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={28} disabled={!dsp}
+        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, mid: v })} />
-        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={28} disabled={!dsp}
+        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, low: v })} />
         <Knob label="FILTER" value={state.filter} min={-1} max={1} size={28} color={color} disabled={!dsp}
           onChange={(v) => actions.setFilter(v)} />
