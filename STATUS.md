@@ -36,6 +36,11 @@ handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online 
 or OBTAIN fallback. Do not implement directly from a paper until there is a short summary, a compas
 impact decision, and a test/benchmark plan.
 
+**Research point 1 done:** initial Bencina/Doumler real-time audio notes live in
+`docs/research/summaries/rt-audio-bencina-doumler.md`, and the actionable callback audit lives in
+`docs/research/rt-audio-audit.md`. Direct Bencina article re-fetch is still pending before detailed
+quotation, but the implementation guidance is enough to start the reclaim/telemetry hardening slice.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls

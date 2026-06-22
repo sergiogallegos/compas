@@ -6,12 +6,12 @@
 //!   control thread (Tauri commands)         audio callback thread (cpal, RT)
 //!   ───────────────────────────────         ────────────────────────────────
 //!   AudioEngine  ──cmd ring (rtrb)──▶  Mixer.drain_commands()  (lock-free)
-//!   decoder thread ──PCM ring (rtrb)──▶  DeckAudio.pull()       (lock-free)
+//!   decoder thread ──Arc<DeckBuffer>──▶ DeckPlayer.pull()       (immutable)
 //! ```
 //!
 //! The callback NEVER allocates, locks, or blocks. All parameter changes arrive as
-//! [`AudioCommand`]s over a single-producer/single-consumer ring; all audio arrives
-//! over per-deck SPSC rings filled by decoder threads.
+//! [`AudioCommand`]s over a single-producer/single-consumer ring; local track audio is
+//! installed as immutable [`DeckBuffer`]s and retired through the reclaim ring.
 
 #![forbid(unsafe_code)]
 

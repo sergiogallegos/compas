@@ -118,8 +118,9 @@ Three thread classes; the audio callback is sacred.
 ```
 
 - **Audio callback (RT):** allocation-free, lock-free, syscall-free, no logging, bounded time,
-  no panics. It only (a) drains the command ring and (b) pulls samples from per-deck rings and
-  mixes. Underruns increment a counter and emit silence; they never block.
+  no panics. It only (a) drains the command ring and (b) reads immutable `Arc<DeckBuffer>` data
+  through per-deck play-heads and mixes. Underruns increment a counter and emit silence; they
+  never block.
 - **`cpal::Stream` is `!Send` on some platforms**, so it is owned by a dedicated audio thread,
   **not** Tauri's shared state. Tauri commands send coarse `EngineMsg`s over a `std::sync::mpsc`
   to that thread, which forwards them as lock-free `AudioCommand`s.

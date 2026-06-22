@@ -33,6 +33,8 @@ All notable changes to compas are documented here. Format follows
 - **Research intake wiki:** added `docs/research/` for real-time audio, lock-free state handoff,
   and beat-tracking papers/talks, with a summary-first process before algorithm or architecture
   changes.
+- **RT-audio research notes:** added the first Bencina/Doumler summary and a concrete compas
+  callback-safety audit checklist covering reclaim, telemetry, rings, and callback boundaries.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted

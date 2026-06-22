@@ -276,8 +276,8 @@ then turn the findings into tests, benchmarks, or small code changes.
 
 ### Research-backed implementation queue
 
-1. ⬜ **RT-audio paper/talk notes** — summarize Bencina and Doumler, then convert them into a
-   concrete callback-safety audit for `compas-audio`.
+1. ✅ **RT-audio paper/talk notes** — initial Bencina/Doumler summary and callback-safety audit
+   added in `docs/research/`; direct Bencina re-fetch remains before detailed quotation.
 2. ⬜ **Lock-free/state-handoff design note** — document immutable graph snapshots, SPSC command
    flow, and control-thread reclamation for retired buffers/processors.
 3. ⬜ **Beat-tracking literature notes** — verify Dixon (2000), Laroche (2003), and the requested
