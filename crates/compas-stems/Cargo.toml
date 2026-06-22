@@ -8,12 +8,17 @@ repository.workspace = true
 authors.workspace = true
 description = "Offline htdemucs stem separation via ONNX Runtime (ort). Quarantines the native onnxruntime dependency out of the core engine crates; NOT real-time."
 
+[features]
+default = []
+onnx = ["dep:ort"]
+
 [dependencies]
 # Native ONNX Runtime bindings — the one quarantined non-pure-Rust dependency,
 # justified the same way as the FFmpeg decode fallback (see ROADMAP "Decisions made 2026-06-20").
-# Default features pull a prebuilt onnxruntime at build time; a later release pass switches to
-# `load-dynamic` so the runtime ships via the optional-download path instead of being linked.
-ort = "2.0.0-rc.12"
+# Keep it behind the `onnx` feature so pure stitching/resampling tests don't require a local
+# onnxruntime link. A later release pass switches to `load-dynamic` so the runtime ships via the
+# optional-download path instead of being linked.
+ort = { version = "2.0.0-rc.12", optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

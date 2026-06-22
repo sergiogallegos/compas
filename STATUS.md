@@ -109,15 +109,16 @@ Next, from the ROADMAP backlog:
      (deps: `ort` 2.0.0-rc.12 + `thiserror`/`tracing`; a workspace member but **not** in
      `default-members`, so core CI stays pure). Implemented: `StemSeparator::{load,separate}`,
      the **segmented overlap-add** core (7.8 s / `N_SAMPLES=343980` segments, ¼ overlap, triangular
-     window, weight-normalized), interleave/deinterleave. Note: the single-file htdemucs graph bakes
-     STFT **and** mean/std normalization inside, so the host does **no** normalization — just chunk +
-     window + overlap-add. **Verified:** `cargo test`+`clippy` green; the live `ort` smoke test
+     window, weight-normalized), interleave/deinterleave, and offline sample-rate conversion into
+     the model's fixed 44.1 kHz rate with stems converted back to the source rate. Note: the
+     single-file htdemucs graph bakes STFT **and** mean/std normalization inside, so the host does
+     **no** normalization — just resample + chunk + window + overlap-add. **Verified:** `cargo test`+`clippy` green; the live `ort` smoke test
      (`-- --ignored` with `COMPAS_HTDEMUCS_ONNX=<cached htdemucs.onnx>`) loads the real 301 MB model
      and runs a `[1,2,343980]`→`[1,4,2,343980]` frame in ~4.6 s — **Rust path proven**.
-     **Remaining S1 follow-ups:** rubato resampling for non-44.1 kHz sources (today `separate` errors
-     on a rate mismatch via `StemError::UnsupportedRate`); checksum'd optional-download of the model
-     (HF `StemSplitio/htdemucs-onnx` or our own mirror) into the app-data dir; switch `ort` to
-     `load-dynamic` so the runtime ships via that download path.
+     **Remaining S1 follow-ups:** checksum'd optional-download of the model (HF
+     `StemSplitio/htdemucs-onnx` or our own mirror) into the app-data dir; switch `ort` to
+     `load-dynamic` so the runtime ships via that download path; consider swapping the lightweight
+     linear offline resampler for `rubato` before release.
    - **S2 — engine integration:** deck holds `Option<[Arc<DeckBuffer>; 4]>`; mixer reads 4
      play-heads × 4 gains (RT-safe, same play-head math); `AudioCommand::SetDeckStemGain` +
      `separate_stems`/`set_deck_stem` IPC (separation job emits progress, results cached to disk +

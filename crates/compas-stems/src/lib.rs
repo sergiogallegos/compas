@@ -14,24 +14,29 @@
 //! Scheme (quarter-segment overlap + triangular window) mirrors demucs' own internal stitching.
 //!
 //! ## Status (S1)
-//! Implemented: the 44.1 kHz separation core + overlap-add. **Follow-ups:** rubato resampling for
-//! non-44.1 kHz sources (today `separate` errors on a rate mismatch), the checksum'd
-//! optional-download of the model into the app-data dir, and the engine/IPC wiring.
+//! Implemented: separation core + overlap-add + offline resampling between source rate and the
+//! model's fixed 44.1 kHz rate. **Follow-ups:** checksum'd optional-download of the model into the
+//! app-data dir and the engine/IPC wiring.
 
+#[cfg(feature = "onnx")]
 use std::path::Path;
 
+#[cfg(feature = "onnx")]
 use ort::session::{builder::GraphOptimizationLevel, Session};
+#[cfg(feature = "onnx")]
 use ort::value::Tensor;
 
-/// Sample rate the model operates at; inputs must already be at this rate (S1).
+/// Sample rate the model operates at internally.
 pub const MODEL_SAMPLE_RATE: u32 = 44_100;
 /// Samples per segment, baked into the exported graph (7.8 s @ 44.1 kHz).
 pub const N_SAMPLES: usize = 343_980;
 /// The model is stereo in / stereo out per stem.
 pub const N_CHANNELS: usize = 2;
 /// Quarter-segment overlap between consecutive chunks.
+#[cfg(any(feature = "onnx", test))]
 const OVERLAP: usize = N_SAMPLES / 4; // 85_995
 /// Hop between chunk starts.
+#[cfg(any(feature = "onnx", test))]
 const STRIDE: usize = N_SAMPLES - OVERLAP; // 257_985
 /// Number of stems the single-file htdemucs model emits, in output-row order.
 pub const SOURCES: [&str; 4] = ["drums", "bass", "other", "vocals"];
@@ -42,11 +47,9 @@ pub enum StemError {
     /// Anything surfaced by the ONNX Runtime (load, shape, inference). Held as a string because
     /// `ort::Error` is generic over a context type (`Error<SessionBuilder>`, `Error<()>`, …),
     /// which a single `#[from]` can't cover.
+    #[cfg(feature = "onnx")]
     #[error("onnx runtime: {0}")]
     Ort(String),
-    /// Input sample rate is not yet supported (resampling is a follow-up).
-    #[error("input is {got} Hz; S1 requires {expected} Hz (resampling not wired yet)")]
-    UnsupportedRate { got: u32, expected: u32 },
     /// Input buffer was not interleaved stereo (even length).
     #[error("expected interleaved stereo (even sample count), got {0} samples")]
     NotStereo(usize),
@@ -73,15 +76,18 @@ impl StemSet {
 }
 
 /// Map any `ort::Error<C>` (generic over its context type) into our string-backed variant.
+#[cfg(feature = "onnx")]
 fn ort_err<E: std::fmt::Display>(e: E) -> StemError {
     StemError::Ort(e.to_string())
 }
 
 /// A loaded htdemucs ONNX session. Construct once (loading is expensive), then reuse across tracks.
+#[cfg(feature = "onnx")]
 pub struct StemSeparator {
     session: Session,
 }
 
+#[cfg(feature = "onnx")]
 impl StemSeparator {
     /// Load a single-file htdemucs ONNX model from disk.
     pub fn load(model_path: &Path) -> Result<Self, StemError> {
@@ -97,24 +103,32 @@ impl StemSeparator {
     /// Separate an **interleaved stereo** mix into four stems at the same sample rate.
     ///
     /// `progress` is called after each chunk with a fraction in `0.0..=1.0`. Offline / blocking;
-    /// run it on a worker thread. Errors if `source_rate != MODEL_SAMPLE_RATE` (S1 limitation).
+    /// run it on a worker thread. Non-44.1 kHz input is resampled into the model and stems are
+    /// resampled back to `source_rate`.
     pub fn separate(
         &mut self,
         mix_interleaved: &[f32],
         source_rate: u32,
         progress: impl FnMut(f32),
     ) -> Result<StemSet, StemError> {
-        if source_rate != MODEL_SAMPLE_RATE {
-            return Err(StemError::UnsupportedRate {
-                got: source_rate,
-                expected: MODEL_SAMPLE_RATE,
-            });
-        }
         if mix_interleaved.len() % 2 != 0 {
             return Err(StemError::NotStereo(mix_interleaved.len()));
         }
+        let source_frames = mix_interleaved.len() / N_CHANNELS;
         let (left, right) = deinterleave(mix_interleaved);
-        let stems = overlap_add(&left, &right, progress, |lc, rc| self.run_chunk(lc, rc))?;
+        let (model_left, model_right) = if source_rate == MODEL_SAMPLE_RATE {
+            (left, right)
+        } else {
+            let model_frames = resampled_len(source_frames, source_rate, MODEL_SAMPLE_RATE);
+            (
+                resample_channel_linear(&left, source_rate, MODEL_SAMPLE_RATE, model_frames),
+                resample_channel_linear(&right, source_rate, MODEL_SAMPLE_RATE, model_frames),
+            )
+        };
+        let mut stems = overlap_add(&model_left, &model_right, progress, |lc, rc| self.run_chunk(lc, rc))?;
+        if source_rate != MODEL_SAMPLE_RATE {
+            stems = resample_stems_to_source_rate(stems, source_rate, source_frames);
+        }
         Ok(StemSet {
             drums: interleave(&stems[0][0], &stems[0][1]),
             bass: interleave(&stems[1][0], &stems[1][1]),
@@ -155,6 +169,7 @@ impl StemSeparator {
 /// Triangular fade-in/fade-out window (length [`N_SAMPLES`]) used for overlap-add stitching: a
 /// linear ramp `0..1` over the first [`OVERLAP`] samples, flat `1.0` in the middle, mirrored ramp
 /// at the tail. Matches `np.linspace(0, 1, OVERLAP)` and its reverse.
+#[cfg(any(feature = "onnx", test))]
 fn transition_window() -> Vec<f32> {
     let mut w = vec![1.0f32; N_SAMPLES];
     let denom = (OVERLAP - 1).max(1) as f32;
@@ -167,6 +182,7 @@ fn transition_window() -> Vec<f32> {
 }
 
 /// Number of chunks needed to cover `total_len` samples at [`STRIDE`] hop (min 1).
+#[cfg(any(feature = "onnx", test))]
 fn n_chunks(total_len: usize) -> usize {
     if total_len == 0 {
         return 1;
@@ -178,6 +194,7 @@ fn n_chunks(total_len: usize) -> usize {
 /// (zero-padded at the tail), runs `run_chunk` on each padded chunk, windows + accumulates the
 /// four returned stems, then normalizes by the summed window weight. Factored out (no `ort`
 /// dependency) so the stitching is unit-testable with a stub model.
+#[cfg(any(feature = "onnx", test))]
 fn overlap_add<F>(
     left: &[f32],
     right: &[f32],
@@ -239,6 +256,7 @@ where
 }
 
 /// Split interleaved stereo `[l0, r0, l1, r1, …]` into planar `(left, right)`.
+#[cfg(feature = "onnx")]
 fn deinterleave(stereo: &[f32]) -> (Vec<f32>, Vec<f32>) {
     let frames = stereo.len() / 2;
     let mut left = Vec::with_capacity(frames);
@@ -251,6 +269,7 @@ fn deinterleave(stereo: &[f32]) -> (Vec<f32>, Vec<f32>) {
 }
 
 /// Merge planar `(left, right)` back into interleaved stereo.
+#[cfg(feature = "onnx")]
 fn interleave(left: &[f32], right: &[f32]) -> Vec<f32> {
     let n = left.len().min(right.len());
     let mut out = Vec::with_capacity(n * 2);
@@ -259,6 +278,63 @@ fn interleave(left: &[f32], right: &[f32]) -> Vec<f32> {
         out.push(right[f]);
     }
     out
+}
+
+#[cfg(feature = "onnx")]
+fn resampled_len(input_frames: usize, from_rate: u32, to_rate: u32) -> usize {
+    if input_frames == 0 {
+        return 0;
+    }
+    ((input_frames as f64 * to_rate as f64) / from_rate as f64).round().max(1.0) as usize
+}
+
+#[cfg(any(feature = "onnx", test))]
+fn resample_channel_linear(input: &[f32], from_rate: u32, to_rate: u32, output_frames: usize) -> Vec<f32> {
+    if output_frames == 0 {
+        return Vec::new();
+    }
+    if input.is_empty() {
+        return vec![0.0; output_frames];
+    }
+    if from_rate == to_rate && input.len() == output_frames {
+        return input.to_vec();
+    }
+    if input.len() == 1 {
+        return vec![input[0]; output_frames];
+    }
+
+    let step = from_rate as f64 / to_rate as f64;
+    let last = input.len() - 1;
+    let mut out = Vec::with_capacity(output_frames);
+    for i in 0..output_frames {
+        let pos = i as f64 * step;
+        let lo = pos.floor() as usize;
+        if lo >= last {
+            out.push(input[last]);
+            continue;
+        }
+        let frac = (pos - lo as f64) as f32;
+        out.push(input[lo] + (input[lo + 1] - input[lo]) * frac);
+    }
+    out
+}
+
+#[cfg(feature = "onnx")]
+fn resample_stems_to_source_rate(
+    stems: [[Vec<f32>; N_CHANNELS]; 4],
+    source_rate: u32,
+    source_frames: usize,
+) -> [[Vec<f32>; N_CHANNELS]; 4] {
+    std::array::from_fn(|stem| {
+        std::array::from_fn(|ch| {
+            resample_channel_linear(
+                &stems[stem][ch],
+                MODEL_SAMPLE_RATE,
+                source_rate,
+                source_frames,
+            )
+        })
+    })
 }
 
 #[cfg(test)]
@@ -338,11 +414,28 @@ mod tests {
         }
     }
 
+    #[test]
+    fn resampling_preserves_requested_length_and_endpoints() {
+        let input = [0.0, 1.0, 0.0, -1.0];
+        let out = resample_channel_linear(&input, 4, 8, 8);
+        assert_eq!(out.len(), 8);
+        assert!((out[0] - 0.0).abs() < 1e-6);
+        assert!((out[2] - 1.0).abs() < 1e-6);
+        assert!((out[6] + 1.0).abs() < 1e-6);
+
+        let down = resample_channel_linear(&out, 8, 4, input.len());
+        assert_eq!(down.len(), input.len());
+        for (got, want) in down.iter().zip(input) {
+            assert!((*got - want).abs() < 1e-6, "{got} vs {want}");
+        }
+    }
+
     /// Live model smoke test — proves the Rust `ort` path can load the real htdemucs graph and
     /// run one `[1,2,343980]` frame to `[1,4,2,343980]`. Ignored by default (CI has no 301 MB
     /// model); run locally with the model path in `COMPAS_HTDEMUCS_ONNX`, e.g.
     /// `COMPAS_HTDEMUCS_ONNX=~/.cache/huggingface/.../htdemucs.onnx cargo test -p compas-stems -- --ignored`.
     #[test]
+    #[cfg(feature = "onnx")]
     #[ignore = "requires the 301 MB htdemucs.onnx via COMPAS_HTDEMUCS_ONNX"]
     fn ort_smoke_runs_real_model() {
         let path = std::env::var("COMPAS_HTDEMUCS_ONNX")
