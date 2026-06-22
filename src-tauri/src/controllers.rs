@@ -41,7 +41,7 @@ pub fn list_profiles(dir: &Path) -> Vec<ControllerProfile> {
             }
         }
     }
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|p| p.name.to_lowercase());
     out
 }
 
@@ -59,7 +59,7 @@ pub fn list_merged(bundled: Option<&Path>, user: &Path) -> Vec<ControllerProfile
         by_id.insert(p.id.clone(), p); // user overrides bundled
     }
     let mut out: Vec<_> = by_id.into_values().collect();
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|p| p.name.to_lowercase());
     out
 }
 
