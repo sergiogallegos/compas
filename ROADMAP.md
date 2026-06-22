@@ -281,9 +281,10 @@ then turn the findings into tests, benchmarks, or small code changes.
 2. ✅ **Lock-free/state-handoff design note** — documented immutable graph snapshots, SPSC command
    flow, telemetry counters, and control-thread reclamation for retired buffers/processors in
    `docs/research/lock-free-state-handoff.md`.
-3. ⬜ **Beat-tracking literature notes** — verify Dixon (2000), Laroche (2003), and the requested
-   2024 zero-latency citation; if the 2024 citation cannot be found, use OBTAIN (2017) as the
-   online beat-tracking fallback source.
+3. ✅ **Beat-tracking literature notes** — documented citation status in
+   `docs/research/summaries/beat-tracking-literature.md`: Dixon/BeatRoot trail partially verified,
+   Laroche and the requested 2024 zero-latency citation still unverified, OBTAIN (2017) verified as
+   the online beat-tracking fallback.
 4. ⬜ **Beat-tracking benchmark harness** — build synthetic cases for silence, clicks, swung drums,
    tempo ramps, half/double-tempo traps, and loop/sync edge cases before changing the algorithm.
 5. ⬜ **Adopt one algorithmic improvement at a time** — implement only after the summary identifies

@@ -47,6 +47,12 @@ telemetry, recording, and cue handoff paths, then defines the next code slice: s
 counters, command/reclaim observability, no callback-side large drops, and tests under reclaim
 pressure.
 
+**Research point 3 done:** beat-tracking literature verification lives in
+`docs/research/summaries/beat-tracking-literature.md`. Dixon is documented through the BeatRoot
+trail but the requested exact title still needs a primary source; Laroche (2003) and the requested
+Mierer/Mierer-like 2024 zero-latency citation remain unverified; OBTAIN (2017) is the verified
+online beat-tracking fallback. Decision: build the benchmark harness before changing algorithms.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
