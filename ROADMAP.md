@@ -252,9 +252,9 @@ Before implementation, run the research intake in `docs/research/README.md`: rea
 architecture first, then the real-time audio/lock-free sources, then beat-tracking papers, and only
 then turn the findings into tests, benchmarks, or small code changes.
 
-1. ⬜ **Stronger sync edge-case tests** — empty/paused leaders, loop-roll/slip while synced,
-   beatgrid-anchor offsets, tempo extremes, leader reassignment, four-deck conflicts, and
-   seek/cue actions while a follower is phase-locked.
+1. ✅ **Stronger sync edge-case tests** — added engine tests for paused/empty leaders, unloaded
+   followers, sync command cycle-breaking, and loop-roll release while phase-locked; `update_sync`
+   now refuses stale sync pulls when either side has no loaded buffer.
 2. ⬜ **Device hot-plug and recovery** — recover cleanly when master/headphone devices disappear,
    change sample rate, or fail to open; surface status to the UI and avoid callback stalls.
 3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists; split the counters

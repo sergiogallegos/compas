@@ -878,19 +878,33 @@ impl Mixer {
     #[inline]
     fn update_sync(&mut self) {
         // Snapshot what the PLL needs (avoids aliasing master/follower borrows).
-        let mut snap = [(0.0f64, 0.0f64, 0.0f64, 0.0f64, false); NUM_DECKS];
+        let mut snap = [(0.0f64, 0.0f64, 0.0f64, 0.0f64, false, false); NUM_DECKS];
         for (i, d) in self.decks.iter().enumerate() {
             // A master plays at its own user rate.
             let adv = d.base_ratio * d.tempo;
-            snap[i] = (d.playhead, d.beat_offset, d.beat_interval, adv, d.playing);
+            snap[i] = (
+                d.playhead,
+                d.beat_offset,
+                d.beat_interval,
+                adv,
+                d.playing,
+                d.buffer.is_some(),
+            );
         }
         for (i, d) in self.decks.iter_mut().enumerate() {
             let Some(m) = d.sync_master else {
                 d.sync_tempo = None;
                 continue;
             };
-            let (m_ph, m_off, m_int, m_adv, m_playing) = snap.get(m).copied().unwrap_or_default();
-            if m == i || m_int <= 0.0 || d.beat_interval <= 0.0 || !m_playing || d.base_ratio <= 0.0
+            let (m_ph, m_off, m_int, m_adv, m_playing, m_loaded) =
+                snap.get(m).copied().unwrap_or_default();
+            if m == i
+                || m_int <= 0.0
+                || d.beat_interval <= 0.0
+                || !m_playing
+                || !m_loaded
+                || d.buffer.is_none()
+                || d.base_ratio <= 0.0
             {
                 d.sync_tempo = None;
                 continue;
@@ -1432,6 +1446,27 @@ mod tests {
         d
     }
 
+    fn mixer_with_commands() -> (Producer<AudioCommand>, Mixer) {
+        let (ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(16);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        (
+            ctx,
+            Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new())),
+        )
+    }
+
+    fn arm_sync_decks(mixer: &mut Mixer) {
+        let buf = Arc::new(DeckBuffer::new(vec![0.0; 2 * 480_000], 48_000));
+        for d in mixer.decks.iter_mut() {
+            d.buffer = Some(buf.clone());
+            d.base_ratio = 1.0;
+            d.tempo = 1.0;
+            d.playing = true;
+            d.beat_offset = 0.0;
+            d.beat_interval = 24_000.0; // 120 BPM @ 48 kHz
+        }
+    }
+
     #[test]
     fn scratch_plays_while_paused_and_moves_playhead() {
         let mut d = ramp_deck();
@@ -1545,6 +1580,118 @@ mod tests {
         err -= err.round();
         // Phase offset is NOT corrected in tempo-only mode (stays near the original quarter beat).
         assert!(err.abs() > 0.1, "tempo-only must not phase-lock: err={err}");
+    }
+
+    #[test]
+    fn sync_disarms_when_master_or_follower_is_unusable() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        arm_sync_decks(&mut mixer);
+        mixer.decks[1].sync_master = Some(0);
+
+        mixer.next_frame();
+        assert!(
+            mixer.decks[1].sync_tempo.is_some(),
+            "sanity: follower should sync when both decks are usable"
+        );
+
+        mixer.decks[0].playing = false;
+        mixer.next_frame();
+        assert!(
+            mixer.decks[1].sync_tempo.is_none(),
+            "paused master must disable sync pull"
+        );
+
+        mixer.decks[0].playing = true;
+        let master_buffer = mixer.decks[0].buffer.take();
+        mixer.next_frame();
+        assert!(
+            mixer.decks[1].sync_tempo.is_none(),
+            "empty master must disable sync pull"
+        );
+
+        mixer.decks[0].buffer = master_buffer;
+        let follower_buffer = mixer.decks[1].buffer.take();
+        mixer.next_frame();
+        assert!(
+            mixer.decks[1].sync_tempo.is_none(),
+            "empty follower must not keep a stale sync tempo"
+        );
+
+        mixer.decks[1].buffer = follower_buffer;
+        mixer.decks[1].beat_interval = 0.0;
+        mixer.next_frame();
+        assert!(
+            mixer.decks[1].sync_tempo.is_none(),
+            "ungridded follower must not sync"
+        );
+    }
+
+    #[test]
+    fn set_deck_sync_command_breaks_follower_cycles() {
+        let (mut tx, mut mixer) = mixer_with_commands();
+        arm_sync_decks(&mut mixer);
+
+        tx.push(AudioCommand::SetDeckSync {
+            deck: 0,
+            master: Some(1),
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+        assert_eq!(mixer.decks[0].sync_master, Some(1));
+
+        tx.push(AudioCommand::SetDeckSync {
+            deck: 1,
+            master: Some(0),
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+
+        assert_eq!(mixer.decks[1].sync_master, Some(0));
+        assert_eq!(
+            mixer.decks[0].sync_master, None,
+            "new master must stop following the deck that now follows it"
+        );
+    }
+
+    #[test]
+    fn synced_follower_recovers_phase_after_loop_roll_release() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        arm_sync_decks(&mut mixer);
+        mixer.decks[1].sync_master = Some(0);
+        mixer.decks[1].playhead = 6_000.0;
+
+        let start = mixer.decks[1].playhead;
+        mixer.decks[1].roll_active = true;
+        mixer.decks[1].slip_playhead = start;
+        mixer.decks[1].loop_in = start;
+        mixer.decks[1].loop_out = start + 6_000.0;
+        mixer.decks[1].loop_active = true;
+
+        for _ in 0..24_000 {
+            mixer.next_frame();
+        }
+
+        mixer.decks[1].roll_active = false;
+        mixer.decks[1].loop_active = false;
+        mixer.decks[1].playhead = mixer.decks[1].slip_playhead;
+
+        for _ in 0..192_000 {
+            mixer.next_frame();
+        }
+
+        assert!(
+            mixer.decks[1].sync_tempo.is_some(),
+            "follower should remain syncable after releasing loop-roll"
+        );
+        let interval = mixer.decks[0].beat_interval;
+        let mp = beat_phase(mixer.decks[0].playhead, 0.0, interval);
+        let fp = beat_phase(mixer.decks[1].playhead, 0.0, interval);
+        let mut err = mp - fp;
+        err -= err.round();
+        assert!(
+            err.abs() < 0.03,
+            "follower did not recover phase after loop-roll: err={err}"
+        );
     }
 
     #[test]
