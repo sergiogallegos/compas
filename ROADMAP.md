@@ -258,9 +258,9 @@ then turn the findings into tests, benchmarks, or small code changes.
 2. 🔶 **Device hot-plug and recovery** — master output stream errors now mark audio offline,
    retry the default device on the audio owner thread, and surface online/restarting/error status
    to the footer. Remaining: cue/headphone auto-reopen and state replay after a full stream rebuild.
-3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists; split the counters
-   into callback over-budget, stream underrun, command-ring full, cue-ring underrun, record-ring
-   overflow, and telemetry-drop so debugging points to the real failure.
+3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists and now separates
+   callback over-budget, command-ring full, record-ring drops, and cue-ring drops in the telemetry
+   payload/UI tooltip. Remaining: true stream underrun detection and dropped UI telemetry events.
 4. ⬜ **Booth output** — optional third output bus with independent gain/device selection, fed from
    the post-master mix by default.
 5. ⬜ **Master/headphone/record routing model** — make routing bus-based: master, cue/headphones,

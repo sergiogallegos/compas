@@ -35,7 +35,13 @@ export function App() {
   const [sampleRate, setSampleRate] = useState<number | null>(null);
   const [audioStatus, setAudioStatus] = useState<Pick<EngineStatus, "audio_online" | "audio_restarting" | "audio_restarts" | "audio_error"> | null>(null);
   const [master, setMaster] = useState<MasterMeter>({ l: 0, r: 0 });
-  const [load, setLoad] = useState<EngineLoad>({ load: 0, xruns: 0 });
+  const [load, setLoad] = useState<EngineLoad>({
+    load: 0,
+    xruns: 0,
+    command_ring_full: 0,
+    record_ring_drops: 0,
+    cue_ring_drops: 0,
+  });
   const [xfade, setXfade] = useState(0.5);
   const [showKeys, setShowKeys] = useState(false);
   const [showMap, setShowMap] = useState(false);

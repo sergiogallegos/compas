@@ -74,6 +74,12 @@ export interface EngineLoad {
   load: number;
   /** Cumulative real-time-budget overruns since start. */
   xruns: number;
+  /** Control messages dropped because the command ring was full. */
+  command_ring_full: number;
+  /** Master recording frames dropped because the record ring was full. */
+  record_ring_drops: number;
+  /** Headphone/cue frames dropped because the cue ring was full. */
+  cue_ring_drops: number;
 }
 
 export interface DeckError {

@@ -131,10 +131,13 @@ impl AudioEngine {
     /// Send a control command to the audio thread. Errors if the ring is full (the UI
     /// should coalesce rapid parameter changes).
     pub fn send(&mut self, cmd: AudioCommand) -> Result<()> {
-        let r = self
-            .commands
-            .push(cmd)
-            .map_err(|_| CompasError::Other("audio command ring full".into()));
+        let r = match self.commands.push(cmd) {
+            Ok(()) => Ok(()),
+            Err(_) => {
+                self.telemetry.inc_command_ring_full();
+                Err(CompasError::Other("audio command ring full".into()))
+            }
+        };
         self.drain_reclaimed();
         r
     }

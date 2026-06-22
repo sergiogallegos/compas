@@ -669,6 +669,9 @@ struct EngineLoadEvent {
     load: f32,
     /// Cumulative real-time-budget overruns since start.
     xruns: u64,
+    command_ring_full: u64,
+    record_ring_drops: u64,
+    cue_ring_drops: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -1996,6 +1999,9 @@ fn spawn_telemetry(app: AppHandle, telemetry: Arc<DeckTelemetry>) {
                 EngineLoadEvent {
                     load: telemetry.rt_load(),
                     xruns: telemetry.xruns(),
+                    command_ring_full: telemetry.command_ring_full(),
+                    record_ring_drops: telemetry.record_ring_drops(),
+                    cue_ring_drops: telemetry.cue_ring_drops(),
                 },
             );
             thread::sleep(period);

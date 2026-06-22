@@ -24,8 +24,8 @@ engineering practices from `rust-ethernet-ip`, then used the same pass to close 
 - **Docs/status cleanup:** roadmap/status/changelog/website docs now match the above.
 
 **Next recommended workstream:** pro-audio hardening before release. Track it in `ROADMAP.md`
-under "Reliability / Pro-Audio Hardening Backlog": split underrun/overload counters, booth output,
-explicit master/cue/booth/record routing, latency compensation, no-drop tests for retired
+under "Reliability / Pro-Audio Hardening Backlog": booth output, explicit master/cue/booth/record
+routing, latency compensation, no-drop tests for retired
 `Arc<DeckBuffer>`/graph state, more controller mapping profiles, and the modular per-deck
 processing graph
 `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
@@ -41,6 +41,14 @@ offline/restarting in shared status, and retries the default device from the aud
 The footer polls `engine_status` and shows OK/restarting/offline plus the latest error. Recording is
 blocked while the master output is offline. Remaining follow-up: cue/headphone auto-reopen and state
 replay after a full stream rebuild. Verified with `cargo check -p compas-audio --locked`,
+`cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
+`cd frontend && npx tsc --noEmit`.
+
+**Hardening item 3 partial:** realtime telemetry now separates callback overruns, command-ring-full
+drops, master-record ring drops, and cue/headphone ring drops. The title-bar RT tooltip exposes each
+counter instead of collapsing every problem into one xrun number. Remaining follow-up: true hardware
+stream underrun detection and dropped UI telemetry-event accounting. Verified with
+`cargo test -p compas-audio --locked`, `cargo clippy -p compas-audio --all-targets -- -D warnings`,
 `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`, and
 `cd frontend && npx tsc --noEmit`.
 

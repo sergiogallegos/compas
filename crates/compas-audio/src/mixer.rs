@@ -376,6 +376,12 @@ pub struct DeckTelemetry {
     rt_load_bits: AtomicU64,
     /// Count of blocks that overran their real-time budget (potential underruns).
     xruns: AtomicU64,
+    /// Control commands dropped because the SPSC command ring was full.
+    command_ring_full: AtomicU64,
+    /// Master-record samples dropped because the record ring was full.
+    record_ring_drops: AtomicU64,
+    /// Headphone/cue samples dropped because the cue ring was full.
+    cue_ring_drops: AtomicU64,
     /// Per-deck effective play-head advance in **source frames per second** (signed; negative when
     /// scratching backward, 0 when stopped). Lets the UI extrapolate the play-head smoothly between
     /// telemetry updates instead of stepping at the 30 Hz event rate.
@@ -396,6 +402,9 @@ impl DeckTelemetry {
             master_r_bits: AtomicU64::new(0),
             rt_load_bits: AtomicU64::new(0),
             xruns: AtomicU64::new(0),
+            command_ring_full: AtomicU64::new(0),
+            record_ring_drops: AtomicU64::new(0),
+            cue_ring_drops: AtomicU64::new(0),
             rate_bits: std::array::from_fn(|_| AtomicU64::new(0)),
             output_latency_bits: AtomicU64::new(0),
         }
@@ -422,6 +431,22 @@ impl DeckTelemetry {
     /// Number of blocks that overran their real-time budget since start.
     pub fn xruns(&self) -> u64 {
         self.xruns.load(Ordering::Relaxed)
+    }
+
+    pub fn command_ring_full(&self) -> u64 {
+        self.command_ring_full.load(Ordering::Relaxed)
+    }
+
+    pub fn record_ring_drops(&self) -> u64 {
+        self.record_ring_drops.load(Ordering::Relaxed)
+    }
+
+    pub fn cue_ring_drops(&self) -> u64 {
+        self.cue_ring_drops.load(Ordering::Relaxed)
+    }
+
+    pub fn inc_command_ring_full(&self) {
+        self.command_ring_full.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Per-deck output peak in 0..~1 (linear). For VU meters.
@@ -1355,6 +1380,10 @@ impl Mixer {
             if sink.slots() >= 2 {
                 let _ = sink.push(ol);
                 let _ = sink.push(or);
+            } else {
+                self.telemetry
+                    .record_ring_drops
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
         // Headphone cue tap: blend the cue bus with the master (cue_mix) at the headphone
@@ -1368,6 +1397,10 @@ impl Mixer {
             if sink.slots() >= 2 {
                 let _ = sink.push(hl);
                 let _ = sink.push(hr);
+            } else {
+                self.telemetry
+                    .cue_ring_drops
+                    .fetch_add(1, Ordering::Relaxed);
             }
         }
         (ol, or)
@@ -1770,6 +1803,24 @@ mod tests {
         mixer.decks[0].playing = true;
         mixer.decks[0].cue = true; // cued, but nowhere to send
         let _ = mixer.next_frame();
+    }
+
+    #[test]
+    fn record_and_cue_ring_drops_are_counted() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let telemetry = Arc::new(DeckTelemetry::new());
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, telemetry.clone());
+        let (record_tx, _record_rx) = rtrb::RingBuffer::<f32>::new(2);
+        let (cue_tx, _cue_rx) = rtrb::RingBuffer::<f32>::new(2);
+        mixer.record_sink = Some(record_tx);
+        mixer.cue_sink = Some(cue_tx);
+
+        mixer.next_frame(); // fills both tiny rings
+        mixer.next_frame(); // no space left: both paths drop a stereo frame
+
+        assert_eq!(telemetry.record_ring_drops(), 1);
+        assert_eq!(telemetry.cue_ring_drops(), 1);
     }
 
     #[test]

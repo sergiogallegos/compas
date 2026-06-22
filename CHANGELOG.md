@@ -52,6 +52,9 @@ All notable changes to compas are documented here. Format follows
   change.
 - **Sync edge-case tests:** added audio-engine coverage for paused/empty leaders, unloaded
   followers, command cycle-breaking, and loop-roll release while a follower is phase-locked.
+- **Split realtime drop counters:** engine load telemetry now reports command-ring-full drops,
+  master-record ring drops, and cue/headphone ring drops separately from callback overruns; the
+  title-bar RT tooltip shows each counter for faster diagnosis.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted
