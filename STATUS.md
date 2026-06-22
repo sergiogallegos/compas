@@ -1,10 +1,34 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-20 (release infra). See `ROADMAP.md` for the
+> Checkpoint for picking work back up. Last updated: 2026-06-22 (UI/controller/stems/release polish). See `ROADMAP.md` for the
 > full plan + **competitive feature backlog** (the source of truth for what's next),
 > `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
 ## ▶ Resume here (next up, in order)
+
+**Seven-item polish/import batch (2026-06-22) — done.** Ported the high-value process and
+engineering practices from `rust-ethernet-ip`, then used the same pass to close real app polish:
+- **UI controls wired:** left nav items now focus/open real parts of the app, the title-bar REC
+  button controls master recording, the metronome clicks at master BPM, settings/profile panels
+  open, and the bottom status no longer says "Phase 1".
+- **Screenshots refreshed:** README and website hero screenshots now show the current UI with the
+  overview waveform and public-beta footer.
+- **Stems advanced:** `compas-stems` now resamples non-44.1 kHz sources into the htdemucs model
+  rate and back to source rate; the ONNX Runtime dependency is feature-gated so normal CI can test
+  the crate without a locally installed runtime.
+- **Controller panel improved:** the controller mapping panel can connect/rescan/disconnect MIDI
+  devices itself and shows the latest MIDI/HID input while learning.
+- **Library AutoDJ queue:** track rows can enqueue tracks; the queue banner can load the next item
+  to an empty deck (or deck B fallback) and clear the queue.
+- **Release readiness:** the tag workflow now builds Windows, macOS, and Linux artifacts.
+- **Docs/status cleanup:** roadmap/status/changelog/website docs now match the above.
+
+**Next recommended workstream:** pro-audio hardening before release. Track it in `ROADMAP.md`
+under "Reliability / Pro-Audio Hardening Backlog": stronger sync edge-case tests, device
+hot-plug/recovery, split underrun/overload counters, booth output, explicit master/cue/booth/record
+routing, latency compensation, no-drop tests for retired `Arc<DeckBuffer>`/graph state, more
+controller mapping profiles, and the modular per-deck processing graph
+`source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`.
 
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
@@ -47,9 +71,8 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   Hercules — same method); per-device HID button/LED work.
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
-OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +
-optional-download. Brand stays **compas**; domain **compasaudio.com** (Cloudflare/Pages DNS is the
-account-side step).
+OR-search/smart-crates/tags/folder-watch; AutoDJ auto-chain/planner UI polish; stem-separation
+optional-download/runtime packaging. Brand stays **compas**; domain **compasaudio.com**.
 
 
 **Design-study feature batch — engine + IPC complete (2026-06-20).** All 12 items from the
@@ -73,8 +96,8 @@ crates/playlists · 11. ✅ Auto-mix harmonic+tempo planner (`compas-core::autom
   inserts), sync internal-clock virtual leader, embedded JS sandbox (`rquickjs`/`boa`) for true
   scripting, OR-between-terms + smart crates + tags + folder-watch, full AutoDJ queue.
 
-**Stem separation (S1)** remains as previously noted (first slice done; resampling +
-optional-download follow-ups).
+**Stem separation (S1)** remains as previously noted (offline pipeline + source-rate resampling
+done; optional-download/runtime-packaging follow-ups).
 
 **User-confirmed working in the running app (2026-06-19):** the user ran `tauri dev` and reported
 the recent batch works — FX rack (echo/reverb/flanger/bitcrusher), performance row (quantize /
@@ -129,7 +152,8 @@ Next, from the ROADMAP backlog:
    full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
 3. **Release infra — wiring done, secrets pending (2026-06-20).** Auto-update plugin, manual
    "check for updates" on the title-bar version chip, and a git-sha build chip all integrated;
-   `release.yml` env block fully populated for `TAURI_SIGNING_*` + Apple notarization. Before
+   `release.yml` now builds Windows, macOS, and Linux artifacts and its env block is fully
+   populated for `TAURI_SIGNING_*` + Apple notarization. Before
    the first signed release: run `npx tauri signer generate -w ~/.tauri/compas.key`, paste the
    pubkey into `src-tauri/tauri.conf.json` (replacing `REPLACE_BEFORE_RELEASE_…`), and add the
    matching repo secrets. See `CONTRIBUTING.md` § "Release setup".
@@ -206,7 +230,7 @@ sources are **disabled** per request. See "Parked" below.
 
 **Infra / OSS:** MIT `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AGENTS.md`, `rust-toolchain.toml`,
 `rustfmt.toml`, CI (`.github/workflows/ci.yml`: fmt/clippy/test/frontend/audit), `release.yml`
-(Win/macOS installers on `v*` tag; signing commented), `audit.toml`, criterion DSP benches,
+(Windows/macOS/Linux installers on `v*` tag; signing commented), `audit.toml`, criterion DSP benches,
 `website/` landing page, test-WAV generator (`scripts/make-test-audio.mjs`).
 
 ## ⏸ Parked / known

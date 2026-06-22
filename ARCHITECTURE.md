@@ -17,7 +17,7 @@ two physically separate audio paths that **cannot be summed in our software buff
 
 ```
    ┌─────────────────────────── compas (Rust core) ───────────────────────────┐
-   │  LocalFileSource → decode (symphonia) → PCM ring → DSP chain → Mixer ──┐   │
+   │  LocalFileSource → decode (symphonia) → Arc<DeckBuffer> → DSP graph → Mixer ──┐   │
    └──────────────────────────────────────────────────────────────────────│───┘
                                                                             ▼
                                                                 cpal output (WASAPI/CoreAudio)
@@ -51,6 +51,7 @@ compas/
     compas-core/             domain types: TrackMetadata, SourceCapabilities, DeckId, errors
     compas-dsp/              DSP: rt (real-time-safe biquads/EQ/crossfade) + analysis (offline BPM/key)
     compas-audio/            real-time engine: cpal output, lock-free rings, command protocol, Mixer
+    compas-stems/            offline stem separation pipeline (feature-gated ONNX Runtime)
     compas-sources/          AudioSource abstraction: LocalFileSource (symphonia), StreamingSource
   src-tauri/                 Tauri 2 app crate (binary `compas` + lib `compas_lib`); IPC commands
   frontend/                  React 19 + Vite + TS; WebGL waveforms (P1); streaming SDK host (P2)
@@ -109,11 +110,11 @@ Three thread classes; the audio callback is sacred.
 ```
  control thread(s)              decoder thread(s)            audio callback thread (cpal, RT)
  ─────────────────              ─────────────────            ────────────────────────────────
- Tauri commands                LocalFileSource::next_chunk   Mixer::drain_commands()  (lock-free)
-   │  EngineMsg (mpsc)            │  PCM (interleaved f32)     Mixer::next_frame() per frame
-   ▼                              ▼                              │ pull from per-deck PCM ring
- compas-audio::AudioEngine ── AudioCommand (rtrb SPSC) ──▶ ────┘ apply gain/EQ/crossfade/master
-   owns cpal::Stream           per-deck PCM ring (rtrb SPSC) ─▶ DeckAudio.pull()
+ Tauri commands                LocalFileSource::decode_full   Mixer::drain_commands()  (lock-free)
+   │  EngineMsg (mpsc)            │  Arc<DeckBuffer>            Mixer::next_frame() per frame
+   ▼                              ▼                              │ read via fractional play-head
+ compas-audio::AudioEngine ── AudioCommand (rtrb SPSC) ──▶ ────┘ apply deck graph + buses
+   owns cpal::Stream
 ```
 
 - **Audio callback (RT):** allocation-free, lock-free, syscall-free, no logging, bounded time,
@@ -122,31 +123,71 @@ Three thread classes; the audio callback is sacred.
 - **`cpal::Stream` is `!Send` on some platforms**, so it is owned by a dedicated audio thread,
   **not** Tauri's shared state. Tauri commands send coarse `EngineMsg`s over a `std::sync::mpsc`
   to that thread, which forwards them as lock-free `AudioCommand`s.
-- **Decoder threads** fill each deck's PCM ring ahead of playback. Decoding allocates and is kept
-  off the callback entirely.
-- **Lock-free primitives:** `rtrb` SPSC rings for both the command channel and each deck's PCM
-  stream. One producer, one consumer, wait-free.
-
-**Known RT hazard, tracked for P1:** when a deck's PCM ring is replaced (load/eject), the old
-`Consumer` is currently dropped on the audio thread, which could free memory on the RT path. The
-fix is a "reclaim ring" that ships the retired consumer back to the control thread to be dropped
-there. Marked `TODO(P1)` in `compas-audio/src/mixer.rs`.
+- **Decoder/analysis workers** decode full local tracks into `Arc<DeckBuffer>` and run offline
+  analysis/stem work. They may allocate, block, and touch disk; the callback never does.
+- **Lock-free primitives:** `rtrb` SPSC rings for commands and RT-to-control telemetry/reclaim
+  paths. One producer, one consumer, wait-free.
+- **Buffer lifetime rule:** replacing/ejecting a deck must not drop the old `Arc<DeckBuffer>` on
+  the audio callback. Retired buffers are moved to a control-thread reclaim path before their last
+  reference can be released. Tests should cover repeated load/eject while audio is active.
 
 ## 5. Audio data flow (a local deck, end to end)
 
 1. **Load:** `LocalFileSource::open(path)` probes/decodes header (symphonia), fills
-   `TrackMetadata` (duration, etc.). Control thread calls `AudioEngine::attach_deck(deck)` →
-   creates a PCM ring, hands the consumer to the callback, returns the producer.
+   `TrackMetadata` (duration, etc.). A worker decodes the full track, then the control thread
+   installs the resulting `Arc<DeckBuffer>` on the target deck via command handoff.
 2. **Analyze (offline, worker):** `compas-dsp::analysis` computes BPM/beatgrid and key from the
    decoded PCM, writes them back into `TrackMetadata` and the UI.
-3. **Decode loop (worker):** pull `next_chunk()` → resample to the device rate if needed
-   (`rubato`) → push interleaved stereo f32 into the deck's PCM ring, throttled to keep the ring
-   ~half full (bounded latency).
-4. **Mix (RT):** the callback pulls one stereo frame per deck, runs per-deck EQ + gain, applies
-   the equal-power crossfader (deck 0 = A, deck 1 = B), sums, applies master gain, writes to the
-   cpal buffer (converted to the device sample format).
+3. **Decode loop (worker):** decode the full track to interleaved stereo f32 in RAM, normalize the
+   channel layout, and install it as an `Arc<DeckBuffer>` via command handoff.
+4. **Mix (RT):** the callback reads one stereo frame per deck from the buffer using the fractional
+   play-head, runs the per-deck processing graph, sends the result to the selected buses, sums the
+   master, and writes to the cpal buffer (converted to the device sample format).
 5. **Control:** fader/knob/transport changes arrive as `EngineMsg` → `AudioCommand`; parameter
    changes are smoothed (one-pole) on the RT side to avoid zipper noise.
+
+Target per-deck graph (local decks):
+
+```
+source buffer
+  -> play-head / rate conversion / scratch
+  -> key-lock
+  -> pregain / ReplayGain
+  -> EQ / filter
+  -> FX chain
+  -> channel fader / crossfader assign
+  -> buses (master, cue/headphones, booth, record)
+```
+
+The graph should become explicit and modular, but never dynamic on the callback in a way that
+allocates or changes ownership. The control thread builds or mutates graph state; the RT side reads
+preallocated processors, smoothed parameters, and stable buffer references.
+
+## 5a. Routing, devices, and reliability backlog
+
+The current mixer already exposes master output, headphone/PFL output, recording, and telemetry.
+The next hardening pass should make these guarantees explicit:
+
+1. **Sync edge-case tests:** cover empty decks, late/early beatgrid anchors, tempo extremes,
+   leader reassignment, paused leaders, loop-roll/slip interactions, and four-deck sync conflicts.
+2. **Device hot-plug/recovery:** output devices can disappear or change sample rate/buffer size.
+   The engine should report the failure, fall back to silence or the default device, and recover
+   without hanging the UI or callback.
+3. **Underrun/overload counters:** keep separate counters for stream underrun, callback over-budget,
+   command-ring full, telemetry drop, cue-ring underrun, and record-ring overflow.
+4. **Booth output:** add an optional third output bus with independent gain and device selection,
+   fed from the post-master mix unless a future preference says otherwise.
+5. **Master/headphone/record routing:** define routing as buses, not one-off taps. Recording should
+   choose master or pre-master where supported; headphones should remain PFL/cue-aware; future booth
+   output should not interfere with either.
+6. **Latency compensation:** track output-device latency, cue-device latency, buffering, and UI
+   render offset so play-heads, sync, cue, and recordings can be aligned intentionally.
+7. **No-drop RT guarantee:** any old `Arc<DeckBuffer>` or large processor state retired by load,
+   eject, stem swap, or graph mutation must be reclaimed off the audio thread.
+8. **Controller mapping profiles:** profile coverage should expand device-by-device with tests that
+   every binding targets a real control, and hot-plug should reactivate the matching profile.
+9. **Modular deck graph:** implement the target graph above so stems, ReplayGain, FX chains, booth,
+   and future mic/aux routing can be added without threading ad hoc taps through the mixer.
 
 ## 6. Streaming integration (Phase 2) & licensing posture
 

@@ -75,8 +75,9 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 
 - ✅ Local↔local: beat-synced auto-transition (cue → sync → 16-beat crossfade + bass swap →
   stop outgoing). AUTO (near track end) + MIX (now), via the frontend `useAutoMix` orchestrator.
-- ⬜ A playlist/queue so AUTO chains track→track→track unattended (today it needs the idle deck
-  pre-loaded). ⬜ Smarter planner: per-track in/out point selection, tempo ramps, EQ curves.
+- 🔶 AutoDJ queue: the library can enqueue tracks and load the next queued item to an empty deck
+  (or deck B fallback). ⬜ Full unattended AUTO chaining and smarter planner UI: per-track in/out
+  point selection, tempo ramps, EQ curves.
 - ⬜ Streaming decks: **position/metadata-timed** transitions only (no beat data; no PCM).
 
 ## Phase 4 — Cue/loops/hot cues + sync engine hardening 🔨
@@ -88,7 +89,9 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 ## Phase 5 — Stems / FX / recording 🔨
 
 - 🔨 **Stem separation** — **decided 2026-06-20** (see "Decisions made"): offline pre-computed
-  stems via `ort` (ONNX Runtime) + htdemucs, optional-download model. Not yet started.
+  stems via `ort` (ONNX Runtime) + htdemucs, optional-download model. S1 offline pipeline is
+  implemented, including model-rate/source-rate resampling; model download + engine/UI integration
+  remain.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 
@@ -100,7 +103,9 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 - ✅ **MIDI-learn / mapping engine**: bind controller knobs/pads/keys to deck controls (EQ, filter,
   crossfader, transport, sync, key-lock, hot cues, loops, FX). Per-target LEARN + persisted
   bindings; one-click Akai MPK Mini MK3 starter profile. `midi:note` events + `set_midi_synth` gate.
-- ⬜ Sampled/instrument upgrades (a real piano sample set); scratch latency tuning.
+- 🔶 Controller workflow: guided mapping exists, bundled MIDI/HID profile foundation exists, and
+  the controller panel can connect MIDI + show live input while learning. ⬜ More hardware profiles,
+  per-device HID button/LED work, sampled/instrument upgrades, scratch latency tuning.
 
 > **Note:** features were pulled forward out of phase order. Beyond P1, what's *actually* shipped
 > already includes key-lock, beat loops, hot cues, the echo/reverb FX rack, jog-wheel scratch, and
@@ -227,13 +232,43 @@ abstraction; Ableton Link / MIDI-clock sync.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. ✅ **Headphone/cue monitoring** — done.
 5. 🔨 **Stem separation** — model decision made (offline stems · `ort` · htdemucs ·
-   optional-download); implementation next. See "Decisions made (2026-06-20)".
+   optional-download); S1 offline pipeline + resampling done. Next: optional-download, engine
+   integration, and per-deck stem UI. See "Decisions made (2026-06-20)".
 6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) + sampler/pads done; more
    beat-synced FX, full slip mode, harmonic-mixing assist, MIDI-mapped pads still open.
 7. ⬜ **Typed control bus** — the extensibility enabler (see the deep-dive backlog); unlocks FX
    chains, controller scripting, and a skinnable UI, so it comes before them.
 8. ⬜ **Engine/UX deep-dive items** — FX chains + meta-knob, band-RGB waveforms, crossfader curve,
    configurable cue modes, the wider loop toolkit, and sync-coordinator hardening (deep-dive backlog).
+
+---
+
+## Reliability / Pro-Audio Hardening Backlog
+
+These are the next engineering-quality items before the first serious beta release. They are not
+flashy features, but they are what make the app behave like reliable DJ software under pressure.
+
+1. ⬜ **Stronger sync edge-case tests** — empty/paused leaders, loop-roll/slip while synced,
+   beatgrid-anchor offsets, tempo extremes, leader reassignment, four-deck conflicts, and
+   seek/cue actions while a follower is phase-locked.
+2. ⬜ **Device hot-plug and recovery** — recover cleanly when master/headphone devices disappear,
+   change sample rate, or fail to open; surface status to the UI and avoid callback stalls.
+3. 🔶 **Better underrun/overload telemetry** — title-bar RT load/xrun exists; split the counters
+   into callback over-budget, stream underrun, command-ring full, cue-ring underrun, record-ring
+   overflow, and telemetry-drop so debugging points to the real failure.
+4. ⬜ **Booth output** — optional third output bus with independent gain/device selection, fed from
+   the post-master mix by default.
+5. ⬜ **Master/headphone/record routing model** — make routing bus-based: master, cue/headphones,
+   booth, and record taps are explicit outputs instead of scattered one-off paths.
+6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; extend it to output-device
+   latency, cue-device latency, buffering, and recording alignment.
+7. 🔶 **No-drop guarantee for old buffers** — keep proving that retired `Arc<DeckBuffer>` values and
+   large graph state are reclaimed off the audio thread during load/eject/stem swap/graph mutation.
+8. 🔶 **Controller mapping profiles** — continue adding tested profiles (DDJ-SB3, Numark, Hercules,
+   more Akai/Korg), plus hot-plug profile activation and per-device HID button/LED support.
+9. ⬜ **Modular per-deck processing graph** — formalize
+   `source -> playhead/resampler -> keylock -> pregain/ReplayGain -> EQ/filter -> FX -> fader -> buses`
+   so stems, ReplayGain, FX chains, booth, mic/aux, and recording all compose cleanly.
 
 ---
 
@@ -248,9 +283,9 @@ Status: ✅ have · 🔶 partial · ⬜ planned. The controller list lives in `d
 - ✅ **DJ controller support** (engine + loader + scripting host wiring); 🔶 **MIDI** profiles to author,
   ⬜ **HID** input layer (`hidapi`) for jog/displays
 - 🔨 **effects** (echo/reverb/flanger/bitcrusher in a reorderable chain + meta-knob; ⬜ phaser, FX units UI)
-- 🔨 **stem separation** (S1 offline pipeline done; resampling + optional-download pending)
+- 🔨 **stem separation** (S1 offline pipeline + resampling done; optional-download + engine/UI pending)
 - ✅ master recording · ⬜ **microphone & aux inputs** · ⬜ controller **LED/output feedback**
-- ✅ library: crates/playlists, search/sort, BPM/key; 🔶 AutoDJ (planner done; ⬜ queue/chaining for breaks)
+- ✅ library: crates/playlists, search/sort, BPM/key; 🔶 AutoDJ (planner + queue done; ⬜ unattended chaining)
 - ⬜ **vinyl / timecode control** (DVS) · ⬜ reverse / censor
 - ⬜ **external library import** — your local files ✅; ⬜ import from other DJ apps + media libraries
 - 🔶 **broad format support** — symphonia covers WAV/AIFF/FLAC/MP3/OGG-Vorbis/Opus; ⬜ AAC/MP4 via the
@@ -260,8 +295,9 @@ Status: ✅ have · 🔶 partial · ⬜ planned. The controller list lives in `d
 ## Infrastructure & distribution (pending)
 
 - 🔨 **Release pipeline** (`.github/workflows/release.yml`, via `tauri-action`): on a `v*` tag,
-  build **Windows `.msi`/NSIS** and **macOS `.dmg`** installers and publish them as GitHub Release
-  assets. Feeds the website download buttons. *(Scaffolded; code signing is a follow-up.)*
+  build **Windows `.msi`/NSIS**, **macOS `.dmg`**, and **Linux** artifacts and publish them as
+  GitHub Release assets. Feeds the website download buttons. *(Scaffolded; code signing is a
+  follow-up.)*
 - ⬜ **In-app auto-update** (user-requested) via **`tauri-plugin-updater`**: on launch (and via a
   manual **"Check for updates"** button) the app pings the releases endpoint, detects a newer
   version, and offers a one-click **download + install**. Requires:

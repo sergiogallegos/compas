@@ -32,10 +32,10 @@ artifact and is ignored by Cloudflare Pages — harmless to leave, since it docu
 > Pages, set the Pages source to this folder and point a Cloudflare DNS record at GitHub Pages.
 
 ## Download buttons
-The two primary buttons link to `https://github.com/sergiogallegos/compas/releases/latest`.
-Once the release workflow publishes Windows (`.msi`/`.exe`) and macOS (`.dmg`) installers as
-release assets, those links resolve to the latest build. A small script highlights the installer
-matching the visitor's OS.
+The three primary buttons link to `https://github.com/sergiogallegos/compas/releases/latest`.
+Once the release workflow publishes Windows (`.msi`/`.exe`), macOS (`.dmg`), and Linux
+(`.AppImage`/`.deb`/`.rpm`) artifacts as release assets, those links resolve to the latest build.
+A small script highlights the installer matching the visitor's OS.
 
 ## Assets
 `assets/logo.png` and `assets/screenshot.png` are copied from the app's `docs/assets/`. Regenerate

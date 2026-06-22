@@ -6,11 +6,30 @@ All notable changes to compas are documented here. Format follows
 ## [Unreleased]
 
 ### Fixed
+- **Title-bar update check:** before the first published release feed exists, clicking the version
+  chip now reports "up to date" instead of surfacing a raw JSON/404 parsing error.
 - **Library loads onto all four decks:** track rows now have **A / B / C / D** load buttons
   (deck-coloured) instead of just A/B, so decks C and D are reachable from the list; the
   loaded-as tag recognises all four.
 
 ### Added
+- **App-shell controls wired:** the left rail now performs real actions (Perform scroll, Library
+  focus, Crates/source focus, FX focus, Rec toggle). The title bar now has working recording,
+  metronome, settings, contrast, and profile controls instead of inert placeholders.
+- **AutoDJ queue:** library rows can enqueue tracks; the queue banner can load the next track to an
+  empty deck (or deck B fallback) and clear the queue.
+- **Controller-panel MIDI connection:** the controller mapping panel can rescan/connect/disconnect
+  MIDI devices directly and shows the latest MIDI/HID input while learning mappings.
+- **Stem S1 resampling:** `compas-stems` now accepts non-44.1 kHz input by resampling into the
+  htdemucs model rate and converting stems back to the source rate; ONNX Runtime is feature-gated
+  so default tests do not require a locally installed runtime.
+- **Linux release artifacts:** the release workflow now includes an Ubuntu build with Tauri Linux
+  system dependencies, so tagged releases can attach Linux artifacts alongside Windows and macOS.
+- **Website/app polish:** refreshed the app screenshot, added the mobile hamburger menu, corrected
+  four-deck website copy, and replaced the old "Phase 1" footer text with public-beta wording.
+- **Architecture hardening plan:** documented the target per-deck processing graph and the
+  pro-audio reliability backlog: sync edge-case tests, device recovery, routing, latency, buffer
+  reclamation, and controller profile coverage.
 - **Bitcrusher FX:** a new per-deck **CRUSH** insert — lo-fi crunch from bit-depth reduction
   (quantising to as few as ~2 bits) plus sample-rate reduction (a sample-and-hold decimator),
   with **BITS** and **RATE** knobs. RT-safe `compas-dsp::Bitcrusher` (no allocation), inserted
