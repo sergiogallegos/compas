@@ -1,0 +1,30 @@
+{
+  "id": "pioneer-ddj-400",
+  "name": "Pioneer DDJ-400",
+  "ports": { "input": "DDJ-400", "output": "DDJ-400" },
+  "bindings": [
+    { "channel": 0, "input": { "kind": "cc", "cc": 19 }, "control": "deck.0.gain",     "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 7 },  "control": "deck.0.eq.high",  "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 11 }, "control": "deck.0.eq.mid",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 15 }, "control": "deck.0.eq.low",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 0 },  "control": "deck.0.tempo",    "soft_takeover": true },
+    { "channel": 6, "input": { "kind": "cc", "cc": 23 }, "control": "deck.0.filter",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "note", "note": 11 }, "control": "deck.0.play" },
+    { "channel": 0, "input": { "kind": "note", "note": 12 }, "control": "deck.0.cue" },
+    { "channel": 0, "input": { "kind": "note", "note": 88 }, "control": "deck.0.sync" },
+
+    { "channel": 1, "input": { "kind": "cc", "cc": 19 }, "control": "deck.1.gain",     "soft_takeover": true },
+    { "channel": 1, "input": { "kind": "cc", "cc": 7 },  "control": "deck.1.eq.high",  "soft_takeover": true },
+    { "channel": 1, "input": { "kind": "cc", "cc": 11 }, "control": "deck.1.eq.mid",   "soft_takeover": true },
+    { "channel": 1, "input": { "kind": "cc", "cc": 15 }, "control": "deck.1.eq.low",   "soft_takeover": true },
+    { "channel": 1, "input": { "kind": "cc", "cc": 0 },  "control": "deck.1.tempo",    "soft_takeover": true },
+    { "channel": 6, "input": { "kind": "cc", "cc": 24 }, "control": "deck.1.filter",   "soft_takeover": true },
+    { "channel": 1, "input": { "kind": "note", "note": 11 }, "control": "deck.1.play" },
+    { "channel": 1, "input": { "kind": "note", "note": 12 }, "control": "deck.1.cue" },
+    { "channel": 1, "input": { "kind": "note", "note": 88 }, "control": "deck.1.sync" },
+
+    { "channel": 6, "input": { "kind": "cc", "cc": 31 }, "control": "mixer.crossfader", "soft_takeover": true },
+    { "channel": 6, "input": { "kind": "cc", "cc": 12 }, "control": "mixer.cue_mix",    "soft_takeover": true },
+    { "channel": 6, "input": { "kind": "cc", "cc": 13 }, "control": "mixer.cue_volume", "soft_takeover": true }
+  ]
+}

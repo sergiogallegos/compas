@@ -6,7 +6,8 @@
 > No other DJ software is named in profiles or code.
 
 **Status:** ⬜ planned · 🔨 in progress · ✅ shipped. Bundled starters so far: Korg nanoKONTROL2,
-Akai MPK Mini MK3, Akai LPD8 (see the per-manufacturer sections).
+Akai MPK Mini MK3, Akai LPD8, Pioneer DDJ-400, Pioneer DDJ-FLX4 (see the per-manufacturer sections).
+HID input is wired (`InputKind::Hid`, learn-by-wiggle) for non-MIDI devices.
 
 **Per-profile metadata.** When a profile is authored, it records the device's **manual** and
 **manufacturer product page** links in the profile/PR (so the site can list them), the connection
@@ -124,8 +125,16 @@ own. (See the IP section of `CONTROLLER-ARCHITECTURE.md`.)
 - ⬜ NS7 · ⬜ Omni Control · ⬜ Party Mix · ⬜ Scratch · ⬜ Total Control · ⬜ V7
 
 ## Pioneer
-- ⬜ CDJ-2000 · ⬜ CDJ-350 · ⬜ CDJ-850 · ⬜ DDJ-200 · ⬜ DDJ-400 · ⬜ DDJ-FLX4 · ⬜ DDJ-SB · ⬜ DDJ-SB2
+- ⬜ CDJ-2000 · ⬜ CDJ-350 · ⬜ CDJ-850 · ⬜ DDJ-200 · ✅ **DDJ-400** · ✅ **DDJ-FLX4** · ⬜ DDJ-SB · ⬜ DDJ-SB2
 - ⬜ DDJ-SB3 · ⬜ DDJ-SX
+
+> **DDJ-400 / DDJ-FLX4** (bundled starters). Decks on MIDI ch 1/2, mixer/globals on ch 7; mapped:
+> channel fader→gain, EQ hi/mid/low, COLOR knob→filter, tempo fader, PLAY/CUE/BEAT SYNC, crossfader,
+> headphone mix. Derived from each device's MIDI assignment **facts** (the hi-res faders send 14-bit
+> MSB+LSB; we bind the MSB for 7-bit control). Jog wheels, hot cues, loops, pads and FX are unmapped
+> — those controls have no control-bus target yet (see `Registry`). Clean-room: facts only, no other
+> software's mapping files copied. Source of authority is Pioneer's official "MIDI message list" per
+> device; re-learn with the guided editor if your firmware differs.
 
 ## Reloop
 - ⬜ Beatmix 2 · ⬜ Beatmix 4 · ⬜ Beatpad · ⬜ Digital Jockey 2 Controller Ed. · ⬜ Digital Jockey 2 Interface Ed.
@@ -161,7 +170,8 @@ own. (See the IP section of `CONTROLLER-ARCHITECTURE.md`.)
 
 Start with widely-owned, **class-compliant MIDI** units (no HID needed) for fast wins, then expand:
 
-1. Pioneer DDJ-FLX4 / DDJ-400 / DDJ-SB3 · Numark Mixtrack series / Party Mix · Hercules Inpulse 200/300/500
+1. ✅ Pioneer DDJ-400 + DDJ-FLX4 (mixer/transport subset) · next: DDJ-SB3 · Numark Mixtrack series /
+   Party Mix · Hercules Inpulse 200/300/500
 2. Korg nanoKONTROL2 · Akai LPD8 · Novation Launchpad (pad grids) · Allen & Heath Xone:K2
 3. Denon MC-series · Reloop Beatmix/Terminal Mix · Roland DJ-505
 4. **HID** wave (needs the `hidapi` input layer): Native Instruments Traktor Kontrol S2/S4/X1/Z1, etc.

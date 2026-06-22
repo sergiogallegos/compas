@@ -38,8 +38,13 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   pipeline, so the learn editor binds HID by wiggling — `hid:input` events feed capture; `hid_list`/
   `hid_connect`/`hid_disconnect` IPC + a device picker in the controller panel). **HID scope:**
   absolute single-byte axes (knobs/faders/jogs); bit-packed buttons and device-specific **output/LED**
-  reports are hardware-gated per-device follow-ups. **Remaining:** more clean-room starter MIDI
-  profiles (priority list in `docs/CONTROLLERS.md` — DJ controllers next).
+  reports are hardware-gated per-device follow-ups. + **DJ-controller starters ✅** (Pioneer DDJ-400
+  + DDJ-FLX4, bundled): decks on MIDI ch 1/2, globals on ch 7; channel fader→gain, EQ hi/mid/low,
+  COLOR→filter, tempo, PLAY/CUE/SYNC, crossfader, headphone mix — derived clean-room from each
+  device's MIDI assignment facts (14-bit faders bound on the MSB for 7-bit control); jog/hotcue/
+  loop/pad/FX are unmapped (no control-bus target yet). Also: a hardware PLAY button now latches
+  (toggle-on-press) instead of being momentary. **Remaining:** more profiles (DDJ-SB3, Numark,
+  Hercules — same method); per-device HID button/LED work.
 
 Other deferred follow-ups (flagged in commits): FX internal-clock virtual leader; library
 OR-search/smart-crates/tags/folder-watch; full AutoDJ queue; stem-separation S1 resampling +

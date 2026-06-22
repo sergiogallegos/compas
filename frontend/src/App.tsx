@@ -132,7 +132,7 @@ export function App() {
       case "eq.low": a.setEq({ ...s.eq, low: value }); break;
       case "eq.mid": a.setEq({ ...s.eq, mid: value }); break;
       case "eq.high": a.setEq({ ...s.eq, hi: value }); break;
-      case "play": value >= 0.5 ? a.play() : a.pause(); break;
+      case "play": if (value >= 0.5) a.togglePlay(); break; // hardware buttons latch on press
       case "cue": a.cueButton(value >= 0.5); break;
       case "keylock": if (value >= 0.5) a.toggleKeylock(); break;
       case "sync": if (value >= 0.5) syncDeckByIndex(parseInt(m[1], 10)); break;
