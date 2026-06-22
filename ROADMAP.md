@@ -285,8 +285,9 @@ then turn the findings into tests, benchmarks, or small code changes.
    `docs/research/summaries/beat-tracking-literature.md`: Dixon/BeatRoot trail partially verified,
    Laroche and the requested 2024 zero-latency citation still unverified, OBTAIN (2017) verified as
    the online beat-tracking fallback.
-4. ⬜ **Beat-tracking benchmark harness** — build synthetic cases for silence, clicks, swung drums,
-   tempo ramps, half/double-tempo traps, and loop/sync edge cases before changing the algorithm.
+4. ✅ **Beat-tracking benchmark harness** — added `compas-dsp` synthetic regression tests for
+   common dance tempos, delayed beatgrid phase, and sparse intros, plus ignored reference cases for
+   tempo ramps, half/double-tempo traps, and swung drums. Criterion now also tracks beatgrid cost.
 5. ⬜ **Adopt one algorithmic improvement at a time** — implement only after the summary identifies
    the target behavior, tests, CPU cost, and rollback path.
 

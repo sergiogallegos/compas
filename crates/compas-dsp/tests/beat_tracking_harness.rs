@@ -1,0 +1,126 @@
+use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo};
+
+const SR: u32 = 44_100;
+
+fn click_track(bpm: f32, seconds: f32, first_beat_sec: f32) -> Vec<f32> {
+    let total = (SR as f32 * seconds) as usize;
+    let mut samples = vec![0.0f32; total];
+    add_clicks(&mut samples, bpm, first_beat_sec, seconds, 1.0);
+    samples
+}
+
+fn add_clicks(samples: &mut [f32], bpm: f32, first_beat_sec: f32, until_sec: f32, amp: f32) {
+    let period = 60.0 / bpm;
+    let mut beat = first_beat_sec;
+    while beat < until_sec {
+        add_click(samples, beat, amp);
+        beat += period;
+    }
+}
+
+fn add_click(samples: &mut [f32], at_sec: f32, amp: f32) {
+    let start = (at_sec * SR as f32).round() as usize;
+    for k in 0..64 {
+        if let Some(sample) = samples.get_mut(start + k) {
+            let decay = 1.0 - k as f32 / 64.0;
+            *sample += amp * decay * if k % 2 == 0 { 1.0 } else { -1.0 };
+        }
+    }
+}
+
+fn assert_bpm_close(actual: f32, expected: f32, tolerance: f32) {
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "expected {expected:.2} BPM +/- {tolerance:.2}, got {actual:.2}"
+    );
+}
+
+#[test]
+fn beat_tracking_handles_common_dance_tempos() {
+    for bpm in [90.0, 120.0, 128.0, 150.0] {
+        let samples = click_track(bpm, 16.0, 0.0);
+        let estimate = estimate_tempo(&samples, SR);
+        assert_bpm_close(estimate.bpm, bpm, 2.0);
+        assert!(
+            estimate.confidence > 0.05,
+            "expected non-zero confidence for {bpm} BPM, got {}",
+            estimate.confidence
+        );
+    }
+}
+
+#[test]
+fn beatgrid_recovers_delayed_first_beat_phase() {
+    let samples = click_track(124.0, 16.0, 0.25);
+    let grid = estimate_beatgrid(&samples, SR);
+
+    assert_bpm_close(grid.bpm, 124.0, 2.0);
+    assert!(
+        (grid.first_beat_sec - 0.25).abs() <= 0.04,
+        "expected first beat near 0.25 s, got {:.3} s",
+        grid.first_beat_sec
+    );
+    assert!(
+        (grid.beat_interval_sec - (60.0 / 124.0)).abs() <= 0.02,
+        "wrong beat interval: {:.3}",
+        grid.beat_interval_sec
+    );
+}
+
+#[test]
+fn beat_tracking_ignores_sparse_intro_before_steady_section() {
+    let mut samples = vec![0.0f32; (SR as f32 * 18.0) as usize];
+    add_click(&mut samples, 0.5, 1.0);
+    add_click(&mut samples, 2.0, 0.65);
+    add_clicks(&mut samples, 128.0, 6.0, 18.0, 1.0);
+
+    let estimate = estimate_tempo(&samples, SR);
+    assert_bpm_close(estimate.bpm, 128.0, 2.0);
+}
+
+#[test]
+#[ignore = "reference case: requires a time-varying tempo model, not the current single-BPM estimator"]
+fn beat_tracking_reference_tempo_ramp() {
+    let total_sec = 20.0;
+    let mut samples = vec![0.0f32; (SR as f32 * total_sec) as usize];
+    let mut t = 0.0f32;
+    while t < total_sec {
+        let progress = t / total_sec;
+        let bpm = 118.0 + progress * 8.0;
+        add_click(&mut samples, t, 1.0);
+        t += 60.0 / bpm;
+    }
+
+    let estimate = estimate_tempo(&samples, SR);
+    assert_bpm_close(estimate.bpm, 122.0, 3.0);
+}
+
+#[test]
+#[ignore = "reference case: downbeat weighting is needed to reject half/double tempo traps robustly"]
+fn beat_tracking_reference_half_double_tempo_trap() {
+    let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];
+    add_clicks(&mut samples, 64.0, 0.0, 16.0, 1.0);
+    add_clicks(&mut samples, 128.0, 60.0 / 128.0, 16.0, 0.35);
+
+    let estimate = estimate_tempo(&samples, SR);
+    assert_bpm_close(estimate.bpm, 128.0, 2.0);
+}
+
+#[test]
+#[ignore = "reference case: swung subdivisions need onset grouping before tempo scoring"]
+fn beat_tracking_reference_swung_drums() {
+    let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];
+    let beat = 60.0 / 126.0;
+    let mut bar = 0.0f32;
+    while bar < 16.0 {
+        for step in 0..4 {
+            let downbeat = bar + step as f32 * beat;
+            add_click(&mut samples, downbeat, 1.0);
+            add_click(&mut samples, downbeat + beat * 0.66, 0.35);
+        }
+        bar += beat * 4.0;
+    }
+
+    let estimate = estimate_tempo(&samples, SR);
+    assert_bpm_close(estimate.bpm, 126.0, 2.0);
+}

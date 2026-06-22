@@ -2,7 +2,7 @@
 //! These exercise the per-sample RT path (biquad/EQ/crossfade) and the offline tempo
 //! estimator, so regressions in either show up as wall-clock changes.
 
-use compas_dsp::analysis::estimate_tempo;
+use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo};
 use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, Reverb, ThreeBandEq, TimeStretch};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -130,6 +130,26 @@ fn bench_tempo(c: &mut Criterion) {
     });
 }
 
+fn bench_beatgrid(c: &mut Criterion) {
+    // 12 s of a delayed 124 BPM click track exercises both tempo and phase estimation.
+    let sr = 44_100u32;
+    let period = sr as f32 * 60.0 / 124.0;
+    let total = sr as usize * 12;
+    let mut samples = vec![0.0f32; total];
+    let mut t = (sr as f32 * 0.25) as usize;
+    while t < total {
+        for k in 0..64 {
+            if t + k < total {
+                samples[t + k] = (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+            }
+        }
+        t = (t as f32 + period).round() as usize;
+    }
+    c.bench_function("estimate_beatgrid_12s", |bn| {
+        bn.iter(|| estimate_beatgrid(black_box(&samples), sr))
+    });
+}
+
 criterion_group!(
     benches,
     bench_biquad,
@@ -138,6 +158,7 @@ criterion_group!(
     bench_delay,
     bench_reverb,
     bench_time_stretch,
-    bench_tempo
+    bench_tempo,
+    bench_beatgrid
 );
 criterion_main!(benches);

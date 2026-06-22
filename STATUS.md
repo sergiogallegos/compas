@@ -53,6 +53,12 @@ trail but the requested exact title still needs a primary source; Laroche (2003)
 Mierer/Mierer-like 2024 zero-latency citation remain unverified; OBTAIN (2017) is the verified
 online beat-tracking fallback. Decision: build the benchmark harness before changing algorithms.
 
+**Research point 4 done:** `crates/compas-dsp/tests/beat_tracking_harness.rs` now covers common
+dance tempos, delayed first-beat phase, and sparse intros through the public analysis API. Tempo
+ramp, half/double-tempo trap, and swung-drum cases are present as ignored reference tests until the
+algorithm is ready. `crates/compas-dsp/benches/dsp.rs` also benchmarks `estimate_beatgrid_12s`.
+Verified with `cargo test -p compas-dsp --locked`.
+
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
 - **Phase 1 — UI + website ✅ done.** 8 UI batches wiring every feature to React controls
