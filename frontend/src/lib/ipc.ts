@@ -593,6 +593,20 @@ export const onStemsReady = (cb: (e: StemsReady) => void): Promise<UnlistenFn> =
 export const onStemsError = (cb: (e: StemsError) => void): Promise<UnlistenFn> =>
   listen<StemsError>("stems:error", (e) => cb(e.payload));
 
+/** Download the htdemucs model into the app-data dir (worker thread; emits `stems:model-*`). */
+export const downloadStemsModel = () => invoke("download_stems_model");
+export interface ModelProgress {
+  received: number;
+  /** Total bytes (Content-Length), or 0 when unknown. */
+  total: number;
+}
+export const onStemsModelProgress = (cb: (e: ModelProgress) => void): Promise<UnlistenFn> =>
+  listen<ModelProgress>("stems:model-progress", (e) => cb(e.payload));
+export const onStemsModelReady = (cb: () => void): Promise<UnlistenFn> =>
+  listen("stems:model-ready", () => cb());
+export const onStemsModelError = (cb: (message: string) => void): Promise<UnlistenFn> =>
+  listen<{ message: string }>("stems:model-error", (e) => cb(e.payload.message));
+
 // ---- Event subscriptions ----------------------------------------------------------
 
 export interface DeckLoading {

@@ -35,6 +35,13 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **In-app htdemucs model download (S2, app + UI):** when a stem-enabled build is missing the model,
+  each deck's STEMS control shows a **GET MODEL** button that streams the model into
+  `<app-data>/models/htdemucs.onnx` on a worker thread (live MB/percent progress, atomic
+  `.part`→rename, optional `COMPAS_HTDEMUCS_SHA256` integrity check), then re-enables Separate. The
+  downloader and its `ureq`/`sha2` deps are gated behind the `stems` feature so the default build
+  stays pure. The default URL/checksum are flagged for verification before the first stem release;
+  override the URL with `COMPAS_HTDEMUCS_URL`.
 - **Stem disk cache (S2, app):** separated stems are now cached to `<app-data>/stems/<key>` as four
   WAVs (the key hashes the source path + size + mtime, so editing the file invalidates the cache).
   A re-separate of a cached track loads in seconds by decoding the WAVs instead of re-running the

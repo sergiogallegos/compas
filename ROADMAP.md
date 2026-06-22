@@ -97,7 +97,10 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
   progress events and installs the stems; the native ONNX runtime is behind a `stems` cargo feature
   so the default build/CI stay pure. **S3 UI done:** per-deck STEMS control — separate button with a
   progress strip, DRUMS/BASS/OTHER/VOX level knobs + per-stem mute, one-click revert to the mix.
-  Remaining: stem disk/DB cache for instant reload and the in-app model download.
+  **Disk cache + model download done:** stems cache to `<app-data>/stems` as WAVs (feature-independent
+  reload), and a GET MODEL button streams htdemucs into `<app-data>/models` (gated behind the `stems`
+  feature). Stem separation is now functionally complete; the default model URL/checksum are flagged
+  placeholders to verify before the first stem-enabled release.
 - ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 

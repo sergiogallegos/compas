@@ -69,6 +69,11 @@ export function Deck({
   const rate = meta?.source_rate ?? 1;
   const frames = meta?.frames ?? 0;
   const noGrid = !meta || (meta.beat_interval_sec ?? 0) <= 0;
+  // Stems: with the feature built but no model on disk, offer a download instead of Separate.
+  const sm = state.stemsModel;
+  const needModel = sm?.feature_enabled === true && !sm.available;
+  const dl = state.modelDownload;
+  const dlPct = dl.total > 0 ? Math.round((dl.received / dl.total) * 100) : 0;
 
   // Loop-roll is momentary: held while the pad is pressed, released on pointer up/leave.
   const [rollBeats, setRollBeats] = useState<number | null>(null);
@@ -506,7 +511,25 @@ export function Deck({
 
               {/* Stems: separate the track, then mute/solo/level drums/bass/other/vocals. */}
               <div className="chip-row">
-                {state.stems.status === "none" && (
+                {state.stems.status === "none" && dl.active && (
+                  <div className="stem-progress" title="Downloading the stem model…">
+                    <div className="stem-progress-bar" style={{ width: `${dlPct}%`, background: color }} />
+                    <span className="stem-progress-label">
+                      MODEL {dl.total > 0 ? `${dlPct}%` : `${Math.round(dl.received / 1e6)} MB`}
+                    </span>
+                  </div>
+                )}
+                {state.stems.status === "none" && !dl.active && needModel && (
+                  <button
+                    className="chip"
+                    onClick={actions.downloadModel}
+                    disabled={!meta}
+                    title="Download the htdemucs stem model (~300 MB) into the app-data folder"
+                  >
+                    GET MODEL
+                  </button>
+                )}
+                {state.stems.status === "none" && !dl.active && !needModel && (
                   <button
                     className="chip"
                     onClick={actions.separateStems}
@@ -514,9 +537,7 @@ export function Deck({
                     title={
                       state.stemsModel?.feature_enabled === false
                         ? "This build has no stem support (rebuild with --features stems)"
-                        : state.stemsModel && !state.stemsModel.available
-                          ? "Separate into stems — model not found; place htdemucs.onnx in <app-data>/models or set COMPAS_HTDEMUCS_ONNX"
-                          : "Separate this track into drums / bass / other / vocals"
+                        : "Separate this track into drums / bass / other / vocals"
                     }
                   >
                     STEMS
@@ -543,7 +564,9 @@ export function Deck({
                   </button>
                 )}
               </div>
-              {state.stems.error && <p className="stem-error">{state.stems.error}</p>}
+              {(state.stems.error || dl.error) && (
+                <p className="stem-error">{state.stems.error || dl.error}</p>
+              )}
               {state.stems.status === "ready" && (
                 <div className="fx-detail stems-detail">
                   {STEM_LABELS.map((label, i) => (

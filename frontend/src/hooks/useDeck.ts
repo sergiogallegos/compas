@@ -47,9 +47,13 @@ import {
   clearDeckStems as clearDeckStemsCmd,
   setDeckStemGain as setDeckStemGainCmd,
   stemsModelStatus,
+  downloadStemsModel as downloadStemsModelCmd,
   onStemsProgress,
   onStemsReady,
   onStemsError,
+  onStemsModelProgress,
+  onStemsModelReady,
+  onStemsModelError,
   type DeckLoaded,
   type FilterMode,
   type StemsModelStatus,
@@ -134,6 +138,15 @@ const STEM_INIT: StemState = {
   error: null,
 };
 
+/** Model-download UI state (global; the htdemucs model is shared across decks). */
+export interface ModelDownloadState {
+  active: boolean;
+  received: number;
+  total: number;
+  error: string | null;
+}
+const MODEL_DL_INIT: ModelDownloadState = { active: false, received: 0, total: 0, error: null };
+
 export interface DeckState {
   meta: DeckLoaded | null;
   frame: number;
@@ -180,6 +193,8 @@ export interface DeckState {
   stems: StemState;
   /** Stem-separation availability (build feature + model presence), or null until probed. */
   stemsModel: StemsModelStatus | null;
+  /** htdemucs model download progress (shared across decks). */
+  modelDownload: ModelDownloadState;
 }
 
 function filterParams(x: number): { mode: FilterMode; cutoff: number; resonance: number } {
@@ -222,6 +237,7 @@ export function useDeck(deck: number, dsp = true) {
   const [loading, setLoading] = useState(false);
   const [stems, setStems] = useState<StemState>(STEM_INIT);
   const [stemsModel, setStemsModel] = useState<StemsModelStatus | null>(null);
+  const [modelDownload, setModelDownload] = useState<ModelDownloadState>(MODEL_DL_INIT);
   const frameRef = useRef(0);
   const tempoRef = useRef(tempo);
   tempoRef.current = tempo;
@@ -367,17 +383,39 @@ export function useDeck(deck: number, dsp = true) {
     };
   }, [deck]);
 
-  // Probe stem-separation availability once (build feature + model presence), local decks only.
+  // Probe stem-separation availability once (build feature + model presence), and follow the
+  // (global) model download so the panel can show progress and re-enable separation when it lands.
   useEffect(() => {
     if (!inTauri() || !dsp) return;
     let live = true;
+    const unlistens: UnlistenFn[] = [];
+    const track = (p: Promise<UnlistenFn>) => p.then((u) => (live ? unlistens.push(u) : u()));
     stemsModelStatus()
       .then((s) => {
         if (live) setStemsModel(s);
       })
       .catch(() => {});
+    track(
+      onStemsModelProgress((e) =>
+        setModelDownload({ active: true, received: e.received, total: e.total, error: null }),
+      ),
+    );
+    track(
+      onStemsModelReady(() => {
+        setModelDownload(MODEL_DL_INIT);
+        stemsModelStatus()
+          .then((s) => {
+            if (live) setStemsModel(s);
+          })
+          .catch(() => {});
+      }),
+    );
+    track(
+      onStemsModelError((message) => setModelDownload({ ...MODEL_DL_INIT, error: message })),
+    );
     return () => {
       live = false;
+      unlistens.forEach((u) => u());
     };
   }, [dsp]);
 
@@ -728,10 +766,17 @@ export function useDeck(deck: number, dsp = true) {
           return { ...s, muted };
         });
       },
+      // Fetch the htdemucs model into the app-data dir (progress arrives via stems:model-* events).
+      downloadModel: () => {
+        setModelDownload({ ...MODEL_DL_INIT, active: true });
+        downloadStemsModelCmd().catch((e) =>
+          setModelDownload({ ...MODEL_DL_INIT, error: String(e) }),
+        );
+      },
     };
   }, [deck, playing, tempo, meta, isLeader]);
 
-  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
   return { state, actions, deck };
 }
 

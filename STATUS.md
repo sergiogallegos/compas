@@ -338,9 +338,20 @@ Next, from the ROADMAP backlog:
      model is missing; separation errors surface inline. New `ipc.ts` wrappers
      (`separateStems`/`clearDeckStems`/`setDeckStemGain`/`stemsModelStatus`) + `stems:*` event
      listeners; stem state lives in `useDeck` (resets on track load, since the engine clears stems).
-     Verified `npx tsc --noEmit` + `npx vite build` clean. **Remaining for a polished feature:** the
-     in-app first-use **model download** (the panel currently points users to the model path) and the
-     **stem disk/DB cache** for instant reload — both tracked under S2 remainder.
+     Verified `npx tsc --noEmit` + `npx vite build` clean.
+   - **S2 disk cache + model download DONE (2026-06-22).** Separated stems cache to
+     `<app-data>/stems/<key>` as 4 WAVs (key = hash of path+size+mtime); a re-separate loads in
+     seconds by decoding them, and the cache-load path is **feature-independent** (a non-`stems`
+     build can replay cached stems). The STEMS panel's **GET MODEL** button streams htdemucs into
+     `<app-data>/models/` with live progress (atomic `.part`→rename, optional
+     `COMPAS_HTDEMUCS_SHA256` check); downloader + `ureq`/`sha2` are gated behind `stems` so the
+     default build stays pure. Verified default + `--features stems` `cargo clippy -D warnings` and
+     `cargo fmt` clean, plus `tsc`/`vite build`. **FLAGGED for release:** the default model URL +
+     checksum are unverified placeholders (like the `TAURI_SIGNING_*` ones) — confirm the real
+     `StemSplitio/htdemucs-onnx` URL + bake a sha256 before the first stem-enabled release.
+     **Not yet exercised live:** an actual separation/download run needs the 301 MB model + a
+     `--features stems` build + network; all code paths compile/type-check but haven't been run end
+     to end from here.
 2. **More performance layer:** sampler/pads (reuse the synth voices), more + beat-synced FX,
    full global slip mode + reverse/censor, harmonic-mixing assist (we already detect Camelot key).
 3. **Release infra — wiring done, secrets pending (2026-06-20).** Auto-update plugin, manual

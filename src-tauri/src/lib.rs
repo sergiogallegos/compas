@@ -1164,6 +1164,130 @@ fn set_deck_stem_gain(
     state.send(EngineMsg::SetDeckStemGain { deck, stem, gain })
 }
 
+/// Default htdemucs model download URL.
+///
+/// FLAGGED: the repo/filename and checksum must be verified against the published model before the
+/// first stem-enabled release (the spike used `StemSplitio/htdemucs-onnx`, ~301 MB fp32). Override
+/// at runtime with `COMPAS_HTDEMUCS_URL`; set `COMPAS_HTDEMUCS_SHA256` to enable integrity checking.
+#[cfg(feature = "stems")]
+const HTDEMUCS_URL: &str =
+    "https://huggingface.co/StemSplitio/htdemucs-onnx/resolve/main/htdemucs.onnx";
+
+#[cfg(feature = "stems")]
+#[derive(serde::Serialize, Clone)]
+struct ModelProgressEvent {
+    received: u64,
+    /// Total bytes from Content-Length, or 0 if the server didn't report it.
+    total: u64,
+}
+
+#[derive(serde::Serialize, Clone)]
+struct ModelErrorEvent {
+    message: String,
+}
+
+/// Download the htdemucs model into `<app-data>/models/htdemucs.onnx` on a worker thread, emitting
+/// `stems:model-progress` then `stems:model-ready` / `stems:model-error`. Returns immediately.
+#[tauri::command]
+fn download_stems_model(app: AppHandle) {
+    thread::spawn(move || match run_model_download(&app) {
+        Ok(()) => {
+            let _ = app.emit("stems:model-ready", ());
+        }
+        Err(message) => {
+            let _ = app.emit("stems:model-error", ModelErrorEvent { message });
+        }
+    });
+}
+
+/// Stream the model to a `.part` file (hashing as we go), verify size + optional checksum, then
+/// atomically rename into place. Requires the `stems` feature (pulls in `ureq`/`sha2`).
+#[cfg(feature = "stems")]
+fn run_model_download(app: &AppHandle) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read; // `Write` is already in module scope
+
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let dir = base.join("models");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let final_path = dir.join("htdemucs.onnx");
+    if final_path.is_file() {
+        return Ok(()); // already downloaded
+    }
+
+    let url = std::env::var("COMPAS_HTDEMUCS_URL").unwrap_or_else(|_| HTDEMUCS_URL.to_string());
+    let mut resp = ureq::get(&url).call().map_err(|e| e.to_string())?;
+    let total: u64 = resp
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
+    let tmp = dir.join("htdemucs.onnx.part");
+    let mut out = BufWriter::new(File::create(&tmp).map_err(|e| e.to_string())?);
+    let mut reader = resp.body_mut().as_reader();
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1 << 16];
+    let mut received: u64 = 0;
+    let mut last_emit: u64 = 0;
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        hasher.update(&buf[..n]);
+        received += n as u64;
+        // Throttle progress events to ~every 4 MB.
+        if received - last_emit >= (4 << 20) {
+            last_emit = received;
+            let _ = app.emit(
+                "stems:model-progress",
+                ModelProgressEvent { received, total },
+            );
+        }
+    }
+    out.flush().map_err(|e| e.to_string())?;
+    drop(out);
+
+    if received == 0 {
+        let _ = std::fs::remove_file(&tmp);
+        return Err("downloaded an empty file".into());
+    }
+    // Optional integrity check — only when a checksum is configured (we can't bake a verified one yet).
+    if let Ok(expected) = std::env::var("COMPAS_HTDEMUCS_SHA256") {
+        if !expected.is_empty() {
+            let got = format!("{:x}", hasher.finalize());
+            if !got.eq_ignore_ascii_case(&expected) {
+                let _ = std::fs::remove_file(&tmp);
+                return Err(format!(
+                    "model checksum mismatch (expected {expected}, got {got})"
+                ));
+            }
+        }
+    }
+
+    std::fs::rename(&tmp, &final_path).map_err(|e| e.to_string())?;
+    let _ = app.emit(
+        "stems:model-progress",
+        ModelProgressEvent {
+            received,
+            total: received,
+        },
+    );
+    Ok(())
+}
+
+/// Stub when built without the `stems` feature: there's nothing to run the model against.
+#[cfg(not(feature = "stems"))]
+fn run_model_download(_app: &AppHandle) -> Result<(), String> {
+    Err(
+        "stem separation is not available in this build (rebuild with `--features stems`)"
+            .to_string(),
+    )
+}
+
 // ----------------------------------------------------------------------------------
 // Library + per-track state (SQLite)
 // ----------------------------------------------------------------------------------
@@ -2529,6 +2653,7 @@ pub fn run() {
             clear_deck_stems,
             set_deck_stem_gain,
             stems_model_status,
+            download_stems_model,
             midi_list_ports,
             midi_connect,
             controller_registry,
