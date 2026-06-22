@@ -248,9 +248,10 @@ abstraction; Ableton Link / MIDI-clock sync.
 These are the next engineering-quality items before the first serious beta release. They are not
 flashy features, but they are what make the app behave like reliable DJ software under pressure.
 
-Before implementation, run the research intake in `docs/research/README.md`: read the local
-architecture first, then the real-time audio/lock-free sources, then beat-tracking papers, and only
-then turn the findings into tests, benchmarks, or small code changes.
+Before implementation, run the research intake in `docs/research/README.md` and
+`docs/research/source-intake-queue.md`: read the local architecture first, then the real-time
+audio/lock-free sources, then beat-tracking papers, and only then turn the findings into tests,
+benchmarks, or small code changes.
 
 1. ✅ **Stronger sync edge-case tests** — added engine tests for paused/empty leaders, unloaded
    followers, sync command cycle-breaking, and loop-roll release while phase-locked; `update_sync`
@@ -285,15 +286,16 @@ then turn the findings into tests, benchmarks, or small code changes.
 
 ### Research-backed implementation queue
 
-1. ✅ **RT-audio paper/talk notes** — initial Bencina/Doumler summary and callback-safety audit
-   added in `docs/research/`; direct Bencina re-fetch remains before detailed quotation.
+1. ✅ **RT-audio paper/talk notes** — Bencina/Doumler summary and callback-safety audit added in
+   `docs/research/`; Doumler is downloaded locally, while direct Bencina re-fetch remains before
+   detailed quotation.
 2. ✅ **Lock-free/state-handoff design note** — documented immutable graph snapshots, SPSC command
    flow, telemetry counters, and control-thread reclamation for retired buffers/processors in
    `docs/research/lock-free-state-handoff.md`.
 3. ✅ **Beat-tracking literature notes** — documented citation status in
    `docs/research/summaries/beat-tracking-literature.md`: Dixon/BeatRoot trail partially verified,
-   Laroche and the requested 2024 zero-latency citation still unverified, OBTAIN (2017) verified as
-   the online beat-tracking fallback.
+   Laroche and the requested 2024 zero-latency citation still unverified, OBTAIN (2017) downloaded
+   as the online fallback, and Beat This (2024) summarized as a modern evaluation/continuity source.
 4. ✅ **Beat-tracking benchmark harness** — added `compas-dsp` synthetic regression tests for
    common dance tempos, delayed beatgrid phase, and sparse intros, plus ignored reference cases for
    tempo ramps, half/double-tempo traps, and swung drums. Criterion now also tracks beatgrid cost.

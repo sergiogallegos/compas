@@ -3,14 +3,17 @@
 ## Citation
 
 - Ross Bencina, "Real-time audio programming 101: time waits for nothing"
-  - Link: https://www.rossbencina.com/code/real-time-audio-programming-101-time-waits-for-nothing
-  - Status: canonical source URL is known, but direct fetch failed during this pass. Re-fetch before
-    citing detailed claims from the article.
+  - Link: http://www.rossbencina.com/code/real-time-audio-programming-101-time-waits-for-nothing
+  - Status: canonical source URL is known and referenced by Doumler, but direct download from this
+    environment was refused. Re-fetch before citing detailed claims from the article.
 - Timur Doumler, "Using locks in real-time audio processing, safely"
   - Link: https://timur.audio/using-locks-in-real-time-audio-processing-safely
   - Date: 2020-04-14
-  - Status: read and summarized.
-- Related talk to verify later: Timur Doumler, "C++ in the Audio Industry" / CppCon audio talk.
+  - Local file: `docs/research/papers/doumler-locks-rt-audio.html` (ignored)
+  - Status: downloaded, read, and summarized.
+- Related talk to verify later: Timur Doumler, "C++ in the Audio Industry" / CppCon 2015 audio
+  talk. Doumler's article links to `https://www.youtube.com/watch?v=boPEO2auJj4`, but the exact
+  talk title/page still needs confirmation before detailed claims are added.
 
 ## Core ideas
 
@@ -18,8 +21,8 @@
   becomes an audible glitch, not just a slow frame.
 - The callback must avoid operations with unknown or scheduler-mediated latency: allocation,
   locks, blocking I/O, system calls, logging, and panic/unwind paths.
-- `try_lock` on the audio thread is not enough if the unlock path can interact with the OS
-  scheduler or wake another thread.
+- `try_lock` on the audio thread is not enough for `std::mutex`-style locks if the unlock path can
+  interact with the OS scheduler or wake another thread.
 - Preferred communication patterns:
   - plain atomics for small parameter values;
   - single-producer/single-consumer queues for streams of commands/events;

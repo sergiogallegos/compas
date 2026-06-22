@@ -44,6 +44,12 @@ All notable changes to compas are documented here. Format follows
   recording, and cue handoff paths plus the next reclaim/diagnostics hardening slice.
 - **Beat-tracking literature note:** recorded verification status for Dixon/BeatRoot, Laroche, the
   requested 2024 zero-latency citation, and OBTAIN as the verified online-beat fallback.
+- **Research source intake queue:** added the committed read-order/implementation gate for local
+  architecture, real-time audio, lock-free state handoff, beat tracking, OBTAIN, and Beat This
+  sources. Downloaded papers stay ignored under `docs/research/papers/`.
+- **OBTAIN / Beat This summaries:** added implementation-facing notes for OBTAIN (online
+  beat-tracking fallback) and Beat This 2024 (accuracy-vs-continuity evaluation warning) before any
+  estimator rewrite.
 - **Beat-tracking harness:** added public-API synthetic tests for common dance tempos, delayed
   beatgrid phase, and sparse intros, plus ignored reference cases for tempo ramps, half/double
   traps, and swung drums; Criterion now benchmarks `estimate_beatgrid_12s`.

@@ -96,16 +96,18 @@ fader -> buses. It also documents ownership, no-drop graph-snapshot retirement, 
 mapping, and the migration/test plan. Remaining follow-up: refactor `DeckPlayer::next_frame` into
 those stage structs incrementally.
 
-**Research intake added:** before starting those hardening tasks, use `docs/research/README.md`.
-Read order is: local architecture/RT rules → Bencina/Doumler real-time audio + lock-free/state
-handoff → Dixon/Laroche beat-tracking papers → verified zero-latency/online beat-tracking source
-or OBTAIN fallback. Do not implement directly from a paper until there is a short summary, a compas
-impact decision, and a test/benchmark plan.
+**Research intake added:** before starting those hardening tasks, use `docs/research/README.md` and
+`docs/research/source-intake-queue.md`. Read order is: local architecture/RT rules →
+Bencina/Doumler real-time audio + lock-free/state handoff → Dixon/Laroche beat-tracking trail →
+verified online/zero-latency source or OBTAIN fallback → modern evaluation notes. Do not implement
+directly from a paper until there is a short summary, a compas impact decision, and a
+test/benchmark plan.
 
-**Research point 1 done:** initial Bencina/Doumler real-time audio notes live in
+**Research point 1 done:** Bencina/Doumler real-time audio notes live in
 `docs/research/summaries/rt-audio-bencina-doumler.md`, and the actionable callback audit lives in
-`docs/research/rt-audio-audit.md`. Direct Bencina article re-fetch is still pending before detailed
-quotation, but the implementation guidance is enough to start the reclaim/telemetry hardening slice.
+`docs/research/rt-audio-audit.md`. Doumler's lock-free article is downloaded locally; direct
+Bencina article re-fetch is still pending before detailed quotation, but the implementation guidance
+is enough to continue reclaim/telemetry/deck-graph hardening.
 
 **Research point 2 done:** lock-free/state handoff design lives in
 `docs/research/lock-free-state-handoff.md`. It documents current command, buffer, reclaim,
@@ -116,8 +118,10 @@ pressure.
 **Research point 3 done:** beat-tracking literature verification lives in
 `docs/research/summaries/beat-tracking-literature.md`. Dixon is documented through the BeatRoot
 trail but the requested exact title still needs a primary source; Laroche (2003) and the requested
-Mierer/Mierer-like 2024 zero-latency citation remain unverified; OBTAIN (2017) is the verified
-online beat-tracking fallback. Decision: build the benchmark harness before changing algorithms.
+Mierer/Mierer-like 2024 zero-latency citation remain unverified; OBTAIN (2017) is downloaded and
+summarized as the online beat-tracking fallback; Beat This (2024) is summarized as a modern
+accuracy-vs-continuity evaluation source. Decision: build diagnostics, confidence, continuity, and
+benchmark coverage before changing algorithms.
 
 **Research point 4 done:** `crates/compas-dsp/tests/beat_tracking_harness.rs` now covers common
 dance tempos, delayed first-beat phase, and sparse intros through the public analysis API. Tempo

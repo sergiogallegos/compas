@@ -30,6 +30,9 @@ reviewable engineering decisions.
    Prefer a benchmark/test or telemetry improvement first, then engine changes. Do not rewrite the
    beat tracker or routing graph in one large patch.
 
+See `source-intake-queue.md` for the current verified/downloaded source status and the order to
+read these notes before changing code.
+
 ## Download / citation policy
 
 - Do not commit copyrighted PDFs unless the source explicitly permits redistribution.
@@ -48,13 +51,15 @@ reviewable engineering decisions.
 | 3 | Simon Dixon, "A beat tracking system for audio signals" (2000) | Exact title not verified; BeatRoot trail documented | Classic multi-hypothesis beat tracking and tempo/beat-agent ideas. | Sync/beatgrid edge-case tests; half/double-tempo candidate tracking; confidence score for beatgrid. |
 | 4 | Jean Laroche, "Efficient Tempo and Beat Tracking in Audio Recordings" (2003) | Citation still unverified | Efficient onset/tempo tracking methods useful for offline analysis and maybe low-latency online tracking. | Compare current spectral-flux/autocorrelation with Laroche-style tempo tracking; benchmark on synthetic + real files. |
 | 5 | Mierer et al. (2024), "A real-time beat tracking system with zero latency" | **Citation not verified; possible misspelling/title mismatch** | If found, this is the most relevant source for online beat tracking without lookahead. | Decide whether zero-latency online tracking belongs in compas sync or only future live-input/mic work. |
-| 6 | Mottaghi et al., "OBTAIN: Real-Time Beat Tracking in Audio Signals" (2017) | Verified fallback source | Online beat tracking with onset strength, tempo estimation, cumulative beat strength, and peak selection. | Fallback if the 2024 zero-latency citation cannot be found; evaluate for online/live-input roadmap. |
+| 6 | Mottaghi et al., "OBTAIN: Real-Time Beat Tracking in Audio Signals" (2017) | Downloaded and summarized | Online beat tracking with onset strength, tempo estimation, cumulative beat strength, and peak selection. | Fallback if the 2024 zero-latency citation cannot be found; evaluate for online/live-input roadmap. |
+| 7 | Foscarin, Schlueter, Widmer, "Beat this! Accurate beat tracking without DBN postprocessing" (2024) | Downloaded and summarized | Modern beat/downbeat evaluation lesson: accuracy and continuity can trade off; fixed tempo/meter constraints fail on harder music. | Add confidence/continuity tests before any estimator rewrite; do not adopt a model path yet. |
 
 Known links:
 
 - Ross Bencina: `https://www.rossbencina.com/code/real-time-audio-programming-101-time-waits-for-nothing`
 - Timur Doumler article: `https://timur.audio/using-locks-in-real-time-audio-processing-safely`
 - OBTAIN arXiv: `https://arxiv.org/abs/1704.02216`
+- Beat this arXiv: `https://arxiv.org/abs/2407.21658`
 
 ## Summary template
 
