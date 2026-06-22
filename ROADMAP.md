@@ -303,6 +303,32 @@ benchmarks, or small code changes.
    `docs/research/beat-tracking-adoption-plan.md`; next algorithm slice is candidate tempo
    diagnostics, then confidence calibration, each with tests, cost check, UI contract, and rollback.
 
+### Research-backed implementation TODO
+
+These are the concrete code/design tasks that came out of the research pass. Work them in order
+unless a release-critical bug interrupts; each item should land as its own small commit with tests
+or docs updated in the same patch.
+
+1. ⬜ **Candidate tempo diagnostics** — expose internal/debug-only tempo candidates, half/double
+   alternatives, candidate scores, and selected beat phase so ambiguous beatgrid decisions are
+   visible before changing selection behavior.
+2. ⬜ **Beatgrid confidence calibration** — make `TempoEstimate.confidence` and
+   `BeatGrid.confidence` lower for half/double ambiguity, weak onsets, sparse intros, silence/noise,
+   or competing candidate phases.
+3. ⬜ **Beat continuity tests** — add tests/assertions that detect unstable beat spacing or bad
+   tempo jumps, not just approximate BPM correctness.
+4. ⬜ **Expanded beat-tracking benchmark matrix** — promote or add fixtures for half/double traps,
+   tempo ramps, swung drums, misleading sparse intros, silence/noise, and a local real-track
+   evaluation list kept out of git if audio is copyrighted.
+5. ⬜ **Live-input beat-tracking design** — write the design before implementation: chunking,
+   no-lookahead timing, latency, routing, clock-domain ownership, and why OBTAIN-style online
+   tracking is separate from offline local-file analysis.
+6. ⬜ **Modular deck graph refactor** — incrementally move `DeckPlayer::next_frame` into the
+   documented stages: source, playhead/resampler, keylock, pregain/ReplayGain, EQ/filter, FX,
+   fader, and buses.
+7. ⬜ **No-drop graph/stem snapshot retirement** — route future large graph snapshots, stem buffers,
+   and model state through the same reclaim/parking model now used for old `Arc<DeckBuffer>` values.
+
 ---
 
 ## Feature-parity targets (vs Serato / rekordbox / Traktor / mature open-source)
