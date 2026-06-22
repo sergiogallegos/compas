@@ -330,18 +330,249 @@ fn beatgrid_spacing_is_uniform() {
 #[test]
 #[ignore = "reference case: swung subdivisions need onset grouping before tempo scoring"]
 fn beat_tracking_reference_swung_drums() {
-    let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];
-    let beat = 60.0 / 126.0;
+    let samples = swung_track(126.0, 16.0);
+    let estimate = estimate_tempo(&samples, SR);
+    assert_bpm_close(estimate.bpm, 126.0, 2.0);
+}
+
+// --- Evaluation matrix (research-backed TODO 4) -------------------------------------
+//
+// One table that exercises the estimator across the full set of scenarios the literature
+// flags as hard: half/double traps, tempo ramps, swung subdivisions, misleading sparse
+// intros, and silence/noise. Each case is tiered:
+//   * Solid     — a behaviour we already guarantee; asserted, so a regression fails CI.
+//   * Reference — a known gap; recorded in the printed report but NOT asserted, so the
+//                 matrix stays green while the accuracy deficit stays visible. Later
+//                 algorithm slices flip these to Solid as they land.
+// `cargo test -p compas-dsp -- --nocapture beat_evaluation_matrix` prints the full table.
+
+/// Strong on-beats at `bpm/2` with weaker off-beats at `bpm`, the classic octave trap.
+fn half_double_trap(bpm: f32, secs: f32) -> Vec<f32> {
+    let mut s = vec![0.0f32; (SR as f32 * secs) as usize];
+    add_clicks(&mut s, bpm / 2.0, 0.0, secs, 1.0);
+    add_clicks(&mut s, bpm, 60.0 / bpm, secs, 0.35);
+    s
+}
+
+/// A tempo that ramps linearly from `start` to `end` BPM over the clip.
+fn tempo_ramp_track(start: f32, end: f32, secs: f32) -> Vec<f32> {
+    let mut s = vec![0.0f32; (SR as f32 * secs) as usize];
+    let mut t = 0.0f32;
+    while t < secs {
+        let bpm = start + (end - start) * (t / secs);
+        add_click(&mut s, t, 1.0);
+        t += 60.0 / bpm;
+    }
+    s
+}
+
+/// Four-on-the-floor with a swung (triplet-ish) off-beat hit per beat.
+fn swung_track(bpm: f32, secs: f32) -> Vec<f32> {
+    let mut s = vec![0.0f32; (SR as f32 * secs) as usize];
+    let beat = 60.0 / bpm;
     let mut bar = 0.0f32;
-    while bar < 16.0 {
+    while bar < secs {
         for step in 0..4 {
             let downbeat = bar + step as f32 * beat;
-            add_click(&mut samples, downbeat, 1.0);
-            add_click(&mut samples, downbeat + beat * 0.66, 0.35);
+            add_click(&mut s, downbeat, 1.0);
+            add_click(&mut s, downbeat + beat * 0.66, 0.35);
         }
         bar += beat * 4.0;
     }
+    s
+}
 
-    let estimate = estimate_tempo(&samples, SR);
-    assert_bpm_close(estimate.bpm, 126.0, 2.0);
+/// A few isolated, off-tempo intro hits, then a long steady section at `bpm`.
+fn misleading_sparse_intro(bpm: f32, secs: f32) -> Vec<f32> {
+    let mut s = vec![0.0f32; (SR as f32 * secs) as usize];
+    // Misleading early hits suggesting a slower, irregular pulse.
+    add_click(&mut s, 0.4, 1.0);
+    add_click(&mut s, 1.7, 0.9);
+    add_click(&mut s, 3.1, 0.8);
+    add_clicks(&mut s, bpm, 6.0, secs, 1.0);
+    s
+}
+
+/// Deterministic LCG noise in [-0.5, 0.5] — no real periodicity.
+fn noise_track(secs: f32) -> Vec<f32> {
+    let mut state = 0x9E37_79B9u32;
+    (0..(SR as f32 * secs) as usize)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 8) as f32 / u32::MAX as f32 - 0.5
+        })
+        .collect()
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Tier {
+    Solid,
+    Reference,
+}
+
+enum Expect {
+    /// Estimated BPM must land within `tol` of `bpm`.
+    Bpm { bpm: f32, tol: f32 },
+    /// The grid is genuinely ambiguous/absent — confidence must stay at/below `max`.
+    LowConfidence { max: f32 },
+}
+
+struct Case {
+    name: &'static str,
+    tier: Tier,
+    expect: Expect,
+    samples: Vec<f32>,
+}
+
+fn evaluation_matrix() -> Vec<Case> {
+    let bpm = |name, tier, bpm, tol, samples| Case {
+        name,
+        tier,
+        expect: Expect::Bpm { bpm, tol },
+        samples,
+    };
+    let low = |name, tier, max, samples| Case {
+        name,
+        tier,
+        expect: Expect::LowConfidence { max },
+        samples,
+    };
+    vec![
+        bpm(
+            "clean_90",
+            Tier::Solid,
+            90.0,
+            2.0,
+            click_track(90.0, 16.0, 0.0),
+        ),
+        bpm(
+            "clean_120",
+            Tier::Solid,
+            120.0,
+            2.0,
+            click_track(120.0, 16.0, 0.0),
+        ),
+        bpm(
+            "clean_128",
+            Tier::Solid,
+            128.0,
+            2.0,
+            click_track(128.0, 16.0, 0.0),
+        ),
+        bpm(
+            "clean_150",
+            Tier::Solid,
+            150.0,
+            2.0,
+            click_track(150.0, 16.0, 0.0),
+        ),
+        bpm(
+            "delayed_phase_124",
+            Tier::Solid,
+            124.0,
+            2.0,
+            click_track(124.0, 16.0, 0.3),
+        ),
+        bpm("sparse_intro_128", Tier::Solid, 128.0, 2.0, {
+            let mut s = vec![0.0f32; (SR as f32 * 18.0) as usize];
+            add_click(&mut s, 0.5, 1.0);
+            add_click(&mut s, 2.0, 0.65);
+            add_clicks(&mut s, 128.0, 6.0, 18.0, 1.0);
+            s
+        }),
+        low(
+            "silence",
+            Tier::Solid,
+            0.05,
+            vec![0.0f32; (SR as f32 * 8.0) as usize],
+        ),
+        low("noise", Tier::Solid, 0.05, noise_track(8.0)),
+        // Known gaps — recorded, not asserted, until the relevant algorithm slice lands.
+        bpm(
+            "half_double_trap_64",
+            Tier::Reference,
+            64.0,
+            2.0,
+            half_double_trap(128.0, 16.0),
+        ),
+        bpm(
+            "tempo_ramp_118_126",
+            Tier::Reference,
+            122.0,
+            3.0,
+            tempo_ramp_track(118.0, 126.0, 20.0),
+        ),
+        bpm(
+            "swung_126",
+            Tier::Reference,
+            126.0,
+            2.0,
+            swung_track(126.0, 16.0),
+        ),
+        bpm(
+            "misleading_sparse_124",
+            Tier::Reference,
+            124.0,
+            2.0,
+            misleading_sparse_intro(124.0, 20.0),
+        ),
+    ]
+}
+
+#[test]
+fn beat_evaluation_matrix() {
+    let mut solid_failures = Vec::new();
+    let (mut ref_pass, mut ref_total) = (0u32, 0u32);
+
+    eprintln!(
+        "\n{:<24} {:<10} {:>8} {:>8} {:>6}  result",
+        "case", "tier", "expect", "got", "conf"
+    );
+    for case in evaluation_matrix() {
+        // estimate_beatgrid runs the tempo stage internally, so one call gives BPM and the
+        // (phase-scaled) grid confidence — no need to analyze each fixture twice.
+        let grid = estimate_beatgrid(&case.samples, SR);
+        let (expect_str, got_str, pass) = match case.expect {
+            Expect::Bpm { bpm, tol } => (
+                format!("{bpm:.0}±{tol:.0}"),
+                format!("{:.2}", grid.bpm),
+                (grid.bpm - bpm).abs() <= tol,
+            ),
+            Expect::LowConfidence { max } => (
+                format!("c≤{max:.2}"),
+                format!("c={:.3}", grid.confidence),
+                grid.confidence <= max,
+            ),
+        };
+        let tier = if case.tier == Tier::Solid {
+            "solid"
+        } else {
+            "reference"
+        };
+        eprintln!(
+            "{:<24} {:<10} {:>8} {:>8} {:>6.3}  {}",
+            case.name,
+            tier,
+            expect_str,
+            got_str,
+            grid.confidence,
+            if pass { "PASS" } else { "FAIL" }
+        );
+        match case.tier {
+            Tier::Solid if !pass => solid_failures.push(case.name),
+            Tier::Reference => {
+                ref_total += 1;
+                if pass {
+                    ref_pass += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    eprintln!("reference cases passing: {ref_pass}/{ref_total}\n");
+
+    assert!(
+        solid_failures.is_empty(),
+        "solid evaluation cases regressed: {solid_failures:?}"
+    );
 }

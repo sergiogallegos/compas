@@ -1,0 +1,5 @@
+# The real-track evaluation corpus is local-only (audio is usually copyrighted).
+# Ignore everything here except the docs that explain how to populate it.
+*
+!.gitignore
+!README.md

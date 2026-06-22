@@ -27,6 +27,13 @@ All notable changes to compas are documented here. Format follows
   half/double trap ~0.27, and noise ~0.00.
 
 ### Added
+- **Beat-tracking evaluation matrix (`compas-dsp`):** a tiered `beat_evaluation_matrix` test now
+  exercises the estimator across clean tempos, delayed phase, sparse intros, silence, noise,
+  half/double traps, tempo ramps, swung drums, and misleading sparse intros. Solid-tier cases are
+  asserted; Reference-tier known-gaps are reported but not asserted (only the half/double trap still
+  fails). A git-ignored real-track eval (`beat_real_track_eval`, env `COMPAS_BEAT_EVAL`, with a
+  built-in WAV reader and graceful skip) reports exact + within-octave hit rates against a local
+  corpus. Criterion gained tempo benches across clean/trap/noise signals.
 - **Beat-continuity tests (`compas-dsp`):** the beat-tracking harness now checks phase *continuity*,
   not just average BPM. An offset-invariant drift metric (the spread of the index-aligned
   true-vs-predicted beat offset) cancels the mod-one-beat phase ambiguity and isolates accumulating

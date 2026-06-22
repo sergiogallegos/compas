@@ -130,6 +130,66 @@ fn bench_tempo(c: &mut Criterion) {
     });
 }
 
+fn bench_tempo_signal_matrix(c: &mut Criterion) {
+    // Cost of the tempo estimator across the signal shapes the eval matrix covers. Onset
+    // density and clip length both drive the autocorrelation cost, so track them together.
+    let sr = 44_100u32;
+    let secs = 12.0;
+    let n = (sr as f32 * secs) as usize;
+
+    let add_click = |s: &mut [f32], at: f32| {
+        let start = (at * sr as f32) as usize;
+        for k in 0..64 {
+            if let Some(v) = s.get_mut(start + k) {
+                *v += (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+            }
+        }
+    };
+    let clicks = |bpm: f32, first: f32| {
+        let mut s = vec![0.0f32; n];
+        let mut t = first;
+        while t < secs {
+            add_click(&mut s, t);
+            t += 60.0 / bpm;
+        }
+        s
+    };
+
+    // Half/double trap: strong 64 BPM with weaker 128 BPM off-beats — double the onset density.
+    let mut trap = clicks(64.0, 0.0);
+    {
+        let mut t = 60.0 / 128.0;
+        while t < secs {
+            let start = (t * sr as f32) as usize;
+            for k in 0..64 {
+                if let Some(v) = trap.get_mut(start + k) {
+                    *v += 0.35 * (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                }
+            }
+            t += 60.0 / 128.0;
+        }
+    }
+
+    // Noise: no periodicity, but the same envelope/autocorrelation work runs.
+    let mut state = 0x9E37_79B9u32;
+    let noise: Vec<f32> = (0..n)
+        .map(|_| {
+            state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            (state >> 8) as f32 / u32::MAX as f32 - 0.5
+        })
+        .collect();
+
+    for (name, samples) in [
+        ("tempo_clean_128", clicks(128.0, 0.0)),
+        ("tempo_half_double_trap", trap),
+        ("tempo_noise", noise),
+    ] {
+        c.bench_function(name, |bn| {
+            bn.iter(|| estimate_tempo(black_box(&samples), sr))
+        });
+    }
+}
+
 fn bench_beatgrid(c: &mut Criterion) {
     // 12 s of a delayed 124 BPM click track exercises both tempo and phase estimation.
     let sr = 44_100u32;
@@ -159,6 +219,7 @@ criterion_group!(
     bench_reverb,
     bench_time_stretch,
     bench_tempo,
+    bench_tempo_signal_matrix,
     bench_beatgrid
 );
 criterion_main!(benches);

@@ -328,9 +328,14 @@ or docs updated in the same patch.
    track, spacing is uniform, and a deliberately 2%-detuned grid is *detected* (proves the metric has
    teeth). No estimator change was needed — its tempo precision already holds phase; these tests lock
    that in against regressions.
-4. ⬜ **Expanded beat-tracking benchmark matrix** — promote or add fixtures for half/double traps,
-   tempo ramps, swung drums, misleading sparse intros, silence/noise, and a local real-track
-   evaluation list kept out of git if audio is copyrighted.
+4. ✅ **Expanded beat-tracking benchmark matrix** — `beat_evaluation_matrix` is a tiered table
+   covering clean tempos, delayed phase, sparse intros, silence, noise, half/double traps, tempo
+   ramps, swung drums, and misleading sparse intros. Solid-tier cases are asserted (regression
+   guard); Reference-tier known-gaps are recorded in a printed report, not asserted. The report
+   shows the gap is now narrow: only the half/double trap fails (3/4 reference pass). A separate
+   `beat_real_track_eval` reads a git-ignored WAV corpus + `manifest.csv` (env `COMPAS_BEAT_EVAL`,
+   skips cleanly when absent; minimal built-in WAV reader, no decoder dep) and reports exact +
+   within-octave hit rates. Criterion now also benches the tempo estimator across clean/trap/noise.
 5. ⬜ **Live-input beat-tracking design** — write the design before implementation: chunking,
    no-lookahead timing, latency, routing, clock-domain ownership, and why OBTAIN-style online
    tracking is separate from offline local-file analysis.

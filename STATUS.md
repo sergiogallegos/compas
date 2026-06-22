@@ -164,11 +164,24 @@ accumulating tempo error / one-off jumps. Active tests: the estimator holds phas
 needed — its tempo precision already holds phase; these tests lock that in. Verified with
 `cargo test -p compas-dsp --locked`, clippy, and fmt.
 
-**Next beat-tracking task:** research-backed TODO 4 — **expanded beat-tracking benchmark matrix**
-(promote/add fixtures for half/double traps, tempo ramps, swung drums, misleading sparse intros,
-silence/noise, plus a local real-track eval list kept out of git if copyrighted). Only after that
-comes any tempo-selection algorithm change (half/double scoring = adoption-plan slice 3), per the
-gate.
+**Beat-tracking TODO 4 done (evaluation matrix + real-track eval).** `beat_evaluation_matrix` is a
+tiered table over clean tempos, delayed phase, sparse intros, silence, noise, half/double traps,
+tempo ramps, swung drums, and misleading sparse intros: Solid-tier cases are asserted (regression
+guard), Reference-tier known-gaps are printed but not asserted. The report shows the gap is now
+narrow — only the half/double trap fails (3/4 reference pass; ramp/swung/misleading-sparse already
+pass). A separate `beat_real_track_eval` reads a git-ignored WAV corpus + `manifest.csv` (env
+`COMPAS_BEAT_EVAL`; built-in WAV reader, no decoder dep; skips cleanly when unset; relative manifest
+paths resolve against the crate dir) and reports exact + within-octave hit rates; proven end to end
+against the generated 120/128 BPM test WAVs (2/2 EXACT). See `crates/compas-dsp/eval/README.md`.
+Criterion now also benches the tempo estimator across clean/trap/noise. Verified with `cargo test
+-p compas-dsp --locked`, `cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`, fmt.
+
+**Next beat-tracking task:** the test/diagnostics groundwork (TODOs 1-4) is complete, so the next
+slice is the first real algorithm change — **half/double tempo scoring** (adoption-plan slice 3):
+track octave candidates explicitly and pick the musically plausible one using onset support +
+confidence, not just the largest autocorrelation peak. Gate: promote the half/double reference
+fixture to Solid, keep 90/120/128/150 within tolerance, and check the benchmark cost. This is the
+only failing Reference case left, so it is the highest-value next step.
 
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
