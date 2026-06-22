@@ -98,8 +98,9 @@ fn beat_tracking_reference_tempo_ramp() {
 }
 
 #[test]
-#[ignore = "reference case: downbeat weighting is needed to reject half/double tempo traps robustly"]
-fn beat_tracking_reference_half_double_tempo_trap() {
+fn beat_tracking_resolves_half_double_tempo_trap() {
+    // Strong beats at 64 BPM with weaker 128 BPM off-beats. Octave scoring (onset support ×
+    // dance-tempo prior) resolves this to the danceable 128 BPM octave instead of the slow one.
     let mut samples = vec![0.0f32; (SR as f32 * 16.0) as usize];
     add_clicks(&mut samples, 64.0, 0.0, 16.0, 1.0);
     add_clicks(&mut samples, 128.0, 60.0 / 128.0, 16.0, 0.35);
@@ -147,9 +148,17 @@ fn diagnostics_expose_half_double_candidates() {
         diag.candidates[0].score, 1.0,
         "the strongest candidate is peak-relative 1.0"
     );
+    // selected_bpm tracks the public estimator. It may be a ½×/2× octave of the raw peak when
+    // the prior resolves a 2:1 tie, so compare against the candidate up to an octave fold.
+    assert_bpm_close(diag.selected_bpm, estimate_tempo(&samples, SR).bpm, 0.5);
+    let cand = diag.candidates[diag.selected].folded_bpm;
+    let octave_ok = (cand - diag.selected_bpm).abs() <= 1.0
+        || (cand - diag.selected_bpm * 2.0).abs() <= 1.0
+        || (cand - diag.selected_bpm * 0.5).abs() <= 1.0;
     assert!(
-        (diag.candidates[diag.selected].folded_bpm - diag.selected_bpm).abs() <= 0.5,
-        "selected candidate must agree with selected_bpm"
+        octave_ok,
+        "selected candidate {cand:.2} should be an octave of selected_bpm {:.2}",
+        diag.selected_bpm
     );
 
     // The half/double ambiguity is the point: the half-tempo octave (64 BPM, the strong
@@ -487,14 +496,23 @@ fn evaluation_matrix() -> Vec<Case> {
             vec![0.0f32; (SR as f32 * 8.0) as usize],
         ),
         low("noise", Tier::Solid, 0.05, noise_track(8.0)),
-        // Known gaps — recorded, not asserted, until the relevant algorithm slice lands.
+        // Octave resolution (half/double scoring): strong slow beats with weaker off-beats,
+        // and an accented pulse — both resolve to the danceable octave.
         bpm(
-            "half_double_trap_64",
-            Tier::Reference,
-            64.0,
+            "half_double_trap",
+            Tier::Solid,
+            128.0,
             2.0,
             half_double_trap(128.0, 16.0),
         ),
+        bpm(
+            "accent_trap_150",
+            Tier::Solid,
+            150.0,
+            3.0,
+            accent_trap(0.55),
+        ),
+        // Known gaps — recorded, not asserted, until the relevant algorithm slice lands.
         bpm(
             "tempo_ramp_118_126",
             Tier::Reference,
@@ -517,6 +535,36 @@ fn evaluation_matrix() -> Vec<Case> {
             misleading_sparse_intro(124.0, 20.0),
         ),
     ]
+}
+
+/// A 150 BPM pulse whose every-other beat is accented, so the strongest autocorrelation
+/// lobe sits at the 75 BPM accent period even though the musical tempo is 150.
+fn accent_trap(base_amp: f32) -> Vec<f32> {
+    let mut s = vec![0.0f32; SR as usize * 16];
+    let interval = 60.0 / 150.0;
+    let mut t = 0.0f32;
+    let mut i = 0;
+    while t < 16.0 {
+        let amp = if i % 2 == 0 { 1.0 } else { base_amp };
+        add_click(&mut s, t, amp);
+        t += interval;
+        i += 1;
+    }
+    s
+}
+
+#[test]
+fn octave_scoring_lifts_accent_trap_to_dance_tempo() {
+    // The raw autocorrelation winner is the slow (75 BPM) accent period, but octave scoring
+    // should resolve it to the danceable 150 BPM octave. This is the half/double slice's teeth.
+    let samples = accent_trap(0.55);
+    let diag = estimate_tempo_diagnostics(&samples, SR).expect("diagnostics");
+    let raw = diag.candidates[diag.selected].folded_bpm;
+    let resolved = estimate_tempo(&samples, SR).bpm;
+    eprintln!("accent_trap: raw_peak={raw:.2} resolved={resolved:.2}");
+
+    assert_bpm_close(raw, 75.0, 3.0); // the largest peak really is the slow octave
+    assert_bpm_close(resolved, 150.0, 3.0); // ...but selection lifts it to the dance octave
 }
 
 #[test]

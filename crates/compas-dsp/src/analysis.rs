@@ -69,7 +69,8 @@ pub struct TempoDiagnostics {
     pub candidates: Vec<TempoCandidate>,
     /// Index into `candidates` of the peak the estimator actually selected.
     pub selected: usize,
-    /// Selected BPM after octave folding (== [`estimate_tempo`]'s `bpm`).
+    /// Selected BPM (== [`estimate_tempo`]'s `bpm`). This is octave-resolved, so it may be a
+    /// ½×/2× octave of `candidates[selected]` when the dance-tempo prior breaks a 2:1 tie.
     pub selected_bpm: f32,
     /// Selected beat phase: first beat time in seconds (== [`BeatGrid::first_beat_sec`]).
     pub first_beat_sec: f32,
@@ -225,6 +226,64 @@ impl TempoAnalysis {
         let rival_factor = (1.0 - 0.5 * self.rival_score()).clamp(0.0, 1.0);
         (strength * octave_factor * rival_factor).clamp(0.0, 1.0)
     }
+
+    /// Octave-aware tempo pick, returning the selected `(folded_bpm, period_in_env_samples)`.
+    ///
+    /// The largest autocorrelation peak is not always the musically-correct octave: a track
+    /// with strong half-note accents can peak at half the perceived tempo, and a busy
+    /// eighth-note groove can peak at double. Instead of trusting that peak blindly, we score
+    /// the winner against its ½× and 2× octaves by `onset_support × tempo_prior(bpm)` and take
+    /// the best. `onset_support` keeps the pick honest (an octave with no onsets can't win);
+    /// the prior (see [`tempo_prior`]) gently resolves genuine 2:1 ambiguity toward the
+    /// beat-matchable range. Folding still confines the result to [`MIN_BPM`, `MAX_BPM`].
+    fn select_tempo(&self) -> (f32, f32) {
+        let mut best_score = f32::MIN;
+        let mut chosen = (0.0f32, 0.0f32);
+        // 2× lag = half tempo, 0.5× lag = double tempo. Include 1× so the winner competes.
+        for &mult in &[1.0f32, 2.0, 0.5] {
+            let lag = self.best_lag as f32 * mult;
+            if lag < 1.0 || lag as usize >= self.env.len() {
+                continue;
+            }
+            let support = autocorr_score(&self.env, lag.round() as usize, self.energy, self.best_r)
+                .unwrap_or(0.0);
+            let refined =
+                parabolic_peak(&self.env, lag.round() as usize, self.energy).unwrap_or(lag);
+            let mut bpm = 60.0 * self.env_rate / refined;
+            let mut period = refined;
+            while bpm < MIN_BPM {
+                bpm *= 2.0;
+                period *= 2.0;
+            }
+            while bpm > MAX_BPM {
+                bpm /= 2.0;
+                period /= 2.0;
+            }
+            let score = support * tempo_prior(bpm);
+            if score > best_score {
+                best_score = score;
+                chosen = (bpm, period);
+            }
+        }
+        chosen
+    }
+}
+
+/// Perceptual dance-tempo preference, used only to disambiguate octave-related tempo
+/// candidates (never to invent a tempo). A broad log-normal resonance peaking near a
+/// comfortable beat-matching tempo: it nudges genuine 2:1 ties toward the danceable octave
+/// while staying flat enough not to override a clearly-dominant tempo. Returns a weight in
+/// `(0, 1]`. See `docs/research/summaries/half-double-tempo-scoring.md`.
+fn tempo_prior(bpm: f32) -> f32 {
+    /// Preferred tempo center (BPM).
+    const PREF_BPM: f32 = 125.0;
+    /// Width of the resonance in natural-log tempo units (wide → gentle preference).
+    const SIGMA: f32 = 0.55;
+    if bpm <= 0.0 {
+        return 0.0;
+    }
+    let z = (bpm / PREF_BPM).ln() / SIGMA;
+    (-0.5 * z * z).exp()
 }
 
 /// Octave-fold a BPM into [`MIN_BPM`, `MAX_BPM`].
@@ -295,17 +354,7 @@ fn comb_first_beat(env: &[f32], period: f32, sample_rate: u32) -> (f32, f32) {
 /// envelope, its sample rate, the period in env-samples, the BPM, and confidence.
 fn tempo_core(samples: &[f32], sample_rate: u32) -> Option<(Vec<f32>, f32, f32, f32, f32)> {
     let a = analyze_tempo(samples, sample_rate)?;
-    let refined_lag = parabolic_peak(&a.env, a.best_lag, a.energy).unwrap_or(a.best_lag as f32);
-    let mut bpm = 60.0 * a.env_rate / refined_lag;
-    let mut period = refined_lag;
-    while bpm < MIN_BPM {
-        bpm *= 2.0;
-        period *= 2.0;
-    }
-    while bpm > MAX_BPM {
-        bpm /= 2.0;
-        period /= 2.0;
-    }
+    let (bpm, period) = a.select_tempo();
     let confidence = a.confidence();
     Some((a.env, a.env_rate, period, bpm, confidence))
 }
@@ -408,18 +457,10 @@ pub fn estimate_tempo_diagnostics(samples: &[f32], sample_rate: u32) -> Option<T
         .position(|&(lag, _)| lag == a.best_lag)
         .unwrap_or(0);
 
-    // Selected tempo/phase, derived exactly like `tempo_core` so they match the public API.
-    let refined_lag = parabolic_peak(&a.env, a.best_lag, a.energy).unwrap_or(a.best_lag as f32);
-    let mut selected_bpm = 60.0 * a.env_rate / refined_lag;
-    let mut period = refined_lag;
-    while selected_bpm < MIN_BPM {
-        selected_bpm *= 2.0;
-        period *= 2.0;
-    }
-    while selected_bpm > MAX_BPM {
-        selected_bpm /= 2.0;
-        period /= 2.0;
-    }
+    // Selected tempo/phase via the same octave-aware pick as `tempo_core`, so the diagnostics
+    // never disagree with the public API. `selected_bpm` may therefore be an octave of
+    // `candidates[selected]` (the raw autocorrelation winner) when the prior resolves a 2:1 tie.
+    let (selected_bpm, period) = a.select_tempo();
 
     // Octave neighbors of the *winning* lag: double the period == half tempo, and vice versa.
     let half_tempo_score = autocorr_score(

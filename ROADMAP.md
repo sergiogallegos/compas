@@ -300,8 +300,10 @@ benchmarks, or small code changes.
    common dance tempos, delayed beatgrid phase, and sparse intros, plus ignored reference cases for
    tempo ramps, half/double-tempo traps, and swung drums. Criterion now also tracks beatgrid cost.
 5. ✅ **Adopt one algorithmic improvement at a time** — adoption gate documented in
-   `docs/research/beat-tracking-adoption-plan.md`; next algorithm slice is candidate tempo
-   diagnostics, then confidence calibration, each with tests, cost check, UI contract, and rollback.
+   `docs/research/beat-tracking-adoption-plan.md`. Slices landed in order: candidate diagnostics →
+   confidence calibration → continuity tests → evaluation matrix → **half/double tempo scoring**
+   (`select_tempo` + dance-tempo prior; `docs/research/summaries/half-double-tempo-scoring.md`).
+   Each shipped with tests, a cost check, an unchanged UI contract, and an isolated rollback.
 
 ### Research-backed implementation TODO
 

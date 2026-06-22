@@ -18,6 +18,14 @@ All notable changes to compas are documented here. Format follows
   OK/restarting/error status in the footer.
 
 ### Changed
+- **Half/double tempo scoring (`compas-dsp`):** tempo selection no longer trusts the largest
+  autocorrelation peak blindly. Among the winning lag and its ½×/2× octaves, it now picks the
+  candidate maximizing `onset_support × tempo_prior(bpm)`, where the prior is a broad log-normal
+  resonance peaking near a danceable tempo (used only to break genuine 2:1 ties, never to invent a
+  tempo). This resolves half/double traps to the beat-matchable octave — e.g. a 150 BPM pulse whose
+  raw peak sits at the 75 BPM accent period now reports 150. Clean 90/120/128/150 detection is
+  unchanged. Offline cost: `estimate_tempo` ~+4% (5.45 → 5.68 ms on the 8 s bench). No public
+  field/IPC/UI change. See `docs/research/summaries/half-double-tempo-scoring.md`.
 - **Calibrated beatgrid confidence (`compas-dsp`):** `TempoEstimate.confidence` /
   `BeatGrid.confidence` now reflect ambiguity honestly. They combine periodic strength (the fraction
   of onset energy that actually repeats — so noise, silence, and weak onsets read as untrustworthy,

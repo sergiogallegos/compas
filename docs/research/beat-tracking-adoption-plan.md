@@ -71,7 +71,7 @@ further scales by phase sharpness from the comb. Measured: clean clicks ~0.56-0.
 ~0.27, noise ~0.00. Value-only — no struct/IPC/UI change; `bpm_confidence` is stored but not yet
 gated on, so nothing downstream changes behavior.
 
-### 3. Half/double tempo scoring
+### 3. Half/double tempo scoring — DONE
 
 Track octave-related candidates explicitly and pick the musically plausible one using onset support
 and confidence, not only the largest autocorrelation peak.
@@ -81,6 +81,16 @@ Acceptance:
 - A promoted half/double fixture is active, not ignored.
 - 90/120/128/150 BPM regression cases remain within tolerance.
 - Benchmarks do not show an unreasonable regression for offline full-track analysis.
+
+Landed as `TempoAnalysis::select_tempo` + `tempo_prior` (see
+`docs/research/summaries/half-double-tempo-scoring.md`). Among the winning lag and its ½×/2×
+octaves, the pick maximizes `onset_support × tempo_prior(bpm)`, where the prior is a broad
+log-normal resonance peaking near a danceable tempo (used only to break genuine 2:1 ties, never to
+invent a tempo). `beat_tracking_resolves_half_double_tempo_trap` is now active;
+`octave_scoring_lifts_accent_trap_to_dance_tempo` shows the teeth (raw peak 75 BPM → resolved 150);
+`beat_evaluation_matrix` keeps 90/120/128/150 within tolerance and promotes `half_double_trap` +
+`accent_trap_150` to Solid. The diagnostics path uses the same `select_tempo`, so `selected_bpm`
+stays in lockstep with the public API (and may now be an octave of `candidates[selected]`).
 
 ### 4. Sparse-intro weighting
 

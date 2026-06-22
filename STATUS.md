@@ -176,12 +176,26 @@ against the generated 120/128 BPM test WAVs (2/2 EXACT). See `crates/compas-dsp/
 Criterion now also benches the tempo estimator across clean/trap/noise. Verified with `cargo test
 -p compas-dsp --locked`, `cargo clippy -p compas-dsp --all-targets --locked -- -D warnings`, fmt.
 
-**Next beat-tracking task:** the test/diagnostics groundwork (TODOs 1-4) is complete, so the next
-slice is the first real algorithm change — **half/double tempo scoring** (adoption-plan slice 3):
-track octave candidates explicitly and pick the musically plausible one using onset support +
-confidence, not just the largest autocorrelation peak. Gate: promote the half/double reference
-fixture to Solid, keep 90/120/128/150 within tolerance, and check the benchmark cost. This is the
-only failing Reference case left, so it is the highest-value next step.
+**Half/double tempo scoring done (adoption-plan slice 3 — first real algorithm change).**
+`TempoAnalysis::select_tempo` now scores the winning lag and its ½×/2× octaves by
+`onset_support × tempo_prior(bpm)` (broad log-normal resonance peaking ~125 BPM, used only to break
+2:1 ties) instead of trusting the largest autocorrelation peak. Resolves half/double traps to the
+danceable octave; clean 90/120/128/150 unchanged. New active test
+`beat_tracking_resolves_half_double_tempo_trap` (de-ignored) plus
+`octave_scoring_lifts_accent_trap_to_dance_tempo` (teeth: raw peak 75 → resolved 150); matrix now
+has `half_double_trap` + `accent_trap_150` as Solid. Diagnostics share `select_tempo` so
+`selected_bpm` stays in lockstep (may now be an octave of `candidates[selected]`). No public
+field/IPC/UI change. Cost: `estimate_tempo` ~+4% (5.45 → 5.68 ms on the 8 s bench, offline). Source
+note: `docs/research/summaries/half-double-tempo-scoring.md`. Verified with `cargo test -p
+compas-dsp --locked`, clippy `--all-targets`, fmt, and `cargo check` on the Tauri app.
+
+**Next beat-tracking task:** the offline beat-tracking slices that were planned (adoption-plan 1-3 +
+research TODOs 1-4) are now all done. Remaining adoption-plan slices: **4. sparse-intro weighting**
+(reduce isolated intro hits when a later steady region is stronger — `misleading_sparse_124` already
+passes, so add a harder variant first) and **5. online/live-input tracking** (needs its own design
+note before any code; matches research-backed TODO 5). Per the gate, validate `select_tempo`'s prior
+against a real-track corpus (`crates/compas-dsp/eval/`) before trusting it on genuinely slow
+material. Or pivot back to the pro-audio hardening backlog (modular deck graph, TODO 6/7).
 
 **Post-12-features build-out (2026-06-20).** After the 12 design-study features landed, four phases
 were taken on (per the maintainer's order), all committed on `main`, each step tested:
