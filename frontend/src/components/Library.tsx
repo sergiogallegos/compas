@@ -42,6 +42,7 @@ export const Library = forwardRef<
   // Search results (engine grammar) and a "suggest next" override; null = show the full library.
   const [results, setResults] = useState<DbTrack[] | null>(null);
   const [suggestFor, setSuggestFor] = useState<string | null>(null);
+  const [queue, setQueue] = useState<DbTrack[]>([]);
 
   // Debounced search via the engine query grammar (bpm:120-128 key:8A artist:foo -live); falls
   // back to a client-side title/artist filter outside Tauri.
@@ -87,6 +88,17 @@ export const Library = forwardRef<
   const addToActiveCrate = (t: DbTrack) => {
     if (!activeCrate) return;
     dbAddToCrate(activeCrate.id, t.path).then(refreshCrates).catch(() => {});
+  };
+  const queueTrack = (t: DbTrack) => {
+    setQueue((cur) => (cur.some((q) => q.path === t.path) ? cur : [...cur, t]));
+  };
+  const loadNextQueued = async () => {
+    const [next] = queue;
+    if (!next) return;
+    const emptyDeck = loadedPaths.findIndex((p) => !p);
+    const targetDeck = emptyDeck >= 0 ? emptyDeck : 1;
+    await loadTrack(targetDeck, next.path).catch(() => {});
+    setQueue((cur) => cur.slice(1));
   };
 
   // Auto-mix planner: ranked next-track suggestions after `t`.
@@ -169,8 +181,24 @@ export const Library = forwardRef<
           <button className="add-btn" onClick={lib.add} disabled={lib.busy}>
             {lib.busy ? "Adding…" : "+ Add tracks"}
           </button>
+          <button className="add-btn" onClick={loadNextQueued} disabled={queue.length === 0}>
+            {queue.length ? `Load next (${queue.length})` : "Queue empty"}
+          </button>
           <span className="mono tl-count">{filtered.length} tracks</span>
         </div>
+
+        {queue.length > 0 && (
+          <div className="tl-banner tl-banner--queue">
+            <span>
+              <strong>AutoDJ queue</strong>
+              {" · "}
+              {queue.slice(0, 4).map((t) => t.title).join(" → ")}
+              {queue.length > 4 ? ` +${queue.length - 4}` : ""}
+            </span>
+            <button className="chip" onClick={loadNextQueued}>load next</button>
+            <button className="chip" onClick={() => setQueue([])}>clear</button>
+          </div>
+        )}
 
         {suggestFor && (
           <div className="tl-banner">
@@ -233,6 +261,13 @@ export const Library = forwardRef<
                       title="Suggest harmonically/tempo-compatible next tracks"
                     >
                       ✨
+                    </button>
+                    <button
+                      className="tl-next"
+                      onClick={(e) => { e.stopPropagation(); queueTrack(t); }}
+                      title="Add to AutoDJ queue"
+                    >
+                      Q
                     </button>
                     {activeCrate && (
                       <button

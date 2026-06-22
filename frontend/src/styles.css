@@ -277,6 +277,8 @@
 .xf-config { display: flex; align-items: center; gap: 8px; padding-top: 6px; color: var(--text-secondary); }
 .xf-config .xf-curve { flex: 1; accent-color: var(--accent); }
 .tl-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; margin: 4px 0; font-size: 12px; color: var(--text-secondary); background: var(--accent-soft, rgba(255,77,166,.10)); border: 1px solid var(--border-hairline); border-radius: 6px; }
+.tl-banner--queue { background: rgba(var(--accent-rgb), 0.08); border-color: rgba(var(--accent-rgb), 0.25); }
+.tl-banner--queue span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tl-next { background: none; border: 1px solid var(--border-hairline); border-radius: 4px; cursor: pointer; }
 .src-group--crates { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .crate-add { background: none; border: 1px solid var(--border-hairline); border-radius: 4px; cursor: pointer; color: var(--text-secondary); line-height: 1; padding: 1px 5px; }
