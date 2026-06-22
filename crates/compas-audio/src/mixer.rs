@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    meta_map, Biquad, BiquadCoeffs, Crossfader, FxChain, GainSmoother, LinkType, Synth, ThreeBandEq,
-    TimeStretch, Waveform, XfaderMode,
+    meta_map, Biquad, BiquadCoeffs, Crossfader, FxChain, GainSmoother, LinkType, Synth,
+    ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };
 
 /// FX chain slot indices (the default deck chain order: echo → reverb → flanger → bitcrusher).
@@ -23,7 +23,6 @@ use crate::sampler::Sampler;
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
 /// extension to 4 decks needs no structural change.
 pub const NUM_DECKS: usize = 4;
-
 
 /// Sync PLL: how hard the beat-phase error pulls the follower's read rate. The pull is
 /// capped to ±8% (a musical pitch-bend range) so locking in is a smooth glide, not a click.
@@ -891,15 +890,16 @@ impl Mixer {
                 continue;
             };
             let (m_ph, m_off, m_int, m_adv, m_playing) = snap.get(m).copied().unwrap_or_default();
-            if m == i || m_int <= 0.0 || d.beat_interval <= 0.0 || !m_playing || d.base_ratio <= 0.0 {
+            if m == i || m_int <= 0.0 || d.beat_interval <= 0.0 || !m_playing || d.base_ratio <= 0.0
+            {
                 d.sync_tempo = None;
                 continue;
             }
             // Rate-match: follower advances so its beats tick at the master's beat rate.
             let master_beat_rate = m_adv / m_int; // beats per output sample
             let base_adv = master_beat_rate * d.beat_interval; // follower frames per sample
-            // Phase error (master − follower), wrapped to the nearest beat [−0.5, 0.5].
-            // Tempo-only sync rate-matches without pulling phase, so the DJ can hold an offset.
+                                                               // Phase error (master − follower), wrapped to the nearest beat [−0.5, 0.5].
+                                                               // Tempo-only sync rate-matches without pulling phase, so the DJ can hold an offset.
             let bend = match d.sync_mode {
                 SyncMode::TempoOnly => 0.0,
                 SyncMode::Full => {
@@ -1441,7 +1441,10 @@ mod tests {
         d.scratch_speed = 1.0;
         let (l, _r) = d.next_frame();
         assert!(l != 0.0, "scratch should produce audio while paused");
-        assert!(d.playhead > 40.0, "forward scratch should advance the play-head");
+        assert!(
+            d.playhead > 40.0,
+            "forward scratch should advance the play-head"
+        );
     }
 
     #[test]
@@ -1453,8 +1456,14 @@ mod tests {
         for _ in 0..10 {
             d.next_frame();
         }
-        assert!(d.playhead >= 0.0, "reverse scratch must not run past frame 0");
-        assert!(d.playhead < 1.0, "reverse scratch should have moved backward");
+        assert!(
+            d.playhead >= 0.0,
+            "reverse scratch must not run past frame 0"
+        );
+        assert!(
+            d.playhead < 1.0,
+            "reverse scratch should have moved backward"
+        );
     }
 
     #[test]
@@ -1526,7 +1535,10 @@ mod tests {
         for _ in 0..96_000 {
             mixer.next_frame();
         }
-        assert!(mixer.decks[1].sync_tempo.is_some(), "tempo-only still rate-matches");
+        assert!(
+            mixer.decks[1].sync_tempo.is_some(),
+            "tempo-only still rate-matches"
+        );
         let mp = beat_phase(mixer.decks[0].playhead, 0.0, interval);
         let fp = beat_phase(mixer.decks[1].playhead, 0.0, interval);
         let mut err = mp - fp;
@@ -1562,7 +1574,10 @@ mod tests {
         assert!(mixer.decks[0].playhead < start + 100.0);
         // …while the shadow advanced ~500 frames. Release and confirm we jump to it.
         let slip = mixer.decks[0].slip_playhead;
-        assert!((slip - (start + 500.0)).abs() < 1.0, "slip should track real time");
+        assert!(
+            (slip - (start + 500.0)).abs() < 1.0,
+            "slip should track real time"
+        );
         mixer.decks[0].roll_active = false;
         mixer.decks[0].loop_active = false;
         mixer.decks[0].playhead = mixer.decks[0].slip_playhead; // mirrors the release path
@@ -1618,7 +1633,10 @@ mod tests {
         d.playing = true;
         d.cue_button(true);
         assert!(!d.playing, "CDJ cue while playing pauses");
-        assert!((d.playhead - 20.0).abs() < 1e-9, "and returns to the cue point");
+        assert!(
+            (d.playhead - 20.0).abs() < 1e-9,
+            "and returns to the cue point"
+        );
     }
 
     #[test]
@@ -1643,7 +1661,10 @@ mod tests {
         d.playhead = 35.0; // play advanced
         d.cue_button(false); // release
         assert!(!d.playing, "preview release pauses");
-        assert!((d.playhead - 20.0).abs() < 1e-9, "and snaps back to the cue point");
+        assert!(
+            (d.playhead - 20.0).abs() < 1e-9,
+            "and snaps back to the cue point"
+        );
     }
 
     #[test]
@@ -1656,7 +1677,10 @@ mod tests {
         assert!(d.playing, "gated cue plays while held");
         assert!((d.playhead - 10.0).abs() < 1e-9, "from the cue point");
         d.cue_button(false);
-        assert!(!d.playing && (d.playhead - 10.0).abs() < 1e-9, "returns on release");
+        assert!(
+            !d.playing && (d.playhead - 10.0).abs() < 1e-9,
+            "returns on release"
+        );
     }
 
     #[test]
@@ -1679,7 +1703,11 @@ mod tests {
         d.loop_active = true;
         d.playhead = 800.0;
         d.scale_loop(0.5); // out -> 500, playhead 800 must wrap in
-        assert!(d.playhead < 500.0 && d.playhead >= 0.0, "playhead {} not wrapped", d.playhead);
+        assert!(
+            d.playhead < 500.0 && d.playhead >= 0.0,
+            "playhead {} not wrapped",
+            d.playhead
+        );
     }
 
     #[test]
@@ -1705,7 +1733,10 @@ mod tests {
         for _ in 0..5 {
             d.next_frame();
         }
-        assert!(d.scratching, "scratch stays engaged at the end of the track");
+        assert!(
+            d.scratching,
+            "scratch stays engaged at the end of the track"
+        );
         assert!(d.playhead <= 99.0, "play-head clamps to the last frame");
     }
 }

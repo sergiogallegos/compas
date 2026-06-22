@@ -74,9 +74,19 @@ pub fn save_profile(dir: &Path, profile: &ControllerProfile) -> Result<PathBuf, 
     let safe: String = profile
         .id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
-    let id = if safe.is_empty() { "profile".to_string() } else { safe };
+    let id = if safe.is_empty() {
+        "profile".to_string()
+    } else {
+        safe
+    };
     let path = dir.join(format!("{id}.json"));
     let json = serde_json::to_string_pretty(profile).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
@@ -175,18 +185,21 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
             }
             ControllerMsg::Activate(profile) => {
                 mapping = profile.mapping();
-                script = profile.script.as_deref().and_then(|src| match ScriptRuntime::new() {
-                    Ok(rt) => {
-                        if let Err(e) = rt.eval(src) {
-                            tracing::warn!("controller script error: {e}");
+                script = profile
+                    .script
+                    .as_deref()
+                    .and_then(|src| match ScriptRuntime::new() {
+                        Ok(rt) => {
+                            if let Err(e) = rt.eval(src) {
+                                tracing::warn!("controller script error: {e}");
+                            }
+                            Some(rt)
                         }
-                        Some(rt)
-                    }
-                    Err(e) => {
-                        tracing::warn!("controller script runtime: {e}");
-                        None
-                    }
-                });
+                        Err(e) => {
+                            tracing::warn!("controller script runtime: {e}");
+                            None
+                        }
+                    });
                 current.clear();
                 fb_last.clear(); // re-send feedback for the new mapping's addresses
             }
@@ -207,7 +220,14 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
 
                 if let Some(inp) = input {
                     if let Some(u) = resolve_binding(
-                        &registry, &mapping, &mut current, &mut out, &mut fb_last, channel, inp, d2,
+                        &registry,
+                        &mapping,
+                        &mut current,
+                        &mut out,
+                        &mut fb_last,
+                        channel,
+                        inp,
+                        d2,
                     ) {
                         updates.push(u);
                     } else if mapping.find(channel, inp).is_none() {
@@ -222,7 +242,10 @@ fn run(app: AppHandle, rx: mpsc::Receiver<ControllerMsg>) {
                                         .map(|s| s.behavior.from_normalized(norm))
                                         .unwrap_or(norm);
                                     current.insert(cu.control.clone(), norm);
-                                    updates.push(ControllerUpdateEvent { control: cu.control, value });
+                                    updates.push(ControllerUpdateEvent {
+                                        control: cu.control,
+                                        value,
+                                    });
                                 }
                             }
                         }
@@ -306,7 +329,9 @@ fn send_feedback(
 ) {
     let Some(conn) = out.as_mut() else { return };
     // HID outputs have no MIDI representation (device-specific report; deferred) → skip them.
-    let Some(bytes) = midi_bytes(channel, input, value) else { return };
+    let Some(bytes) = midi_bytes(channel, input, value) else {
+        return;
+    };
     let addr = [bytes[0], bytes[1]]; // status (type+channel) + note/cc number
     if feedback_changed(last, addr, value) {
         let _ = conn.send(&bytes);
@@ -352,8 +377,14 @@ mod tests {
 
     #[test]
     fn midi_bytes_builds_cc_and_note() {
-        assert_eq!(midi_bytes(0, InputKind::Cc { cc: 7 }, 100), Some([0xB0, 7, 100]));
-        assert_eq!(midi_bytes(2, InputKind::Note { note: 36 }, 127), Some([0x92, 36, 127]));
+        assert_eq!(
+            midi_bytes(0, InputKind::Cc { cc: 7 }, 100),
+            Some([0xB0, 7, 100])
+        );
+        assert_eq!(
+            midi_bytes(2, InputKind::Note { note: 36 }, 127),
+            Some([0x92, 36, 127])
+        );
         // HID inputs have no MIDI feedback representation.
         assert_eq!(midi_bytes(0, InputKind::Hid { byte: 3 }, 100), None);
     }

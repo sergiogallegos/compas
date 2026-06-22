@@ -159,7 +159,10 @@ impl FxChain {
 
     /// Append an effect (bypassed). Control thread (allocates).
     pub fn push(&mut self, effect: Box<dyn Effect>) {
-        self.slots.push(FxSlot { effect, enabled: false });
+        self.slots.push(FxSlot {
+            effect,
+            enabled: false,
+        });
     }
 
     /// Process one stereo frame through every enabled slot, in order. RT-SAFE.

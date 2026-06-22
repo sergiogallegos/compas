@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+echo "pre-commit: cargo fmt"
+cargo fmt --all -- --check
+
+echo "pre-commit: cargo clippy"
+cargo clippy --all-targets -- -D warnings
+
+echo "pre-commit: version consistency"
+node scripts/check-versions.mjs
+
+if [ -d frontend/node_modules ]; then
+  echo "pre-commit: frontend typecheck"
+  (cd frontend && npm run typecheck)
+else
+  echo "pre-commit: skipping frontend typecheck (frontend/node_modules not found)"
+fi

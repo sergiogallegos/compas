@@ -17,8 +17,8 @@ pub use automix::{plan_next, score_transition, TrackInfo};
 pub use buffer::DeckBuffer;
 pub use capabilities::{SourceCapabilities, SourceKind};
 pub use control::{Behavior, ControlId, ControlSpec, Registry, Unit};
-pub use mapping::{Binding, ControllerProfile, InputKind, Mapping, PortHints, ResolvedUpdate};
 pub use error::{CompasError, Result};
+pub use mapping::{Binding, ControllerProfile, InputKind, Mapping, PortHints, ResolvedUpdate};
 pub use track::{MusicProvider, TrackMetadata};
 
 /// Identifier for a deck. The MVP uses two decks; the engine is built for N.

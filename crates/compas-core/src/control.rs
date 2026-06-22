@@ -171,7 +171,9 @@ impl Behavior {
 
     /// MIDI `0..=127` for an engine value — for LED rings / motor-fader feedback.
     pub fn to_midi(&self, value: f64) -> u8 {
-        (self.to_normalized(value) * 127.0).round().clamp(0.0, 127.0) as u8
+        (self.to_normalized(value) * 127.0)
+            .round()
+            .clamp(0.0, 127.0) as u8
     }
 }
 
@@ -288,7 +290,12 @@ impl Registry {
                 "Play",
                 Unit::Boolean,
             ));
-            r.add(ControlSpec::new(p("cue"), Behavior::Toggle, "Cue", Unit::Boolean));
+            r.add(ControlSpec::new(
+                p("cue"),
+                Behavior::Toggle,
+                "Cue",
+                Unit::Boolean,
+            ));
             r.add(ControlSpec::new(
                 p("sync"),
                 Behavior::Toggle,

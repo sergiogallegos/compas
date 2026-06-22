@@ -460,20 +460,30 @@ mod tests {
         let bins_low = band_peaks(&sine(60.0), sr, 4096);
         let avg = |v: &[[f32; 3]], b: usize| v.iter().map(|x| x[b]).sum::<f32>() / v.len() as f32;
         // A 60 Hz tone lands mostly in the low band.
-        assert!(avg(&bins_low, 0) > avg(&bins_low, 2), "low tone should be low-band heavy");
+        assert!(
+            avg(&bins_low, 0) > avg(&bins_low, 2),
+            "low tone should be low-band heavy"
+        );
         let bins_high = band_peaks(&sine(8000.0), sr, 4096);
-        assert!(avg(&bins_high, 2) > avg(&bins_high, 0), "high tone should be high-band heavy");
+        assert!(
+            avg(&bins_high, 2) > avg(&bins_high, 0),
+            "high tone should be high-band heavy"
+        );
         assert!(band_peaks(&[], sr, 4096).is_empty());
     }
 
     #[test]
     fn replaygain_boosts_quiet_and_attenuates_loud() {
         // RMS ≈ 0.0625 (half target) → boost ~2x.
-        let quiet: Vec<f32> = (0..10_000).map(|i| if i % 2 == 0 { 0.0625 } else { -0.0625 }).collect();
+        let quiet: Vec<f32> = (0..10_000)
+            .map(|i| if i % 2 == 0 { 0.0625 } else { -0.0625 })
+            .collect();
         let g = replaygain_linear(&quiet);
         assert!((g - 2.0).abs() < 0.1, "quiet boost was {g}");
         // Full-scale square → RMS 1.0 → attenuate toward target.
-        let loud: Vec<f32> = (0..10_000).map(|i| if i % 2 == 0 { 1.0 } else { -1.0 }).collect();
+        let loud: Vec<f32> = (0..10_000)
+            .map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+            .collect();
         assert!(replaygain_linear(&loud) < 1.0, "loud track attenuated");
         // Silence and empty are left unchanged.
         assert_eq!(replaygain_linear(&[0.0; 1000]), 1.0);

@@ -43,7 +43,9 @@ pub fn list_devices() -> Result<Vec<HidDeviceInfo>, String> {
     let api = HidApi::new().map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for d in api.device_list() {
-        let Ok(path) = d.path().to_str() else { continue };
+        let Ok(path) = d.path().to_str() else {
+            continue;
+        };
         out.push(HidDeviceInfo {
             path: path.to_string(),
             vendor_id: d.vendor_id(),
@@ -63,7 +65,11 @@ pub struct HidConnection {
 impl HidConnection {
     /// Open `path` and spawn the reader. The device is opened *inside* the thread (hidapi handles are
     /// not `Send`); the open result is reported back so this returns synchronously.
-    pub fn open(app: AppHandle, ctrl_tx: Sender<ControllerMsg>, path: String) -> Result<Self, String> {
+    pub fn open(
+        app: AppHandle,
+        ctrl_tx: Sender<ControllerMsg>,
+        path: String,
+    ) -> Result<Self, String> {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = stop.clone();
         let (res_tx, res_rx) = mpsc::channel::<Result<(), String>>();
@@ -105,7 +111,8 @@ impl HidConnection {
                                 if cur != old {
                                     let byte = i as u8; // reports ≤256 bytes; index fits u8
                                     let _ = ctrl_tx.send(ControllerMsg::Hid { byte, value: cur });
-                                    let _ = app.emit("hid:input", HidInputEvent { byte, value: cur });
+                                    let _ =
+                                        app.emit("hid:input", HidInputEvent { byte, value: cur });
                                 }
                             }
                             prev.copy_from_slice(report);

@@ -26,9 +26,12 @@ Tauri app (which needs WebView2/WebKitGTK + a built frontend).
 cargo test                                   # engine unit tests
 cargo clippy --all-targets -- -D warnings    # lint engine crates
 cargo fmt --all
+cargo bench -p compas-dsp                    # DSP hot-path benchmarks
+node scripts/check-versions.mjs              # Cargo/Tauri/frontend version consistency
 cd frontend && npm install && npm run typecheck && npm run build
 cargo tauri dev                              # run the full app (or frontend\node_modules\.bin\tauri.cmd dev)
 node scripts/make-test-audio.mjs             # synth 120/128 BPM test WAVs into samples/
+pwsh scripts/install-hooks.ps1               # opt in to local pre-commit checks
 ```
 
 ## Non-negotiables
@@ -40,6 +43,15 @@ node scripts/make-test-audio.mjs             # synth 120/128 BPM test WAVs into 
    control-only. Never render a DSP control for audio we don't decode. Locked state is driven by
    `SourceCapabilities` / a `dsp` prop, never hard-coded.
 4. **Cross-platform from commit one.** Gate platform-specific code; document it.
+
+## Rust discipline
+- Prefer `#[expect(lint, reason = "...")]` over `#[allow(lint)]`; stale suppressions should fail.
+- Every `unsafe` block must have a nearby `// SAFETY:` comment explaining the invariant.
+- Use `cargo update -p crate --precise version` for targeted dependency updates; avoid bulk updates
+  unless the task is explicitly dependency maintenance.
+- Copy the closest existing test pattern before inventing a new one. For DSP/audio changes, include
+  a deterministic unit test or benchmark when behavior or hot-path cost can regress.
+- Keep `Cargo.toml`, `src-tauri/tauri.conf.json`, and `frontend/package.json` versions in sync.
 
 ## Architecture cheatsheet
 - Decks hold the **fully-decoded track in RAM** (`Arc<DeckBuffer>`); the audio thread reads with a

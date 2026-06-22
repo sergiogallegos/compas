@@ -38,17 +38,50 @@ const TELEMETRY_HZ: u64 = 30;
 /// Coarse, `Send` control messages from Tauri commands to the audio thread.
 enum EngineMsg {
     SetCrossfader(f32),
-    SetCrossfaderConfig { curve: f32, mode: u8, reverse: bool },
-    SetCueMode { deck: usize, mode: u8 },
-    SetCuePoint { deck: usize, frame: f64 },
-    CueButton { deck: usize, pressed: bool },
-    ScaleLoop { deck: usize, factor: f64 },
-    MoveLoop { deck: usize, delta_frames: f64 },
-    SetDeckSyncMode { deck: usize, mode: u8 },
-    SetSyncLeader { deck: usize, explicit: bool },
-    SyncToLeader { deck: usize },
-    SetDeckReplayGain { deck: usize, gain: f32 },
-    SetDeckFxMacro { deck: usize, value: f32 },
+    SetCrossfaderConfig {
+        curve: f32,
+        mode: u8,
+        reverse: bool,
+    },
+    SetCueMode {
+        deck: usize,
+        mode: u8,
+    },
+    SetCuePoint {
+        deck: usize,
+        frame: f64,
+    },
+    CueButton {
+        deck: usize,
+        pressed: bool,
+    },
+    ScaleLoop {
+        deck: usize,
+        factor: f64,
+    },
+    MoveLoop {
+        deck: usize,
+        delta_frames: f64,
+    },
+    SetDeckSyncMode {
+        deck: usize,
+        mode: u8,
+    },
+    SetSyncLeader {
+        deck: usize,
+        explicit: bool,
+    },
+    SyncToLeader {
+        deck: usize,
+    },
+    SetDeckReplayGain {
+        deck: usize,
+        gain: f32,
+    },
+    SetDeckFxMacro {
+        deck: usize,
+        value: f32,
+    },
     SetMasterGain(f32),
     DeckGain {
         deck: usize,
@@ -261,9 +294,7 @@ fn spawn_engine() -> EngineHandle {
                         mode,
                         reverse,
                     },
-                    EngineMsg::SetCueMode { deck, mode } => {
-                        AudioCommand::SetCueMode { deck, mode }
-                    }
+                    EngineMsg::SetCueMode { deck, mode } => AudioCommand::SetCueMode { deck, mode },
                     EngineMsg::SetCuePoint { deck, frame } => {
                         AudioCommand::SetCuePoint { deck, frame }
                     }
@@ -438,19 +469,17 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::StartRecording { sink } => AudioCommand::StartRecording { sink },
                     EngineMsg::StopRecording => AudioCommand::StopRecording,
-                    EngineMsg::DeckCue { deck, active } => AudioCommand::SetDeckCue { deck, active },
+                    EngineMsg::DeckCue { deck, active } => {
+                        AudioCommand::SetDeckCue { deck, active }
+                    }
                     EngineMsg::CueMix(m) => AudioCommand::SetCueMix(m),
                     EngineMsg::CueVolume(v) => AudioCommand::SetCueVolume(v),
                     EngineMsg::StartCueOutput { sink } => AudioCommand::StartCueOutput { sink },
                     EngineMsg::StopCueOutput => AudioCommand::StopCueOutput,
-                    EngineMsg::NoteOn { note, velocity } => {
-                        AudioCommand::NoteOn { note, velocity }
-                    }
+                    EngineMsg::NoteOn { note, velocity } => AudioCommand::NoteOn { note, velocity },
                     EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
                     EngineMsg::AllNotesOff => AudioCommand::AllNotesOff,
-                    EngineMsg::SynthWaveform { index } => {
-                        AudioCommand::SetSynthWaveform { index }
-                    }
+                    EngineMsg::SynthWaveform { index } => AudioCommand::SetSynthWaveform { index },
                     EngineMsg::SynthGain { gain } => AudioCommand::SetSynthGain { gain },
                     EngineMsg::LoadSample { slot, buffer } => {
                         AudioCommand::LoadSample { slot, buffer }
@@ -615,7 +644,13 @@ fn engine_status(state: State<'_, EngineHandle>) -> EngineStatus {
 fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path: String) {
     let tx = state.tx.clone();
     // Tell the UI immediately so it can show a loading state during decode + analysis.
-    let _ = app.emit("deck:loading", DeckLoadingEvent { deck, path: path.clone() });
+    let _ = app.emit(
+        "deck:loading",
+        DeckLoadingEvent {
+            deck,
+            path: path.clone(),
+        },
+    );
     thread::spawn(move || {
         let (buffer, metadata) = match compas_sources::decode_full(&path) {
             Ok(v) => v,
@@ -632,8 +667,11 @@ fn load_track(app: AppHandle, state: State<'_, EngineHandle>, deck: usize, path:
         };
 
         let peaks = compute_peaks(&buffer.samples, WAVEFORM_BIN_FRAMES);
-        let band_peaks =
-            compas_dsp::analysis::band_peaks(&buffer.samples, buffer.source_rate, WAVEFORM_BIN_FRAMES);
+        let band_peaks = compas_dsp::analysis::band_peaks(
+            &buffer.samples,
+            buffer.source_rate,
+            WAVEFORM_BIN_FRAMES,
+        );
         let (grid, key) = analyze_track(&buffer);
         let replay_gain = compas_dsp::analysis::replaygain_linear(&buffer.samples);
 
@@ -740,7 +778,13 @@ fn db_list_tracks(db: State<'_, db::Db>) -> Result<Vec<db::TrackRow>, String> {
 fn db_add_track(db: State<'_, db::Db>, path: String) -> Result<db::TrackRow, String> {
     let probed = probe_track(path.clone())?;
     with_db(&db, |c| {
-        db::add_track(c, &probed.path, &probed.title, &probed.artist, probed.duration_ms as i64)
+        db::add_track(
+            c,
+            &probed.path,
+            &probed.title,
+            &probed.artist,
+            probed.duration_ms as i64,
+        )
     })
 }
 
@@ -799,7 +843,9 @@ fn db_set_loop(
     out_frame: f64,
     beats: Option<f64>,
 ) -> Result<(), String> {
-    with_db(&db, |c| db::set_loop(c, &path, slot, in_frame, out_frame, beats))
+    with_db(&db, |c| {
+        db::set_loop(c, &path, slot, in_frame, out_frame, beats)
+    })
 }
 
 #[tauri::command]
@@ -985,7 +1031,11 @@ fn set_loop(
 }
 
 #[tauri::command]
-fn set_loop_active(state: State<'_, EngineHandle>, deck: usize, active: bool) -> Result<(), String> {
+fn set_loop_active(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+) -> Result<(), String> {
     state.send(EngineMsg::LoopActive { deck, active })
 }
 
@@ -1203,7 +1253,11 @@ fn set_deck_sync_mode(state: State<'_, EngineHandle>, deck: usize, mode: u8) -> 
 
 /// Mark/unmark a deck as the explicit (pinned) sync leader.
 #[tauri::command]
-fn set_sync_leader(state: State<'_, EngineHandle>, deck: usize, explicit: bool) -> Result<(), String> {
+fn set_sync_leader(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    explicit: bool,
+) -> Result<(), String> {
     state.send(EngineMsg::SetSyncLeader { deck, explicit })
 }
 
@@ -1216,13 +1270,21 @@ fn sync_to_leader(state: State<'_, EngineHandle>, deck: usize) -> Result<(), Str
 /// Set a deck's loudness-normalization factor (1.0 = off). Use to override or disable the
 /// auto-computed ReplayGain.
 #[tauri::command]
-fn set_deck_replay_gain(state: State<'_, EngineHandle>, deck: usize, gain: f32) -> Result<(), String> {
+fn set_deck_replay_gain(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    gain: f32,
+) -> Result<(), String> {
     state.send(EngineMsg::SetDeckReplayGain { deck, gain })
 }
 
 /// Drive a deck's FX macro (super-knob), `value` 0..1.
 #[tauri::command]
-fn set_deck_fx_macro(state: State<'_, EngineHandle>, deck: usize, value: f32) -> Result<(), String> {
+fn set_deck_fx_macro(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    value: f32,
+) -> Result<(), String> {
     state.send(EngineMsg::SetDeckFxMacro { deck, value })
 }
 
@@ -1392,16 +1454,18 @@ fn start_cue_output(
     let (ready_tx, ready_rx) = channel::<Result<String, String>>();
     let spawn = thread::Builder::new()
         .name("compas-cue".to_string())
-        .spawn(move || match compas_audio::open_cue_output(device.as_deref(), consumer) {
-            Ok(out) => {
-                let _ = ready_tx.send(Ok(out.device_name.clone()));
-                let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
-                drop(out); // closes the cue stream
-            }
-            Err(e) => {
-                let _ = ready_tx.send(Err(e.to_string()));
-            }
-        });
+        .spawn(
+            move || match compas_audio::open_cue_output(device.as_deref(), consumer) {
+                Ok(out) => {
+                    let _ = ready_tx.send(Ok(out.device_name.clone()));
+                    let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
+                    drop(out); // closes the cue stream
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.to_string()));
+                }
+            },
+        );
     if let Err(e) = spawn {
         let _ = state.send(EngineMsg::StopCueOutput);
         return Err(format!("could not spawn cue thread: {e}"));
@@ -1553,7 +1617,11 @@ fn stop_sample(state: State<'_, EngineHandle>, slot: usize) -> Result<(), String
 }
 
 #[tauri::command]
-fn set_sample_loop(state: State<'_, EngineHandle>, slot: usize, looping: bool) -> Result<(), String> {
+fn set_sample_loop(
+    state: State<'_, EngineHandle>,
+    slot: usize,
+    looping: bool,
+) -> Result<(), String> {
     state.send(EngineMsg::SampleLoop { slot, looping })
 }
 
@@ -1604,10 +1672,7 @@ fn controller_list(app: AppHandle) -> Result<Vec<compas_core::ControllerProfile>
 
 /// Save (or overwrite) a controller profile (used by the guided learn editor).
 #[tauri::command]
-fn controller_save(
-    app: AppHandle,
-    profile: compas_core::ControllerProfile,
-) -> Result<(), String> {
+fn controller_save(app: AppHandle, profile: compas_core::ControllerProfile) -> Result<(), String> {
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
     controllers::save_profile(&dir, &profile).map(|_| ())
@@ -1633,7 +1698,11 @@ fn controller_deactivate(ctrl: State<'_, controllers::ControllerEngine>) {
 /// frontend calls this whenever a control changes — from the UI or the controller — so the hardware
 /// tracks software state. No-op unless a profile + output port are active (handled engine-side).
 #[tauri::command]
-fn controller_feedback(ctrl: State<'_, controllers::ControllerEngine>, control: String, value: f64) {
+fn controller_feedback(
+    ctrl: State<'_, controllers::ControllerEngine>,
+    control: String,
+    value: f64,
+) {
     ctrl.send(controllers::ControllerMsg::Feedback { control, value });
 }
 
@@ -1705,10 +1774,21 @@ fn midi_connect(
                     0x90 => {
                         let (note, vel) = (message[1], *message.get(2).unwrap_or(&0));
                         let on = vel > 0;
-                        let _ = app_cc.emit("midi:note", MidiNoteEvent { channel, note, velocity: vel, on });
+                        let _ = app_cc.emit(
+                            "midi:note",
+                            MidiNoteEvent {
+                                channel,
+                                note,
+                                velocity: vel,
+                                on,
+                            },
+                        );
                         if synth.load(Ordering::Relaxed) {
                             let _ = if on {
-                                tx.send(EngineMsg::NoteOn { note, velocity: vel })
+                                tx.send(EngineMsg::NoteOn {
+                                    note,
+                                    velocity: vel,
+                                })
                             } else {
                                 tx.send(EngineMsg::NoteOff { note })
                             };
@@ -1716,7 +1796,15 @@ fn midi_connect(
                     }
                     0x80 => {
                         let note = message[1];
-                        let _ = app_cc.emit("midi:note", MidiNoteEvent { channel, note, velocity: 0, on: false });
+                        let _ = app_cc.emit(
+                            "midi:note",
+                            MidiNoteEvent {
+                                channel,
+                                note,
+                                velocity: 0,
+                                on: false,
+                            },
+                        );
                         if synth.load(Ordering::Relaxed) {
                             let _ = tx.send(EngineMsg::NoteOff { note });
                         }
@@ -1740,7 +1828,9 @@ fn midi_connect(
 
     *midi.conn.lock().map_err(|e| e.to_string())? = Some(conn);
     // Open a matching MIDI output (same device name) for LED/feedback echo.
-    ctrl.send(controllers::ControllerMsg::SetOutputPort(Some(name.clone())));
+    ctrl.send(controllers::ControllerMsg::SetOutputPort(Some(
+        name.clone(),
+    )));
     tracing::info!("MIDI connected: {name}");
     Ok(name)
 }

@@ -239,8 +239,9 @@ pub fn track_state(c: &Connection, path: &str) -> rusqlite::Result<TrackState> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
 
-    let mut loop_stmt = c
-        .prepare("SELECT slot, in_frame, out_frame, beats FROM loops WHERE track_path = ?1 ORDER BY slot")?;
+    let mut loop_stmt = c.prepare(
+        "SELECT slot, in_frame, out_frame, beats FROM loops WHERE track_path = ?1 ORDER BY slot",
+    )?;
     let loops = loop_stmt
         .query_map(params![path], |r| {
             Ok(LoopRow {

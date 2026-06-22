@@ -128,7 +128,8 @@ impl Mapping {
         let binding = self.find(channel, input)?;
         let spec = registry.get(&binding.control)?;
         let normalized = (value as f64 / input.full_scale()).min(1.0);
-        if binding.soft_takeover && !soft_takeover_ok(current_norm, normalized, takeover_threshold) {
+        if binding.soft_takeover && !soft_takeover_ok(current_norm, normalized, takeover_threshold)
+        {
             return None;
         }
         Some(ResolvedUpdate {
@@ -180,8 +181,12 @@ mod tests {
     fn unmatched_input_or_unknown_control_is_none() {
         let reg = Registry::defaults(4);
         let m = mapping();
-        assert!(m.resolve(&reg, 0, InputKind::Cc { cc: 99 }, 64, 0.0, 0.03).is_none());
-        assert!(m.resolve(&reg, 5, InputKind::Cc { cc: 7 }, 64, 0.0, 0.03).is_none());
+        assert!(m
+            .resolve(&reg, 0, InputKind::Cc { cc: 99 }, 64, 0.0, 0.03)
+            .is_none());
+        assert!(m
+            .resolve(&reg, 5, InputKind::Cc { cc: 7 }, 64, 0.0, 0.03)
+            .is_none());
     }
 
     #[test]
@@ -216,7 +221,9 @@ mod tests {
         // The profile's binding resolves through the registry like any mapping. (soft_takeover is
         // on, so the incoming value must already be near the current — pass 127 with current ~1.0.)
         let reg = Registry::defaults(4);
-        let u = m.resolve(&reg, 0, InputKind::Cc { cc: 7 }, 127, 1.0, 0.03).unwrap();
+        let u = m
+            .resolve(&reg, 0, InputKind::Cc { cc: 7 }, 127, 1.0, 0.03)
+            .unwrap();
         assert_eq!(u.control.as_str(), "deck.0.gain");
     }
 

@@ -51,6 +51,18 @@ rustfft = "6"          # MIT/Apache-2.0 — FFT for offline analysis (BPM / key)
 # Decoding (pure Rust, MPL-2.0 — permissive, file-level copyleft only)
 symphonia = { version = "0.5", default-features = false }
 
+# Centralized lints — inherited by every member via `[lints] workspace = true`. CI runs
+# `cargo clippy --all-targets -- -D warnings`, so these are effectively deny-level there.
+# Discipline: prefer `#[expect(lint, reason = "…")]` over `#[allow(lint)]` so a suppression
+# fails the build once it stops being needed (and document the reason).
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"   # an `unsafe fn` body isn't implicitly an unsafe block
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"                # no stray dbg!() in committed code
+todo = "warn"                     # no todo!() left on a shipped path
+
 # Release profile: optimize the audio/DSP path aggressively.
 [profile.release]
 opt-level = 3

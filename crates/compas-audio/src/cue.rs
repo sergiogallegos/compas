@@ -111,10 +111,7 @@ where
                 for frame in out.chunks_mut(channels) {
                     // Pop a stereo pair atomically; an underrun outputs silence and re-primes.
                     let (l, r) = if consumer.slots() >= 2 {
-                        (
-                            consumer.pop().unwrap_or(0.0),
-                            consumer.pop().unwrap_or(0.0),
-                        )
+                        (consumer.pop().unwrap_or(0.0), consumer.pop().unwrap_or(0.0))
                     } else {
                         primed = false;
                         (0.0, 0.0)

@@ -66,7 +66,11 @@ impl Sampler {
 
     /// Install (or clear, with `None`) a pad's sample. Stops any voices on that slot and
     /// returns the previous buffer so the caller can reclaim it off the audio thread.
-    pub fn set_slot(&mut self, slot: usize, buffer: Option<Arc<DeckBuffer>>) -> Option<Arc<DeckBuffer>> {
+    pub fn set_slot(
+        &mut self,
+        slot: usize,
+        buffer: Option<Arc<DeckBuffer>>,
+    ) -> Option<Arc<DeckBuffer>> {
         if slot >= NUM_PADS {
             return None;
         }
@@ -243,7 +247,10 @@ mod tests {
         s.set_slot(0, Some(buf(0.5, 100)));
         s.trigger(0, 127);
         let old = s.set_slot(0, None);
-        assert!(old.is_some(), "set_slot returns the replaced buffer for reclaim");
+        assert!(
+            old.is_some(),
+            "set_slot returns the replaced buffer for reclaim"
+        );
         assert_eq!(s.process().0, 0.0, "clearing the pad silences its voice");
     }
 }

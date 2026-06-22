@@ -133,7 +133,10 @@ impl StemSeparator {
         flat[N_SAMPLES..].copy_from_slice(rc);
 
         let input = Tensor::from_array(([1usize, N_CHANNELS, N_SAMPLES], flat)).map_err(ort_err)?;
-        let outputs = self.session.run(ort::inputs!["mix" => input]).map_err(ort_err)?;
+        let outputs = self
+            .session
+            .run(ort::inputs!["mix" => input])
+            .map_err(ort_err)?;
         let (_shape, data) = outputs["stems"]
             .try_extract_tensor::<f32>()
             .map_err(ort_err)?;
@@ -268,8 +271,14 @@ mod tests {
         assert_eq!(w.len(), N_SAMPLES);
         assert!((w[0] - 0.0).abs() < 1e-6, "fades in from 0");
         assert!((w[N_SAMPLES - 1] - 0.0).abs() < 1e-6, "fades out to 0");
-        assert!((w[N_SAMPLES / 2] - 1.0).abs() < 1e-6, "flat 1.0 in the middle");
-        assert!(w[OVERLAP / 2] > 0.0 && w[OVERLAP / 2] < 1.0, "ramps within the fade");
+        assert!(
+            (w[N_SAMPLES / 2] - 1.0).abs() < 1e-6,
+            "flat 1.0 in the middle"
+        );
+        assert!(
+            w[OVERLAP / 2] > 0.0 && w[OVERLAP / 2] < 1.0,
+            "ramps within the fade"
+        );
     }
 
     #[test]

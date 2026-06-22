@@ -101,7 +101,12 @@ impl ScriptRuntime {
 
     /// Invoke the script's `onMidi(status, data1, data2)` handler (if defined) and return the
     /// control updates it produced. A missing handler is not an error (returns empty).
-    pub fn on_midi(&self, status: u8, data1: u8, data2: u8) -> Result<Vec<ControlUpdate>, ScriptError> {
+    pub fn on_midi(
+        &self,
+        status: u8,
+        data1: u8,
+        data2: u8,
+    ) -> Result<Vec<ControlUpdate>, ScriptError> {
         self.context.with(|ctx| -> Result<(), ScriptError> {
             let handler: Result<Function, _> = ctx.globals().get("onMidi");
             if let Ok(f) = handler {

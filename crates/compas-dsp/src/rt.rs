@@ -477,7 +477,11 @@ impl Delay {
         // Feed input + feedback back into the line at the write head.
         self.left[self.write] = in_l + wet_l * self.feedback;
         self.right[self.write] = in_r + wet_r * self.feedback;
-        self.write = if self.write + 1 == self.capacity { 0 } else { self.write + 1 };
+        self.write = if self.write + 1 == self.capacity {
+            0
+        } else {
+            self.write + 1
+        };
 
         let dry = 1.0 - self.mix;
         (in_l * dry + wet_l * self.mix, in_r * dry + wet_r * self.mix)
@@ -589,7 +593,11 @@ impl Flanger {
 
         self.left[self.write] = in_l + wet_l * self.feedback;
         self.right[self.write] = in_r + wet_r * self.feedback;
-        self.write = if self.write + 1 == self.capacity { 0 } else { self.write + 1 };
+        self.write = if self.write + 1 == self.capacity {
+            0
+        } else {
+            self.write + 1
+        };
 
         let dry = 1.0 - self.mix;
         (in_l * dry + wet_l * self.mix, in_r * dry + wet_r * self.mix)
@@ -671,7 +679,10 @@ impl Bitcrusher {
             self.counter = 0;
         }
         let dry = 1.0 - self.mix;
-        (in_l * dry + self.hold_l * self.mix, in_r * dry + self.hold_r * self.mix)
+        (
+            in_l * dry + self.hold_l * self.mix,
+            in_r * dry + self.hold_r * self.mix,
+        )
     }
 }
 
@@ -793,12 +804,16 @@ impl Reverb {
     /// [`process`](Self::process) stays RT-safe.
     pub fn new(sample_rate: f32) -> Self {
         let scale = sample_rate / 44_100.0;
-        let sized = |tuning: usize, spread: usize| (((tuning + spread) as f32 * scale).round() as usize).max(1);
+        let sized = |tuning: usize, spread: usize| {
+            (((tuning + spread) as f32 * scale).round() as usize).max(1)
+        };
         let mut rv = Reverb {
             combs_l: std::array::from_fn(|i| Comb::new(sized(COMB_TUNING[i], 0))),
             combs_r: std::array::from_fn(|i| Comb::new(sized(COMB_TUNING[i], STEREO_SPREAD))),
             allpass_l: std::array::from_fn(|i| Allpass::new(sized(ALLPASS_TUNING[i], 0))),
-            allpass_r: std::array::from_fn(|i| Allpass::new(sized(ALLPASS_TUNING[i], STEREO_SPREAD))),
+            allpass_r: std::array::from_fn(|i| {
+                Allpass::new(sized(ALLPASS_TUNING[i], STEREO_SPREAD))
+            }),
             mix: 0.0,
         };
         rv.set_room_size(0.5);
@@ -831,8 +846,14 @@ impl Reverb {
     /// Zero all comb/allpass buffers — call when (re)engaging so an old tail doesn't
     /// reappear. Bounded; intended for occasional control events, not per-sample use.
     pub fn clear(&mut self) {
-        self.combs_l.iter_mut().chain(self.combs_r.iter_mut()).for_each(Comb::clear);
-        self.allpass_l.iter_mut().chain(self.allpass_r.iter_mut()).for_each(Allpass::clear);
+        self.combs_l
+            .iter_mut()
+            .chain(self.combs_r.iter_mut())
+            .for_each(Comb::clear);
+        self.allpass_l
+            .iter_mut()
+            .chain(self.allpass_r.iter_mut())
+            .for_each(Allpass::clear);
     }
 
     /// Process one stereo frame, returning the wet/dry mix. RT-SAFE.
@@ -916,7 +937,13 @@ impl TimeStretch {
     /// play-head (source frames). RT-SAFE. Pitch is preserved; tempo is whatever rate the
     /// caller advances `anchor` at.
     #[inline]
-    pub fn next_frame(&mut self, samples: &[f32], frames: usize, base_ratio: f64, anchor: f64) -> (f32, f32) {
+    pub fn next_frame(
+        &mut self,
+        samples: &[f32],
+        frames: usize,
+        base_ratio: f64,
+        anchor: f64,
+    ) -> (f32, f32) {
         if !self.primed {
             self.prime(samples, frames, base_ratio, anchor);
         }
@@ -1275,7 +1302,10 @@ mod tests {
         let mut xf = Crossfader::new(48_000.0);
         xf.set_mode(XfaderMode::Additive);
         let (ac, bc) = settled_gains(&mut xf, 0.5);
-        assert!(ac > 0.99 && bc > 0.99, "additive center should keep both open: {ac},{bc}");
+        assert!(
+            ac > 0.99 && bc > 0.99,
+            "additive center should keep both open: {ac},{bc}"
+        );
         let (a0, b0) = settled_gains(&mut xf, 0.0);
         assert!(a0 > 0.99 && b0 < 1e-3, "full A: {a0},{b0}");
         let (a1, b1) = settled_gains(&mut xf, 1.0);
@@ -1345,7 +1375,10 @@ mod tests {
         d.set_mix(0.0);
         for x in [0.3, -0.7, 0.1, 0.9] {
             let (l, r) = d.process(x, x);
-            assert!((l - x).abs() < 1e-6 && (r - x).abs() < 1e-6, "not transparent: {l}");
+            assert!(
+                (l - x).abs() < 1e-6 && (r - x).abs() < 1e-6,
+                "not transparent: {l}"
+            );
         }
     }
 
@@ -1367,7 +1400,10 @@ mod tests {
             }
         }
         assert!(peak > 0.5, "echo not reproduced (peak {peak})");
-        assert!((peak_idx as i32 - 479).abs() < 4, "echo at {peak_idx}, expected ~479");
+        assert!(
+            (peak_idx as i32 - 479).abs() < 4,
+            "echo at {peak_idx}, expected ~479"
+        );
     }
 
     #[test]
@@ -1395,7 +1431,10 @@ mod tests {
         r.set_mix(0.0);
         for x in [0.4, -0.6, 0.2] {
             let (l, rr) = r.process(x, x);
-            assert!((l - x).abs() < 1e-6 && (rr - x).abs() < 1e-6, "not dry: {l}");
+            assert!(
+                (l - x).abs() < 1e-6 && (rr - x).abs() < 1e-6,
+                "not dry: {l}"
+            );
         }
     }
 
@@ -1417,7 +1456,10 @@ mod tests {
             }
         }
         assert!(early > 1e-6, "no reverb tail (early energy {early})");
-        assert!(late < early, "reverb did not decay (early {early}, late {late})");
+        assert!(
+            late < early,
+            "reverb did not decay (early {early}, late {late})"
+        );
     }
 
     #[test]
@@ -1447,7 +1489,11 @@ mod tests {
             min = min.min(l);
             max = max.max(l);
         }
-        assert!(max - min > 0.05, "flanger output should sweep (range {})", max - min);
+        assert!(
+            max - min > 0.05,
+            "flanger output should sweep (range {})",
+            max - min
+        );
     }
 
     #[test]
@@ -1483,10 +1529,16 @@ mod tests {
         let first = c.process(1.0, 1.0).0;
         assert!((first - 1.0).abs() < 1e-3);
         for _ in 0..3 {
-            assert!((c.process(0.0, 0.0).0 - 1.0).abs() < 1e-3, "should hold the captured 1.0");
+            assert!(
+                (c.process(0.0, 0.0).0 - 1.0).abs() < 1e-3,
+                "should hold the captured 1.0"
+            );
         }
         // 5th frame captures fresh input again.
-        assert!(c.process(-0.5, -0.5).0 < 0.0, "hold window elapsed → new sample");
+        assert!(
+            c.process(-0.5, -0.5).0 < 0.0,
+            "hold window elapsed → new sample"
+        );
     }
 
     #[test]
@@ -1506,7 +1558,10 @@ mod tests {
         for _ in 0..1_000 {
             after = after.max(s.process().abs());
         }
-        assert!(after < 1e-4, "note did not release to silence (residual {after})");
+        assert!(
+            after < 1e-4,
+            "note did not release to silence (residual {after})"
+        );
     }
 
     #[test]
@@ -1517,7 +1572,10 @@ mod tests {
         s.note_on(69, 127);
         let out: Vec<f32> = (0..48_000).map(|_| s.process()).collect();
         let win = &out[4_800..43_200]; // skip attack, steady sustain
-        let zc = win.windows(2).filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0).count();
+        let zc = win
+            .windows(2)
+            .filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0)
+            .count();
         let expected = (win.len() as f64 / 48_000.0 * 880.0) as i64;
         assert!(
             (zc as i64 - expected).abs() <= expected / 20,
@@ -1536,7 +1594,10 @@ mod tests {
         s2.note_on(60, 100);
         s2.note_on(67, 100); // a fifth on top
         let two: f32 = (0..2_400).map(|_| s2.process().abs()).fold(0.0, f32::max);
-        assert!(two > one * 1.2, "second note did not add (one={one}, two={two})");
+        assert!(
+            two > one * 1.2,
+            "second note did not add (one={one}, two={two})"
+        );
     }
 
     /// Build an interleaved-stereo sine of the given period (frames), `n` frames long.
@@ -1552,7 +1613,9 @@ mod tests {
 
     /// Count sign changes — a proxy for frequency that's independent of duration.
     fn zero_crossings(xs: &[f32]) -> usize {
-        xs.windows(2).filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0).count()
+        xs.windows(2)
+            .filter(|w| w[0].signum() != w[1].signum() && w[0] != 0.0)
+            .count()
     }
 
     #[test]

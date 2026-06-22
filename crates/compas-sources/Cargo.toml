@@ -18,3 +18,6 @@ workspace = true
 # partial in symphonia — see ARCHITECTURE.md §"Decoding & licensing" for the FFmpeg
 # fallback decision. Patent note: MP3 patents have expired; AAC patents have not.
 features = ["mp3", "flac", "wav", "pcm", "ogg", "vorbis", "isomp4", "aac"]
+
+[lints]
+workspace = true
