@@ -125,7 +125,9 @@ impl StemSeparator {
                 resample_channel_linear(&right, source_rate, MODEL_SAMPLE_RATE, model_frames),
             )
         };
-        let mut stems = overlap_add(&model_left, &model_right, progress, |lc, rc| self.run_chunk(lc, rc))?;
+        let mut stems = overlap_add(&model_left, &model_right, progress, |lc, rc| {
+            self.run_chunk(lc, rc)
+        })?;
         if source_rate != MODEL_SAMPLE_RATE {
             stems = resample_stems_to_source_rate(stems, source_rate, source_frames);
         }
@@ -285,11 +287,18 @@ fn resampled_len(input_frames: usize, from_rate: u32, to_rate: u32) -> usize {
     if input_frames == 0 {
         return 0;
     }
-    ((input_frames as f64 * to_rate as f64) / from_rate as f64).round().max(1.0) as usize
+    ((input_frames as f64 * to_rate as f64) / from_rate as f64)
+        .round()
+        .max(1.0) as usize
 }
 
 #[cfg(any(feature = "onnx", test))]
-fn resample_channel_linear(input: &[f32], from_rate: u32, to_rate: u32, output_frames: usize) -> Vec<f32> {
+fn resample_channel_linear(
+    input: &[f32],
+    from_rate: u32,
+    to_rate: u32,
+    output_frames: usize,
+) -> Vec<f32> {
     if output_frames == 0 {
         return Vec::new();
     }
