@@ -24,8 +24,11 @@ were taken on (per the maintainer's order), all committed on `main`, each step t
   the **profile loader** (`controllers` backend module: list/load/save + IPC) + the **controller
   engine** (declarative bindings w/ soft-takeover → control updates; script fallback) + a frontend
   controller-bus dispatcher + activate/deactivate IPC + the **guided learn editor** (wiggle-to-bind
-  over the control registry; MIDI events now carry channel; save/activate profiles). **Remaining:**
-  clean-room starter MIDI profiles (priority list in `docs/CONTROLLERS.md`), **output/LED feedback**
+  over the control registry; MIDI events now carry channel; save/activate profiles) + **bundled
+  starter profiles** (Korg nanoKONTROL2, Akai MPK Mini MK3, Akai LPD8 — knobs→gains/filters,
+  pads→cue/sync, from each device's factory-default map; a `controllers::tests` check asserts every
+  bundled binding targets a real control). **Remaining:** more clean-room starter MIDI profiles
+  (priority list in `docs/CONTROLLERS.md` — DJ controllers next), **output/LED feedback**
   (design fork: echo controller-driven changes only, vs reflect all UI changes on the device), and
   **HID input** (`hidapi`).
 

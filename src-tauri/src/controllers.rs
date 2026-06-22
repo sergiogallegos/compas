@@ -254,6 +254,33 @@ mod tests {
     }
 
     #[test]
+    fn bundled_profiles_parse_and_target_real_controls() {
+        // Every binding in every shipped profile must resolve to a control the engine exposes —
+        // a typo'd id silently no-ops at runtime, so catch it here. Also guards that the files are
+        // valid JSON / `ControllerProfile`.
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/controllers");
+        let profiles = list_profiles(&dir);
+        assert!(
+            profiles.len() >= 3,
+            "expected the bundled starter profiles, found {}",
+            profiles.len()
+        );
+        let registry = Registry::defaults(DECK_COUNT);
+        for p in &profiles {
+            assert!(!p.id.is_empty(), "profile is missing an id");
+            assert!(!p.bindings.is_empty(), "{} has no bindings", p.id);
+            for b in &p.bindings {
+                assert!(
+                    registry.get(&b.control).is_some(),
+                    "{} binds unknown control {:?}",
+                    p.id,
+                    b.control.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn save_then_list_round_trips() {
         let tmp = std::env::temp_dir().join(format!("compas-ctrl-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);

@@ -1,0 +1,26 @@
+{
+  "id": "akai-lpd8",
+  "name": "Akai LPD8",
+  "ports": { "input": "LPD8", "output": "LPD8" },
+  "bindings": [
+    { "channel": 0, "input": { "kind": "cc", "cc": 1 }, "control": "deck.0.gain",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 2 }, "control": "deck.1.gain",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 3 }, "control": "deck.2.gain",   "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 4 }, "control": "deck.3.gain",   "soft_takeover": true },
+
+    { "channel": 0, "input": { "kind": "cc", "cc": 5 }, "control": "deck.0.filter", "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 6 }, "control": "deck.1.filter", "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 7 }, "control": "deck.2.filter", "soft_takeover": true },
+    { "channel": 0, "input": { "kind": "cc", "cc": 8 }, "control": "deck.3.filter", "soft_takeover": true },
+
+    { "channel": 0, "input": { "kind": "note", "note": 36 }, "control": "deck.0.cue" },
+    { "channel": 0, "input": { "kind": "note", "note": 37 }, "control": "deck.1.cue" },
+    { "channel": 0, "input": { "kind": "note", "note": 38 }, "control": "deck.2.cue" },
+    { "channel": 0, "input": { "kind": "note", "note": 39 }, "control": "deck.3.cue" },
+
+    { "channel": 0, "input": { "kind": "note", "note": 40 }, "control": "deck.0.sync" },
+    { "channel": 0, "input": { "kind": "note", "note": 41 }, "control": "deck.1.sync" },
+    { "channel": 0, "input": { "kind": "note", "note": 42 }, "control": "deck.2.sync" },
+    { "channel": 0, "input": { "kind": "note", "note": 43 }, "control": "deck.3.sync" }
+  ]
+}

@@ -5,8 +5,8 @@
 > **clean-room** from the manufacturer's MIDI/HID implementation chart or by observing the hardware.
 > No other DJ software is named in profiles or code.
 
-**Status:** ⬜ planned · 🔨 in progress · ✅ shipped (none yet — the engine + loader are in place;
-profiles are authored next).
+**Status:** ⬜ planned · 🔨 in progress · ✅ shipped. Bundled starters so far: Korg nanoKONTROL2,
+Akai MPK Mini MK3, Akai LPD8 (see the per-manufacturer sections).
 
 **Per-profile metadata.** When a profile is authored, it records the device's **manual** and
 **manufacturer product page** links in the profile/PR (so the site can list them), the connection
@@ -21,7 +21,15 @@ own. (See the IP section of `CONTROLLER-ARCHITECTURE.md`.)
 ---
 
 ## Akai
-- ⬜ LPD8 · ⬜ MPD24
+- ✅ **MPK Mini MK3** (bundled starter; 8 knobs CC 70–77 → deck gains + filters, pads notes 36–43 →
+  cue/sync — Akai factory default map) · ✅ **LPD8** (bundled starter; 8 knobs CC 1–8 → deck gains +
+  filters, 8 pads notes 36–43 → cue/sync — Program-1 factory default) · ⬜ MPD24
+
+> The two Akai starters above are authored from each device's documented factory-default program
+> (a hardware fact, not a copied mapping). Pad/program defaults vary by firmware revision and editor
+> program, so treat the CC/note numbers as a starting point — use the **guided learn editor** to
+> re-bind for your specific unit/program if a control doesn't respond. Manuals: Akai MPK Mini MK3 and
+> LPD8 product pages / quickstart guides (akaipro.com).
 
 ## Allen & Heath
 - ⬜ Xone:K1 · ⬜ Xone:K2 · ⬜ Xone:K3
