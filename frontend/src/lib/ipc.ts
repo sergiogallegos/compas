@@ -552,6 +552,15 @@ export const stopBoothOutput = () => invoke("stop_booth_output");
 /** Booth output level, fed from the post-master mix. */
 export const setBoothVolume = (value: number) => invoke("set_booth_volume", { value });
 
+/** List input devices (mics / line-in) the aux input can capture from. */
+export const listInputDevices = () => invoke<string[]>("list_input_devices");
+/** Start aux/mic capture on `device` (omit for the default input); returns the device name. */
+export const startAuxInput = (device?: string) =>
+  invoke<string>("start_aux_input", { device: device ?? null });
+export const stopAuxInput = () => invoke("stop_aux_input");
+/** Aux/mic input level, summed into the master bus. */
+export const setAuxGain = (value: number) => invoke("set_aux_gain", { value });
+
 // ---- Stem separation --------------------------------------------------------------
 
 export interface StemsModelStatus {

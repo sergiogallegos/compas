@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import type { CueApi } from "../hooks/useCue";
 import type { BoothApi } from "../hooks/useBooth";
+import type { AuxApi } from "../hooks/useAux";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { Meter } from "./Meter";
@@ -36,6 +37,7 @@ export function Mixer({
   auto,
   cue,
   booth,
+  aux,
 }: {
   channels: Channel[];
   crossfader: number;
@@ -45,6 +47,7 @@ export function Mixer({
   auto?: AutoMixProps;
   cue?: CueApi;
   booth?: BoothApi;
+  aux?: AuxApi;
 }) {
   return (
     <section className="mixer">
@@ -92,7 +95,37 @@ export function Mixer({
       {xfader && <XfaderConfigRow {...xfader} />}
       {cue && <Phones cue={cue} />}
       {booth && <Booth booth={booth} />}
+      {aux && <Aux aux={aux} />}
     </section>
+  );
+}
+
+/** Aux / microphone input: capture device, on/off, and input level (summed into the master). */
+function Aux({ aux }: { aux: AuxApi }) {
+  return (
+    <div className="phones aux">
+      <Icon name="mic" size={14} />
+      <select
+        className="phones-dev"
+        value={aux.device ?? ""}
+        onChange={(e) => aux.setDevice(e.target.value || null)}
+        disabled={aux.enabled}
+        title="Aux / microphone input device"
+      >
+        <option value="">Default input</option>
+        {aux.devices.map((d) => (
+          <option key={d} value={d}>{d}</option>
+        ))}
+      </select>
+      <button
+        className={`chip phones-on ${aux.enabled ? "chip--on" : ""}`}
+        onClick={aux.toggle}
+        title={aux.enabled ? `Aux on: ${aux.connectedName ?? ""}` : "Start aux/mic input"}
+      >
+        {aux.enabled ? "ON" : "OFF"}
+      </button>
+      <Knob value={aux.gain} min={0} max={2} size={22} label="AUX" onChange={aux.setGain} />
+    </div>
   );
 }
 

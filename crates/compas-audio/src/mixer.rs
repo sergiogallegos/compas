@@ -232,6 +232,15 @@ pub enum AudioCommand {
     },
     /// Stop pushing the booth mix; dropping the producer lets the booth stream wind down.
     StopBoothOutput,
+    /// Begin draining `source` — captured aux/mic audio (interleaved stereo f32) the control
+    /// thread's input stream fills — and summing it into the master bus.
+    StartAuxInput {
+        source: rtrb::Consumer<f32>,
+    },
+    /// Stop draining aux input; dropping the consumer lets the input stream wind down.
+    StopAuxInput,
+    /// Aux/mic input level (0..~2), applied before the aux is summed into the master.
+    SetAuxGain(f32),
     /// Seek to an absolute position in source frames.
     SeekDeck {
         deck: usize,
@@ -1098,6 +1107,21 @@ struct BoothRouting {
     sink: Option<Producer<f32>>,
 }
 
+/// Aux/mic input summed into the master bus. The control thread's cpal input stream fills the
+/// ring; the mixer drains it here. The two run on independent clocks, so — like the cue/booth
+/// monitors — we prime a small buffer before draining and output silence (re-priming) on
+/// underrun, which rides the slow drift without a feedback loop.
+struct AuxRouting {
+    source: Option<rtrb::Consumer<f32>>,
+    gain: GainSmoother,
+    /// False until the ring has buffered [`AUX_PRIME_SAMPLES`]; re-armed after an underrun.
+    primed: bool,
+}
+
+/// Aux input buffered latency before the mixer starts draining (and the re-prime level after an
+/// underrun). ~21 ms of stereo @ 48 kHz — small, but enough to ride input/output clock drift.
+const AUX_PRIME_SAMPLES: usize = 2048;
+
 impl OutputRouting {
     fn new(device_rate: f32) -> Self {
         Self {
@@ -1141,6 +1165,8 @@ pub struct Mixer {
     synth: Synth,
     /// Sampler / performance pads, summed into the master alongside the synth.
     sampler: Sampler,
+    /// Aux/mic input, summed into the master alongside the synth and sampler.
+    aux: AuxRouting,
 }
 
 impl Mixer {
@@ -1177,6 +1203,11 @@ impl Mixer {
             callbacks: 0,
             synth: Synth::new(device_rate),
             sampler: Sampler::new(device_rate),
+            aux: AuxRouting {
+                source: None,
+                gain: GainSmoother::new(1.0, device_rate, 10.0),
+                primed: false,
+            },
         }
     }
 
@@ -1508,6 +1539,12 @@ impl Mixer {
                 }
                 AudioCommand::StartBoothOutput { sink } => self.routing.booth.sink = Some(sink),
                 AudioCommand::StopBoothOutput => self.routing.booth.sink = None,
+                AudioCommand::StartAuxInput { source } => {
+                    self.aux.source = Some(source);
+                    self.aux.primed = false;
+                }
+                AudioCommand::StopAuxInput => self.aux.source = None,
+                AudioCommand::SetAuxGain(g) => self.aux.gain.set_target(g.max(0.0)),
                 AudioCommand::SeekDeck { deck, frame } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
@@ -1785,6 +1822,24 @@ impl Mixer {
         let (sxl, sxr) = self.sampler.process();
         l += sxl;
         r += sxr;
+        // Aux/mic input shares the master bus too. Prime a little before draining and output
+        // silence (re-priming) on underrun so input/output clock drift never feeds back. Advance
+        // the gain smoother every frame so connecting later is click-free.
+        let aux_gain = self.aux.gain.next_gain();
+        if let Some(src) = self.aux.source.as_mut() {
+            if !self.aux.primed {
+                if src.slots() >= AUX_PRIME_SAMPLES {
+                    self.aux.primed = true;
+                }
+            } else if src.slots() >= 2 {
+                let al = src.pop().unwrap_or(0.0);
+                let ar = src.pop().unwrap_or(0.0);
+                l += al * aux_gain;
+                r += ar * aux_gain;
+            } else {
+                self.aux.primed = false; // underran — rebuild the prime buffer
+            }
+        }
         let m = self.master.next_gain();
         let (ol, or) = (l * m, r * m);
         self.peak_l = self.peak_l.max(ol.abs());
@@ -2393,6 +2448,47 @@ mod tests {
 
         assert!((bl - ml * 0.5).abs() < 1e-6);
         assert!((br - mr * 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn aux_input_sums_into_master_with_gain() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        // No decks/synth/sampler active, so the master is exactly the aux contribution scaled by
+        // the aux gain and the default master gain (the smoother starts at its 0.85 target).
+        let (mut aux_tx, aux_rx) = rtrb::RingBuffer::<f32>::new(8);
+        aux_tx.push(0.4).expect("aux L");
+        aux_tx.push(0.2).expect("aux R");
+        mixer.aux.source = Some(aux_rx);
+        mixer.aux.primed = true; // skip prime buffering for a deterministic single frame
+        mixer.aux.gain = GainSmoother::new(0.5, 48_000.0, 10.0);
+
+        const MASTER_GAIN: f32 = 0.85;
+        let (ol, or) = mixer.next_frame();
+        assert!(
+            (ol - 0.4 * 0.5 * MASTER_GAIN).abs() < 1e-6,
+            "aux L summed: {ol}"
+        );
+        assert!(
+            (or - 0.2 * 0.5 * MASTER_GAIN).abs() < 1e-6,
+            "aux R summed: {or}"
+        );
+    }
+
+    #[test]
+    fn aux_stays_silent_until_primed() {
+        let (_ctx, crx) = rtrb::RingBuffer::<AudioCommand>::new(8);
+        let (rtx, _rrx) = rtrb::RingBuffer::<Arc<DeckBuffer>>::new(8);
+        let mut mixer = Mixer::new(48_000.0, crx, rtx, Arc::new(DeckTelemetry::new()));
+        // A couple of samples is far below AUX_PRIME_SAMPLES, so the mixer must not drain yet.
+        let (mut aux_tx, aux_rx) = rtrb::RingBuffer::<f32>::new(8);
+        aux_tx.push(0.9).expect("aux L");
+        aux_tx.push(0.9).expect("aux R");
+        mixer.aux.source = Some(aux_rx);
+        mixer.aux.gain = GainSmoother::new(1.0, 48_000.0, 10.0);
+        let (ol, or) = mixer.next_frame();
+        assert_eq!((ol, or), (0.0, 0.0), "aux must stay silent until primed");
     }
 
     #[test]

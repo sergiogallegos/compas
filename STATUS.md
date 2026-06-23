@@ -35,8 +35,21 @@ test `beatgrid_resists_loud_sparse_intro` (0.224 s off without it, locks on with
 `docs/research/summaries/sparse-intro-weighting.md`. **Only offline beat-tracking slice left is #5
 (online/live-input) — needs its own design note and pairs with mic/aux inputs.**
 
-**Recommended next:** **microphone / aux inputs** (in progress — pairs with the live beat-tracking
-design); then live stem verification (needs the 301 MB model), or release readiness (signing keys).
+**C. Microphone / aux inputs — DONE.** New `compas-audio::input` module (cpal **input** stream on a
+dedicated thread, mirrors `cue.rs` inverted): captures mic/line-in, duplicates mono→stereo, pushes
+into a ring the mixer drains and sums into the master bus (so it's heard, recorded, and fed to
+booth). New `AudioCommand`s `StartAuxInput`/`StopAuxInput`/`SetAuxGain`; the mixer prime-buffers and
+rides input/output clock drift like the cue/booth monitors. IPC: `list_input_devices`,
+`start_aux_input`/`stop_aux_input`/`set_aux_gain` + `useAux` hook + an **AUX row** in the mixer
+(device picker, ON/OFF, AUX level). 2 new RT tests (`aux_input_sums_into_master_with_gain`,
+`aux_stays_silent_until_primed`); clippy `-D warnings` (engine + app) + fmt + `tsc`/`vite build`
+clean. UI verified rendering live. **Not yet exercised with a real mic from here** (needs a hardware
+input + clicking ON). Follow-ups: aux as its own channel strip w/ EQ/FX, dedicated mic PFL/cue, and
+it's the capture path for live beat-tracking (slice 5).
+
+**Recommended next:** **online/live-input beat-tracking (slice 5)** — now unblocked by mic/aux; needs
+its own design note first. Or live stem verification (needs the 301 MB model), or release readiness
+(updater signing keypair + secrets).
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 

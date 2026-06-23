@@ -204,6 +204,11 @@ enum EngineMsg {
         sink: Producer<f32>,
     },
     StopBoothOutput,
+    StartAuxInput {
+        source: Consumer<f32>,
+    },
+    StopAuxInput,
+    AuxGain(f32),
     NoteOn {
         note: u8,
         velocity: u8,
@@ -595,6 +600,9 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::BoothVolume(v) => AudioCommand::SetBoothVolume(v),
                     EngineMsg::StartBoothOutput { sink } => AudioCommand::StartBoothOutput { sink },
                     EngineMsg::StopBoothOutput => AudioCommand::StopBoothOutput,
+                    EngineMsg::StartAuxInput { source } => AudioCommand::StartAuxInput { source },
+                    EngineMsg::StopAuxInput => AudioCommand::StopAuxInput,
+                    EngineMsg::AuxGain(g) => AudioCommand::SetAuxGain(g),
                     EngineMsg::NoteOn { note, velocity } => AudioCommand::NoteOn { note, velocity },
                     EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
                     EngineMsg::AllNotesOff => AudioCommand::AllNotesOff,
@@ -2137,6 +2145,94 @@ fn set_booth_volume(state: State<'_, EngineHandle>, value: f32) -> Result<(), St
     state.send(EngineMsg::BoothVolume(value))
 }
 
+/// Owns the aux/mic input thread (mirrors [`CueState`]/[`BoothState`], but capturing). The cpal
+/// input stream lives on the spawned thread; dropping the sender ends it.
+struct AuxState {
+    stop: Mutex<Option<Sender<()>>>,
+}
+
+/// List available input devices (mics / line-in); first is usually the system default.
+#[tauri::command]
+fn list_input_devices() -> Vec<String> {
+    compas_audio::input_device_names()
+}
+
+/// Stop the active aux-input thread (if any) and tell the mixer to stop draining.
+fn stop_aux_internal(state: &EngineHandle, aux: &AuxState) {
+    let _ = state.send(EngineMsg::StopAuxInput);
+    if let Ok(mut guard) = aux.stop.lock() {
+        guard.take(); // dropping the sender ends the thread's recv() → it drops the stream
+    }
+}
+
+/// Start aux/mic capture on `device` (None = default input). A dedicated thread owns the cpal
+/// input stream and pushes captured audio into a ring; the mixer drains it into the master bus.
+/// Returns the opened device's name.
+#[tauri::command]
+fn start_aux_input(
+    state: State<'_, EngineHandle>,
+    aux: State<'_, AuxState>,
+    device: Option<String>,
+) -> Result<String, String> {
+    stop_aux_internal(&state, &aux); // replace any existing aux input
+
+    // The input stream produces; the mixer consumes. Hand the consumer to the mixer first so it
+    // is ready when capture starts filling the ring.
+    let (producer, consumer) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
+    state.send(EngineMsg::StartAuxInput { source: consumer })?;
+
+    let (stop_tx, stop_rx) = channel::<()>();
+    let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let spawn = thread::Builder::new()
+        .name("compas-aux-input".to_string())
+        .spawn(
+            move || match compas_audio::open_aux_input(device.as_deref(), producer) {
+                Ok(input) => {
+                    let _ = ready_tx.send(Ok(input.device_name.clone()));
+                    let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
+                    drop(input); // closes the input stream
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e.to_string()));
+                }
+            },
+        );
+    if let Err(e) = spawn {
+        let _ = state.send(EngineMsg::StopAuxInput);
+        return Err(format!("could not spawn aux input thread: {e}"));
+    }
+
+    match ready_rx.recv() {
+        Ok(Ok(name)) => {
+            if let Ok(mut guard) = aux.stop.lock() {
+                *guard = Some(stop_tx);
+            }
+            tracing::info!("aux input started → {name}");
+            Ok(name)
+        }
+        Ok(Err(e)) => {
+            let _ = state.send(EngineMsg::StopAuxInput);
+            Err(e)
+        }
+        Err(_) => {
+            let _ = state.send(EngineMsg::StopAuxInput);
+            Err("aux input thread exited before reporting".into())
+        }
+    }
+}
+
+#[tauri::command]
+fn stop_aux_input(state: State<'_, EngineHandle>, aux: State<'_, AuxState>) -> Result<(), String> {
+    stop_aux_internal(&state, &aux);
+    Ok(())
+}
+
+/// Aux/mic input level (0..~2), applied before the aux is summed into the master.
+#[tauri::command]
+fn set_aux_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
+    state.send(EngineMsg::AuxGain(value))
+}
+
 // ----------------------------------------------------------------------------------
 // Synth instrument + MIDI input
 // ----------------------------------------------------------------------------------
@@ -2544,6 +2640,9 @@ pub fn run() {
             stop: Mutex::new(None),
             latency: Arc::new(compas_audio::MonitorLatency::default()),
         })
+        .manage(AuxState {
+            stop: Mutex::new(None),
+        })
         .manage(hid::HidState::default())
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
@@ -2635,6 +2734,10 @@ pub fn run() {
             start_booth_output,
             stop_booth_output,
             set_booth_volume,
+            list_input_devices,
+            start_aux_input,
+            stop_aux_input,
+            set_aux_gain,
             note_on,
             note_off,
             all_notes_off,

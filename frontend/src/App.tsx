@@ -15,6 +15,7 @@ import { useDeck, type DeckController } from "./hooks/useDeck";
 import { useAutoMix } from "./hooks/useAutoMix";
 import { useCue } from "./hooks/useCue";
 import { useBooth } from "./hooks/useBooth";
+import { useAux } from "./hooks/useAux";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
@@ -57,6 +58,7 @@ export function App() {
   const midi = useMidi();
   const cue = useCue();
   const booth = useBooth();
+  const aux = useAux();
   const sampler = useSampler();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);
@@ -318,6 +320,7 @@ export function App() {
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
               cue={cue}
               booth={booth}
+              aux={aux}
             />
             <Deck
               ctrl={rightDeck}
