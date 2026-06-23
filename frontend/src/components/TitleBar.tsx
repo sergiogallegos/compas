@@ -25,6 +25,8 @@ export function TitleBar({
   onOpenSettings,
   onOpenProfile,
   profileInitial = "M",
+  contrast = false,
+  onToggleContrast,
 }: {
   masterBpm: number | null;
   master: MasterMeter;
@@ -46,6 +48,8 @@ export function TitleBar({
   onOpenSettings?: () => void;
   onOpenProfile?: () => void;
   profileInitial?: string;
+  contrast?: boolean;
+  onToggleContrast?: () => void;
 }) {
   const bar = (v: number) => `${Math.min(100, Math.sqrt(Math.max(0, v)) * 100)}%`;
   const win = () => (inTauri() ? getCurrentWindow() : null);
@@ -207,6 +211,13 @@ export function TitleBar({
             {updBusy ? "…" : `v${build.version} · ${build.sha}`}
           </button>
         )}
+        <button
+          className={`icon-btn ${contrast ? "icon-btn--on" : ""}`}
+          onClick={onToggleContrast}
+          title={contrast ? "Switch to standard contrast" : "Switch to high contrast"}
+        >
+          <Icon name="sun" size={16} />
+        </button>
         <button className="icon-btn" onClick={onOpenSettings} title="Settings"><Icon name="settings" size={16} /></button>
         <button className="avatar" onClick={onOpenProfile} title="Profile">{profileInitial}</button>
       </div>

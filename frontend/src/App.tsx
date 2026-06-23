@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TitleBar } from "./components/TitleBar";
-import { NavRail, type NavTarget } from "./components/NavRail";
 import { StatusBar } from "./components/StatusBar";
 import { WaveformZone } from "./components/WaveformZone";
 import { Deck } from "./components/Deck";
@@ -51,15 +50,10 @@ export function App() {
   const [showControllers, setShowControllers] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [navTarget, setNavTarget] = useState<NavTarget>("perform");
   const [contrast, setContrast] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
-  const [libraryFocus, setLibraryFocus] = useState<{ target: "library" | "crates" | null; seq: number }>({ target: null, seq: 0 });
-  const [fxFocus, setFxFocus] = useState(false);
   const [profileName, setProfileName] = useState(() => localStorage.getItem("compas.profileName") ?? "Main");
-  const libraryRef = useRef<HTMLElement | null>(null);
-  const deckRowRef = useRef<HTMLDivElement | null>(null);
   const midi = useMidi();
   const cue = useCue();
   const booth = useBooth();
@@ -169,25 +163,6 @@ export function App() {
   const openPanel = (setter: (open: boolean) => void) => {
     setter(true);
     setShowSettings(false);
-  };
-
-  const selectNav = (target: NavTarget) => {
-    setNavTarget(target);
-    if (target === "perform") {
-      deckRowRef.current?.scrollIntoView({ block: "nearest" });
-      return;
-    }
-    if (target === "library" || target === "crates") {
-      setLibraryFocus({ target, seq: Date.now() });
-      return;
-    }
-    if (target === "fx") {
-      deckRowRef.current?.scrollIntoView({ block: "nearest" });
-      setFxFocus(true);
-      window.setTimeout(() => setFxFocus(false), 900);
-      return;
-    }
-    void toggleRecord();
   };
 
   // Two decks are sync-pairable when both visible slots are loaded with a tempo.
@@ -317,12 +292,11 @@ export function App() {
 
   return (
     <div className="app" data-contrast={contrast ? "high" : "standard"}>
-      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} recording={recording} recBusy={recBusy} onToggleRecord={toggleRecord} onOpenSettings={() => setShowSettings(true)} onOpenProfile={() => setShowProfile(true)} profileInitial={profileInitial} />
+      <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} recording={recording} recBusy={recBusy} onToggleRecord={toggleRecord} onOpenSettings={() => setShowSettings(true)} onOpenProfile={() => setShowProfile(true)} profileInitial={profileInitial} contrast={contrast} onToggleContrast={() => setContrast((v) => !v)} />
       <div className="body">
-        <NavRail active={navTarget} onSelect={selectNav} contrast={contrast} onToggleContrast={() => setContrast((v) => !v)} />
         <div className="content">
           <WaveformZone lanes={[slotLane(leftDeck), slotLane(rightDeck)]} />
-          <div className={`deck-row ${fxFocus ? "deck-row--focus" : ""}`} ref={deckRowRef}>
+          <div className="deck-row">
             <Deck
               ctrl={leftDeck}
               color={DECK_COLORS[leftDeck.deck]}
@@ -357,7 +331,7 @@ export function App() {
               ]}
             />
           </div>
-          <Library ref={libraryRef} loadedPaths={loadedPaths} focusTarget={libraryFocus.target} focusSeq={libraryFocus.seq} />
+          <Library loadedPaths={loadedPaths} />
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} audioStatus={audioStatus} />
