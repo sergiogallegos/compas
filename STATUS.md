@@ -1,36 +1,49 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-22 (modular deck-graph refactor —
-> stages 1 of N). See `ROADMAP.md` for the full plan + **competitive feature backlog** (the source
-> of truth for what's next), `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-22 (deck-graph refactor complete +
+> local-only/Traktor-style UI). **All commits below are local on `main` — NOT pushed yet.** See
+> `ROADMAP.md` for the full plan + **competitive feature backlog**, `CHANGELOG.md` for history,
+> `AGENTS.md` for conventions.
 
-## ▶ Resume here (latest session — deck-graph refactor, pushed to `main`)
+## ▶ Resume here (latest session — committed to local `main`, not pushed)
 
-**Modular per-deck graph refactor (`docs/DECK-GRAPH.md`), three behavior-preserving slices on
-`main`, each its own commit, tests green after each:**
+**1. Modular per-deck graph refactor — DONE (`docs/DECK-GRAPH.md`).** All stages extracted,
+behavior-preserving, each its own commit, tests green after each:
+- **`ToneStage`** (`a23e644`) — DJ filter → 3-band EQ (`process`/`set_eq`/`set_filter`).
+- **`KeylockStage`** (`9d22d78`) — key-lock toggle + WSOLA mix/stem stretchers + the `engaged`
+  re-prime flag (`begin_frame`/`mark_jumped`/`set_active`); the ~10 ad-hoc `stretch_engaged = false`
+  sites now name the intent.
+- **`FaderStage`** (`359e42b`) — channel gain + ReplayGain (`advance`/`apply`). **`FxChain` already
+  serves as `DeckFxStage`.**
+- **Source-read + play-head advance** (`601f42c`) — extracted as the `read_source_frame` /
+  `advance_playhead` methods (kept as methods, *not* a struct: the play-head/loop/sync fields are
+  touched ~100× across the sync PLL + telemetry + command handlers, and the PLL needs simultaneous
+  `&mut` to two decks — rationale in `DECK-GRAPH.md`). `next_frame` is now a clean pipeline:
+  `fader.advance → early-outs → read_source_frame → advance_playhead → tone → fx → fader.apply`.
+- 8 isolated stage tests added; **45 compas-audio tests pass**, clippy `--all-targets -D warnings`,
+  fmt, and Tauri `cargo check` all clean. (rust-analyzer shows 2 false-positive E0308s in the test
+  module — `[f32]` arrays it guesses as `f64`; the compiler is happy.)
+- **Only deferred piece:** the **pregain/fader split** (move ReplayGain ahead of the tone block — a
+  real gain-staging change, needs listening + regression tests; `DECK-GRAPH.md` migration step 4).
 
-1. **`ToneStage`** (commit `a23e644`) — DJ filter → 3-band EQ extracted from `DeckPlayer` into a
-   stage with `process`/`set_eq`/`set_filter`. Order preserved (filter → EQ).
-2. **`KeylockStage`** (commit `9d22d78`) — key-lock toggle + WSOLA mix/stem stretchers + the
-   `engaged` re-prime flag. `begin_frame(scratching)` decides+re-primes, `mark_jumped()` flags
-   play-head jumps (the ~10 ad-hoc `stretch_engaged = false` sites now name the intent),
-   `set_active()` drives the toggle.
-3. **`FaderStage`** (commit `359e42b`) — channel-gain smoother + ReplayGain. `advance()` ticks every
-   frame (click-free unpause), `apply()` does gain × replay-gain post-FX. **`FxChain` already serves
-   as `DeckFxStage`.** Added 5 stage-level unit tests; `DECK-GRAPH.md` mapping + migration checklist
-   updated.
+**2. PLAY-at-end auto-rewind fix** (`1df4bf1`) — pressing PLAY while the play-head is parked at/past
+the end now rewinds to the cue point (was a no-op). New test `play_at_end_rewinds_to_the_cue_point`.
 
-Each slice: `cargo test -p compas-audio` (41 pass), `cargo clippy --all-targets -D warnings`, `cargo
-fmt`, and `cargo check` on the Tauri app — all clean. Note: rust-analyzer shows two false-positive
-E0308s in the test module (`[f32]` arrays it infers as `f64`); the compiler is happy.
+**3. Local-only, Traktor-style UI:**
+- **Local-only library** (`bf1349b`) — removed the Spotify/Apple/SoundCloud source rows; only Local
+  Library remains.
+- **Removed the left nav rail** (`79e04e0`) — all its items were redundant; relocated the
+  high-contrast/theme toggle to the title-bar top-right. Single-column Traktor-style layout.
+  **User reviewed the new layout in the running app and approved it.**
+- **Deleted the parked Spotify code** (`chore` commit, −820 lines) — `useSpotify.ts`, `lib/spotify.ts`,
+  `src/spotify.rs`, the `mod spotify`/`spotify_listen` registration, and the Spotify-only opener
+  plugin/capability/Cargo+npm deps (pruned a large `async-*` tree from `Cargo.lock`). Left the
+  `compas-core`/`compas-sources` capability model + `track.ts` `MusicProvider` intact (architecture,
+  not the connect flow).
 
-**Remaining deck-graph slices (next):**
-- **`DeckSourceStage` + `PlayheadStage`** — the source read (interp / stems sum) + play-head advance
-  (scratch / sync / tempo, loop-roll slip, beat-loop wrap) are still inline in
-  `DeckPlayer::next_frame`. They're coupled to the source buffer and `KeylockStage` (WSOLA needs
-  random access around the play-head), so the split needs care — this is the hardest slice.
-- **Pregain/fader split** — move ReplayGain ahead of the tone block (a real gain-staging change);
-  deferred pending listening + regression tests (`DECK-GRAPH.md` migration step 4).
+**Recommended next:** push this session to `main` when ready (nothing pushed yet); then a roadmap
+front — live stem verification (needs the 301 MB model), beat-tracking slice #4 (sparse-intro
+weighting), microphone/aux inputs, or release readiness (updater signing keypair + secrets).
 
 ## ▶ Previous session (2026-06-22 — stems + beat-tracking, pushed to `main`)
 
