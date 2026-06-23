@@ -167,8 +167,8 @@ export const Library = forwardRef<
               ref={searchRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search… e.g. bpm:120-128 key:8A artist:daft -live"
-              title="Grammar: bpm:120-128 (range), key:8A, artist:/title: (fuzzy), bare word = title or artist, - to exclude"
+              placeholder="Search… e.g. bpm:120-128 key:8A artist:daft -live · OR groups"
+              title="Grammar: bpm:120-128 (range), key:8A, artist:/title: (fuzzy), bare word = title or artist, - to exclude. Terms AND together; 'OR' (or '|') starts a new group, e.g. artist:daft OR artist:justice"
             />
           </div>
           <button className="add-btn" onClick={lib.add} disabled={lib.busy}>

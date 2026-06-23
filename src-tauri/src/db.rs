@@ -357,13 +357,21 @@ pub fn history(c: &Connection, limit: i64) -> rusqlite::Result<Vec<HistoryRow>> 
 /// Compile a search string into a SQL `WHERE` body + bound parameters. Grammar (space-separated):
 /// `bpm:120-128` (range) · `bpm:128` (±1) · `key:8A` · `artist:foo` / `title:foo` (fuzzy LIKE) ·
 /// a bare word matches title OR artist · a `-` prefix negates any term. Unknown `field:` tokens are
-/// ignored. All terms are AND-ed. Returns `("1=1", [])` for an empty query.
+/// ignored. Terms are AND-ed within a group; a literal `OR` (or `|`) token starts a new group and
+/// groups are OR-ed — e.g. `artist:daft OR artist:justice`, or `bpm:120-125 key:8A OR bpm:170-175`.
+/// Returns `("1=1", [])` for an empty query.
 pub fn build_search(query: &str) -> (String, Vec<rusqlite::types::Value>) {
     use rusqlite::types::Value;
-    let mut conds: Vec<String> = Vec::new();
+    // Each group is a list of AND-ed conditions; groups are OR-ed together.
+    let mut groups: Vec<Vec<String>> = vec![Vec::new()];
     let mut params: Vec<Value> = Vec::new();
 
     for raw in query.split_whitespace() {
+        // `OR` / `|` (uppercase, so a lowercase "or" stays a literal search word) opens a new group.
+        if raw == "OR" || raw == "|" {
+            groups.push(Vec::new());
+            continue;
+        }
         let (neg, tok) = match raw.strip_prefix('-') {
             Some(rest) if !rest.is_empty() => (true, rest),
             _ => (false, raw),
@@ -414,14 +422,29 @@ pub fn build_search(query: &str) -> (String, Vec<rusqlite::types::Value>) {
         };
 
         if let Some(c) = cond {
-            conds.push(if neg { format!("NOT ({c})") } else { c });
+            let group = groups.last_mut().expect("at least one group");
+            group.push(if neg { format!("NOT ({c})") } else { c });
         }
     }
 
-    if conds.is_empty() {
-        ("1=1".to_string(), params)
-    } else {
-        (conds.join(" AND "), params)
+    // Render: AND within each (non-empty) group, OR across groups. A multi-condition group is
+    // parenthesised so the OR precedence is correct.
+    let rendered: Vec<String> = groups
+        .iter()
+        .filter(|g| !g.is_empty())
+        .map(|g| {
+            if g.len() == 1 {
+                g[0].clone()
+            } else {
+                format!("({})", g.join(" AND "))
+            }
+        })
+        .collect();
+
+    match rendered.len() {
+        0 => ("1=1".to_string(), params),
+        1 => (rendered.into_iter().next().unwrap(), params),
+        _ => (rendered.join(" OR "), params),
     }
 }
 
@@ -621,6 +644,35 @@ mod tests {
 
         assert_eq!(search_tracks(&c, "funk").unwrap().len(), 1);
         assert_eq!(search_tracks(&c, "  ").unwrap().len(), 2); // empty → all
+    }
+
+    #[test]
+    fn search_supports_or_groups() {
+        let c = mem();
+        add_track(&c, "/a.mp3", "Da Funk", "Daft Punk", 1).unwrap();
+        upsert_analysis(&c, "/a.mp3", 123.0, 0.9, 0.0, 0.5, "8A", "A minor").unwrap();
+        add_track(&c, "/b.mp3", "Genesis", "Justice", 1).unwrap();
+        upsert_analysis(&c, "/b.mp3", 128.0, 0.9, 0.0, 0.5, "9A", "E minor").unwrap();
+        add_track(&c, "/c.mp3", "Other", "Someone", 1).unwrap();
+        upsert_analysis(&c, "/c.mp3", 100.0, 0.9, 0.0, 0.5, "1A", "Ab minor").unwrap();
+
+        // OR across two artist groups returns both, not the third.
+        let mut r = search_tracks(&c, "artist:daft OR artist:justice").unwrap();
+        r.sort_by(|x, y| x.path.cmp(&y.path));
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].path, "/a.mp3");
+        assert_eq!(r[1].path, "/b.mp3");
+
+        // `|` is an alias for OR.
+        assert_eq!(search_tracks(&c, "key:8A | key:9A").unwrap().len(), 2);
+
+        // AND binds tighter than OR: (daft AND 120-125) OR 170-175 → only /a.
+        let r = search_tracks(&c, "artist:daft bpm:120-125 OR bpm:170-175").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].path, "/a.mp3");
+
+        // A trailing/leading OR with an empty group is ignored.
+        assert_eq!(search_tracks(&c, "artist:justice OR").unwrap().len(), 1);
     }
 
     #[test]
