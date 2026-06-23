@@ -40,7 +40,7 @@ Prebuilt installers for **Windows, macOS, and Linux** are published on the
 CI on each `v*` tag). The project landing page in `website/` links directly to the latest per-OS
 installer. The app then keeps itself current via the built-in updater.
 
-![compas performance screen](docs/assets/screenshot.png)
+![compas performance screen](docs/assets/screenshot_june22.jpg)
 
 > The performance UI (Traktor-inspired dark theme): dual decks with per-deck color identity, center
 > mixer (gain / 3-band EQ / filter / FX), stacked band-colored waveform lanes, library browser, and a
