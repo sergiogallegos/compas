@@ -82,7 +82,19 @@ CREATE TABLE IF NOT EXISTS crate_tracks (
     position   INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (crate_id, track_path)
 );
+
+CREATE TABLE IF NOT EXISTS track_tags (
+    track_path TEXT NOT NULL REFERENCES tracks(path) ON DELETE CASCADE,
+    tag        TEXT NOT NULL,
+    PRIMARY KEY (track_path, tag)
+);
 ";
+
+/// SQL fragment selecting a comma-joined `tags` column for a track. `path_expr` is how the track's
+/// path is referenced in the enclosing query (`path` or `t.path`).
+fn tags_select(path_expr: &str) -> String {
+    format!("(SELECT GROUP_CONCAT(tag, ',') FROM track_tags tt WHERE tt.track_path = {path_expr}) AS tags")
+}
 
 /// Open (creating if needed) the database at `path` and apply the schema.
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
@@ -107,6 +119,8 @@ pub struct TrackRow {
     pub gain: f64,
     pub play_count: i64,
     pub last_played_at: Option<i64>,
+    /// User tags (lowercased), for `tag:` search and smart crates.
+    pub tags: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -153,15 +167,25 @@ fn row_to_track(row: &rusqlite::Row) -> rusqlite::Result<TrackRow> {
         gain: row.get("gain")?,
         play_count: row.get("play_count")?,
         last_played_at: row.get("last_played_at")?,
+        tags: row
+            .get::<_, Option<String>>("tags")?
+            .map(|s| {
+                s.split(',')
+                    .filter(|x| !x.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
 pub fn list_tracks(c: &Connection) -> rusqlite::Result<Vec<TrackRow>> {
-    let mut stmt = c.prepare(
+    let mut stmt = c.prepare(&format!(
         "SELECT path, title, artist, duration_ms, bpm, key_camelot, key_name,
-                grid_offset_sec, gain, play_count, last_played_at
+                grid_offset_sec, gain, play_count, last_played_at, {}
          FROM tracks ORDER BY added_at DESC, title ASC",
-    )?;
+        tags_select("path"),
+    ))?;
     let rows = stmt.query_map([], row_to_track)?;
     rows.collect()
 }
@@ -180,12 +204,42 @@ pub fn add_track(
         params![path, title, artist, duration_ms, now()],
     )?;
     c.query_row(
-        "SELECT path, title, artist, duration_ms, bpm, key_camelot, key_name,
-                grid_offset_sec, gain, play_count, last_played_at
-         FROM tracks WHERE path = ?1",
+        &format!(
+            "SELECT path, title, artist, duration_ms, bpm, key_camelot, key_name,
+                    grid_offset_sec, gain, play_count, last_played_at, {}
+             FROM tracks WHERE path = ?1",
+            tags_select("path"),
+        ),
         params![path],
         row_to_track,
     )
+}
+
+/// Normalize a tag: trimmed, lowercased, commas (the GROUP_CONCAT separator) removed.
+fn clean_tag(tag: &str) -> String {
+    tag.trim().to_ascii_lowercase().replace(',', "")
+}
+
+/// Tag a track (idempotent; no-op for a blank tag).
+pub fn add_tag(c: &Connection, path: &str, tag: &str) -> rusqlite::Result<()> {
+    let t = clean_tag(tag);
+    if t.is_empty() {
+        return Ok(());
+    }
+    c.execute(
+        "INSERT OR IGNORE INTO track_tags (track_path, tag) VALUES (?1, ?2)",
+        params![path, t],
+    )?;
+    Ok(())
+}
+
+/// Remove a tag from a track.
+pub fn remove_tag(c: &Connection, path: &str, tag: &str) -> rusqlite::Result<()> {
+    c.execute(
+        "DELETE FROM track_tags WHERE track_path = ?1 AND tag = ?2",
+        params![path, clean_tag(tag)],
+    )?;
+    Ok(())
 }
 
 pub fn remove_track(c: &Connection, path: &str) -> rusqlite::Result<()> {
@@ -361,7 +415,8 @@ pub fn history(c: &Connection, limit: i64) -> rusqlite::Result<Vec<HistoryRow>> 
 
 /// Compile a search string into a SQL `WHERE` body + bound parameters. Grammar (space-separated):
 /// `bpm:120-128` (range) · `bpm:128` (±1) · `key:8A` · `artist:foo` / `title:foo` (fuzzy LIKE) ·
-/// a bare word matches title OR artist · a `-` prefix negates any term. Unknown `field:` tokens are
+/// `tag:foo` (exact tag) · a bare word matches title OR artist · a `-` prefix negates any term.
+/// Unknown `field:` tokens are
 /// ignored. Terms are AND-ed within a group; a literal `OR` (or `|`) token starts a new group and
 /// groups are OR-ed — e.g. `artist:daft OR artist:justice`, or `bpm:120-125 key:8A OR bpm:170-175`.
 /// Returns `("1=1", [])` for an empty query.
@@ -416,6 +471,14 @@ pub fn build_search(query: &str) -> (String, Vec<rusqlite::types::Value>) {
                         params.push(Value::Text(format!("%{val}%")));
                         Some("title LIKE ?".to_string())
                     }
+                    "tag" => {
+                        params.push(Value::Text(val.to_ascii_lowercase()));
+                        Some(
+                            "EXISTS (SELECT 1 FROM track_tags tt \
+                             WHERE tt.track_path = path AND tt.tag = ?)"
+                                .to_string(),
+                        )
+                    }
                     _ => None,
                 }
             }
@@ -458,8 +521,9 @@ pub fn search_tracks(c: &Connection, query: &str) -> rusqlite::Result<Vec<TrackR
     let (where_body, params) = build_search(query);
     let sql = format!(
         "SELECT path, title, artist, duration_ms, bpm, key_camelot, key_name,
-                grid_offset_sec, gain, play_count, last_played_at
-         FROM tracks WHERE {where_body} ORDER BY added_at DESC, title ASC"
+                grid_offset_sec, gain, play_count, last_played_at, {tags}
+         FROM tracks WHERE {where_body} ORDER BY added_at DESC, title ASC",
+        tags = tags_select("path"),
     );
     let mut stmt = c.prepare(&sql)?;
     let rows = stmt.query_map(rusqlite::params_from_iter(params), row_to_track)?;
@@ -563,16 +627,17 @@ pub fn crate_tracks(c: &Connection, crate_id: i64) -> rusqlite::Result<Vec<Track
         return search_tracks(c, &q);
     }
 
-    let mut stmt = c.prepare(
+    let mut stmt = c.prepare(&format!(
         "SELECT t.path, t.title, t.artist, t.duration_ms, t.bpm, t.key_camelot, t.key_name,
-                t.grid_offset_sec, t.gain, t.play_count, t.last_played_at
+                t.grid_offset_sec, t.gain, t.play_count, t.last_played_at, {}
          FROM crate_tracks ct
          JOIN tracks t ON t.path = ct.track_path
          JOIN crates cr ON cr.id = ct.crate_id
          WHERE ct.crate_id = ?1
          ORDER BY CASE WHEN cr.is_playlist = 1 THEN ct.position END ASC,
                   CASE WHEN cr.is_playlist = 0 THEN t.title END ASC",
-    )?;
+        tags_select("t.path"),
+    ))?;
     let rows = stmt.query_map(params![crate_id], row_to_track)?;
     rows.collect()
 }
@@ -777,5 +842,42 @@ mod tests {
                 .is_smart
         );
         assert_eq!(crate_tracks(&c, plain).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn tags_attach_search_and_appear_on_rows() {
+        let c = mem();
+        add_track(&c, "/a.mp3", "A", "Ar", 1).unwrap();
+        add_track(&c, "/b.mp3", "B", "Ar", 1).unwrap();
+        add_tag(&c, "/a.mp3", "Warmup").unwrap(); // normalized to lowercase
+        add_tag(&c, "/a.mp3", "warmup").unwrap(); // idempotent
+        add_tag(&c, "/a.mp3", "deep house").unwrap();
+        add_tag(&c, "/b.mp3", "peak").unwrap();
+
+        // Tags ride along on track rows.
+        let a = list_tracks(&c).unwrap();
+        let a_row = a.iter().find(|t| t.path == "/a.mp3").unwrap();
+        assert!(a_row.tags.contains(&"warmup".to_string()));
+        assert!(a_row.tags.contains(&"deep house".to_string()));
+        assert_eq!(a_row.tags.len(), 2);
+
+        // tag: search (exact), and negation.
+        assert_eq!(search_tracks(&c, "tag:warmup").unwrap().len(), 1);
+        assert_eq!(search_tracks(&c, "tag:warmup").unwrap()[0].path, "/a.mp3");
+        assert_eq!(search_tracks(&c, "-tag:warmup").unwrap().len(), 1); // → /b
+        assert_eq!(search_tracks(&c, "-tag:warmup").unwrap()[0].path, "/b.mp3");
+        // Combines with OR and other fields → smart-crate-able.
+        assert_eq!(
+            search_tracks(&c, "tag:warmup OR tag:peak").unwrap().len(),
+            2
+        );
+
+        // Remove a tag; it drops from rows and search.
+        remove_tag(&c, "/a.mp3", "warmup").unwrap();
+        assert!(search_tracks(&c, "tag:warmup").unwrap().is_empty());
+
+        // Deleting a track cascades its tags.
+        remove_track(&c, "/b.mp3").unwrap();
+        assert!(search_tracks(&c, "tag:peak").unwrap().is_empty());
     }
 }

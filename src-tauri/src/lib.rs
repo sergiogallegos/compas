@@ -1348,6 +1348,16 @@ fn db_remove_track(db: State<'_, db::Db>, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn db_add_tag(db: State<'_, db::Db>, path: String, tag: String) -> Result<(), String> {
+    with_db(&db, |c| db::add_tag(c, &path, &tag))
+}
+
+#[tauri::command]
+fn db_remove_tag(db: State<'_, db::Db>, path: String, tag: String) -> Result<(), String> {
+    with_db(&db, |c| db::remove_tag(c, &path, &tag))
+}
+
+#[tauri::command]
 fn db_track_state(db: State<'_, db::Db>, path: String) -> Result<db::TrackState, String> {
     with_db(&db, |c| db::track_state(c, &path))
 }
@@ -2747,6 +2757,8 @@ pub fn run() {
             db_list_tracks,
             db_add_track,
             db_remove_track,
+            db_add_tag,
+            db_remove_tag,
             db_track_state,
             db_upsert_analysis,
             db_set_cue,

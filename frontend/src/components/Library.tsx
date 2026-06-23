@@ -2,9 +2,11 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import {
   dbAddToCrate,
   dbCrateTracks,
+  dbAddTag,
   dbCreateCrate,
   dbCreateSmartCrate,
   dbListCrates,
+  dbRemoveTag,
   dbPlanNext,
   dbSearch,
   inTauri,
@@ -120,6 +122,25 @@ export const Library = forwardRef<
     setResults(null);
     setSuggestFor(null);
     setQ("");
+  };
+
+  // Tagging: an inline tag editor opens for one track row at a time.
+  const [taggingPath, setTaggingPath] = useState<string | null>(null);
+  const [tagInput, setTagInput] = useState("");
+  // Re-pull whatever view is showing so a tag edit is reflected immediately.
+  const reloadView = useCallback(() => {
+    lib.refresh();
+    if (activeCrate) dbCrateTracks(activeCrate.id).then(setResults).catch(() => {});
+    else if (q.trim()) dbSearch(q.trim()).then(setResults).catch(() => {});
+  }, [lib, activeCrate, q]);
+  const commitTag = (path: string) => {
+    const t = tagInput.trim();
+    setTaggingPath(null);
+    setTagInput("");
+    if (t) dbAddTag(path, t).then(reloadView).catch(() => {});
+  };
+  const dropTag = (path: string, tag: string) => {
+    dbRemoveTag(path, tag).then(reloadView).catch(() => {});
   };
 
   const filtered = results ?? lib.tracks;
@@ -240,7 +261,34 @@ export const Library = forwardRef<
                   <span className="tl-tag" style={loadedAs ? { color: loadedAs.color } : undefined}>
                     {loadedAs ? loadedAs.letter : "♪"}
                   </span>
-                  <span className="tl-title">{t.title}</span>
+                  <span className="tl-title" style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                    {t.tags.map((tg) => (
+                      <button
+                        key={tg}
+                        onClick={(e) => { e.stopPropagation(); dropTag(t.path, tg); }}
+                        title={`Remove tag — click. (filter with tag:${tg})`}
+                        style={{ flex: "none", fontSize: 9, lineHeight: 1.4, padding: "1px 5px", borderRadius: 8, border: "1px solid var(--border-hairline-strong)", background: "rgba(var(--accent-rgb),0.14)", color: "var(--accent-glow)", cursor: "pointer", whiteSpace: "nowrap" }}
+                      >
+                        {tg} ✕
+                      </button>
+                    ))}
+                    {taggingPath === t.path && (
+                      <input
+                        autoFocus
+                        value={tagInput}
+                        placeholder="tag…"
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onBlur={() => commitTag(t.path)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitTag(t.path);
+                          else if (e.key === "Escape") { setTaggingPath(null); setTagInput(""); }
+                        }}
+                        style={{ flex: "none", width: 80, fontSize: 11, padding: "1px 5px", borderRadius: 6, border: "1px solid var(--accent)", background: "var(--surface-sunken)", color: "var(--text-primary)", outline: "none" }}
+                      />
+                    )}
+                  </span>
                   <span className="tl-artist">
                     {t.artist}
                     {(t.bpm || t.key_camelot) && (
@@ -275,6 +323,13 @@ export const Library = forwardRef<
                       title="Add to AutoDJ queue"
                     >
                       Q
+                    </button>
+                    <button
+                      className="tl-next"
+                      onClick={(e) => { e.stopPropagation(); setTaggingPath(t.path); setTagInput(""); }}
+                      title="Add a tag"
+                    >
+                      🏷
                     </button>
                     {activeCrate && !activeCrate.is_smart && (
                       <button

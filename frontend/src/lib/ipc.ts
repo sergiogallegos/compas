@@ -211,6 +211,8 @@ export interface DbTrack {
   gain: number;
   play_count: number;
   last_played_at: number | null;
+  /** User tags (lowercased) — usable in `tag:` search and smart crates. */
+  tags: string[];
 }
 export interface DbCue {
   slot: number;
@@ -239,6 +241,9 @@ export interface DbHistory {
 export const dbListTracks = () => invoke<DbTrack[]>("db_list_tracks");
 export const dbAddTrack = (path: string) => invoke<DbTrack>("db_add_track", { path });
 export const dbRemoveTrack = (path: string) => invoke("db_remove_track", { path });
+/** Tag a track (lowercased, idempotent). */
+export const dbAddTag = (path: string, tag: string) => invoke("db_add_tag", { path, tag });
+export const dbRemoveTag = (path: string, tag: string) => invoke("db_remove_tag", { path, tag });
 export const dbTrackState = (path: string) => invoke<DbTrackState>("db_track_state", { path });
 export const dbSetCue = (path: string, slot: number, frame: number) =>
   invoke("db_set_cue", { path, slot, frame });
