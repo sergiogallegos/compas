@@ -549,6 +549,75 @@ impl Default for DeckTelemetry {
     }
 }
 
+/// Tonal-shaping stage of the deck graph: DJ filter (LPF/HPF/off) then 3-band EQ, per channel.
+/// Order is filter → EQ, preserved from the original inline implementation. All processor state
+/// is allocated on construction; parameter changes are command-side coefficient updates. RT-SAFE.
+struct ToneStage {
+    eq_l: ThreeBandEq,
+    eq_r: ThreeBandEq,
+    filter_l: Biquad,
+    filter_r: Biquad,
+    filter_active: bool,
+    device_rate: f32,
+}
+
+impl ToneStage {
+    fn new(device_rate: f32) -> Self {
+        ToneStage {
+            eq_l: ThreeBandEq::new(device_rate),
+            eq_r: ThreeBandEq::new(device_rate),
+            filter_l: Biquad::new(BiquadCoeffs::IDENTITY),
+            filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
+            filter_active: false,
+            device_rate,
+        }
+    }
+
+    /// Process one stereo frame: DJ filter (when active) then 3-band EQ. RT-SAFE.
+    #[inline]
+    fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
+        let (mut l, mut r) = (l, r);
+        if self.filter_active {
+            l = self.filter_l.process(l);
+            r = self.filter_r.process(r);
+        }
+        l = self.eq_l.process(l);
+        r = self.eq_r.process(r);
+        (l, r)
+    }
+
+    /// Update the 3-band EQ gains (dB). Command-side; coefficient update only. RT-SAFE.
+    fn set_eq(&mut self, low_db: f32, mid_db: f32, high_db: f32) {
+        let sr = self.device_rate;
+        self.eq_l.set_gains_db(sr, low_db, mid_db, high_db);
+        self.eq_r.set_gains_db(sr, low_db, mid_db, high_db);
+    }
+
+    /// Update the DJ filter mode/cutoff/resonance. Command-side; coefficient update only. RT-SAFE.
+    fn set_filter(&mut self, mode: FilterMode, cutoff_hz: f32, resonance: f32) {
+        let q = resonance.max(0.1);
+        match mode {
+            FilterMode::Off => {
+                self.filter_active = false;
+                self.filter_l.set_coeffs(BiquadCoeffs::IDENTITY);
+                self.filter_r.set_coeffs(BiquadCoeffs::IDENTITY);
+            }
+            FilterMode::LowPass => {
+                let c = BiquadCoeffs::low_pass(cutoff_hz, self.device_rate, q);
+                self.filter_l.set_coeffs(c);
+                self.filter_r.set_coeffs(c);
+                self.filter_active = true;
+            }
+            FilterMode::HighPass => {
+                let c = BiquadCoeffs::high_pass(cutoff_hz, self.device_rate, q);
+                self.filter_l.set_coeffs(c);
+                self.filter_r.set_coeffs(c);
+                self.filter_active = true;
+            }
+        }
+    }
+}
+
 /// Per-deck audio state living on the audio thread.
 struct DeckPlayer {
     buffer: Option<Arc<DeckBuffer>>,
@@ -570,11 +639,8 @@ struct DeckPlayer {
     stretch: TimeStretch,
     stretch_engaged: bool,
     gain: GainSmoother,
-    eq_l: ThreeBandEq,
-    eq_r: ThreeBandEq,
-    filter_l: Biquad,
-    filter_r: Biquad,
-    filter_active: bool,
+    /// Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
+    tone: ToneStage,
     /// Crossfader routing (4-deck assign matrix): A side, B side, or straight through.
     xfader_assign: XfaderAssign,
     /// Pre-fader-listen: when true, this deck feeds the headphone cue bus regardless of the
@@ -590,7 +656,6 @@ struct DeckPlayer {
     /// normal play rate without looping; releasing the roll snaps `playhead` to it.
     roll_active: bool,
     slip_playhead: f64,
-    device_rate: f32,
     /// Beatgrid in source frames: phase of the first beat, and frames per beat. Used by the
     /// continuous sync PLL; 0 interval means "no grid" (sync disabled for this deck).
     beat_offset: f64,
@@ -634,11 +699,7 @@ impl DeckPlayer {
             stretch: TimeStretch::new(),
             stretch_engaged: false,
             gain: GainSmoother::new(1.0, device_rate, 8.0),
-            eq_l: ThreeBandEq::new(device_rate),
-            eq_r: ThreeBandEq::new(device_rate),
-            filter_l: Biquad::new(BiquadCoeffs::IDENTITY),
-            filter_r: Biquad::new(BiquadCoeffs::IDENTITY),
-            filter_active: false,
+            tone: ToneStage::new(device_rate),
             xfader_assign: XfaderAssign::Thru,
             cue: false,
             fx: FxChain::default_deck(device_rate),
@@ -647,7 +708,6 @@ impl DeckPlayer {
             loop_out: 0.0,
             roll_active: false,
             slip_playhead: 0.0,
-            device_rate,
             beat_offset: 0.0,
             beat_interval: 0.0,
             sync_master: None,
@@ -769,7 +829,7 @@ impl DeckPlayer {
         }
         self.stretch_engaged = engaged;
 
-        let (mut l, mut r) = if let Some(stems) = self.stems.as_ref() {
+        let (l, r) = if let Some(stems) = self.stems.as_ref() {
             // Stems overlay: read each separated buffer at the same play-head and sum by its
             // smoothed gain. Key-lock stretches each stem independently. The mix `buffer` still
             // governs `frames`/`max`/advance above, so play-head math is unchanged.
@@ -828,41 +888,12 @@ impl DeckPlayer {
             }
         }
 
-        if self.filter_active {
-            l = self.filter_l.process(l);
-            r = self.filter_r.process(r);
-        }
-        l = self.eq_l.process(l);
-        r = self.eq_r.process(r);
+        // Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
+        let (l, r) = self.tone.process(l, r);
         // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
-        let (fl, fr) = self.fx.process(l, r);
-        l = fl;
-        r = fr;
+        let (l, r) = self.fx.process(l, r);
         let g = g * self.replay_gain; // loudness normalization, pre-fader
         (l * g, r * g)
-    }
-
-    fn set_filter(&mut self, mode: FilterMode, cutoff_hz: f32, resonance: f32) {
-        let q = resonance.max(0.1);
-        match mode {
-            FilterMode::Off => {
-                self.filter_active = false;
-                self.filter_l.set_coeffs(BiquadCoeffs::IDENTITY);
-                self.filter_r.set_coeffs(BiquadCoeffs::IDENTITY);
-            }
-            FilterMode::LowPass => {
-                let c = BiquadCoeffs::low_pass(cutoff_hz, self.device_rate, q);
-                self.filter_l.set_coeffs(c);
-                self.filter_r.set_coeffs(c);
-                self.filter_active = true;
-            }
-            FilterMode::HighPass => {
-                let c = BiquadCoeffs::high_pass(cutoff_hz, self.device_rate, q);
-                self.filter_l.set_coeffs(c);
-                self.filter_r.set_coeffs(c);
-                self.filter_active = true;
-            }
-        }
     }
 }
 
@@ -1187,9 +1218,7 @@ impl Mixer {
                     high_db,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        let sr = d.device_rate;
-                        d.eq_l.set_gains_db(sr, low_db, mid_db, high_db);
-                        d.eq_r.set_gains_db(sr, low_db, mid_db, high_db);
+                        d.tone.set_eq(low_db, mid_db, high_db);
                     }
                 }
                 AudioCommand::SetDeckFilter {
@@ -1199,7 +1228,7 @@ impl Mixer {
                     resonance,
                 } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.set_filter(mode, cutoff_hz, resonance);
+                        d.tone.set_filter(mode, cutoff_hz, resonance);
                     }
                 }
                 AudioCommand::SetDeckEcho {
