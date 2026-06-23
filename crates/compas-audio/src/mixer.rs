@@ -618,6 +618,85 @@ impl ToneStage {
     }
 }
 
+/// Key-lock (master-tempo) stage: per-deck WSOLA time-stretch for the mix buffer and each stem.
+/// `active` mirrors the deck's key-lock toggle; `engaged` tracks the previous frame's read mode so a
+/// play-head jump (seek / loop / scratch release / toggle / stem swap) re-primes the stretchers
+/// before the next stretched frame. All stretch buffers are allocated on construction; nothing here
+/// allocates, locks, or blocks on the audio thread. RT-SAFE.
+struct KeylockStage {
+    active: bool,
+    engaged: bool,
+    stretch: TimeStretch,
+    /// Per-stem WSOLA stretchers, so key-lock applies to each stem independently.
+    stem_stretch: [TimeStretch; NUM_STEMS],
+}
+
+impl KeylockStage {
+    fn new() -> Self {
+        KeylockStage {
+            active: false,
+            engaged: false,
+            stretch: TimeStretch::new(),
+            stem_stretch: std::array::from_fn(|_| TimeStretch::new()),
+        }
+    }
+
+    /// Set the key-lock toggle. Forces a re-prime on the next stretched frame. RT-SAFE.
+    fn set_active(&mut self, active: bool) {
+        self.active = active;
+        self.engaged = false;
+    }
+
+    /// Flag that the play-head jumped (seek / loop / scratch release / stem swap), so the next
+    /// stretched frame re-primes the WSOLA grain windows. RT-SAFE.
+    #[inline]
+    fn mark_jumped(&mut self) {
+        self.engaged = false;
+    }
+
+    /// Begin a frame: returns whether stretched (key-locked) reading is active this frame.
+    /// Re-primes the mix and stem stretchers on the engage edge / after a play-head jump.
+    /// `scratching` forces the direct (varispeed) path. RT-SAFE.
+    #[inline]
+    fn begin_frame(&mut self, scratching: bool) -> bool {
+        let engaged = self.active && !scratching;
+        if engaged && !self.engaged {
+            self.stretch.reset();
+            for s in self.stem_stretch.iter_mut() {
+                s.reset();
+            }
+        }
+        self.engaged = engaged;
+        engaged
+    }
+
+    /// Stretch one frame of the mix buffer at `playhead`. RT-SAFE.
+    #[inline]
+    fn stretch_mix(
+        &mut self,
+        samples: &[f32],
+        frames: usize,
+        base_ratio: f64,
+        playhead: f64,
+    ) -> (f32, f32) {
+        self.stretch
+            .next_frame(samples, frames, base_ratio, playhead)
+    }
+
+    /// Stretch one frame of stem `i` at `playhead`. RT-SAFE.
+    #[inline]
+    fn stretch_stem(
+        &mut self,
+        i: usize,
+        samples: &[f32],
+        frames: usize,
+        base_ratio: f64,
+        playhead: f64,
+    ) -> (f32, f32) {
+        self.stem_stretch[i].next_frame(samples, frames, base_ratio, playhead)
+    }
+}
+
 /// Per-deck audio state living on the audio thread.
 struct DeckPlayer {
     buffer: Option<Arc<DeckBuffer>>,
@@ -632,12 +711,8 @@ struct DeckPlayer {
     /// `tempo`, and audio plays regardless of the transport state.
     scratching: bool,
     scratch_speed: f64,
-    /// Key-lock (master tempo): when on, the play-head is read through `stretch` so tempo
-    /// changes without pitch. `stretch_engaged` tracks the previous frame's read mode so a
-    /// jump into stretched reading (toggle/seek/scratch-release) re-primes the stretcher.
-    keylock: bool,
-    stretch: TimeStretch,
-    stretch_engaged: bool,
+    /// Key-lock (master tempo) stage: per-deck WSOLA time-stretch for the mix buffer and stems.
+    keylock: KeylockStage,
     gain: GainSmoother,
     /// Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
     tone: ToneStage,
@@ -681,8 +756,6 @@ struct DeckPlayer {
     stems: Option<[Arc<DeckBuffer>; NUM_STEMS]>,
     /// Per-stem smoothed gains (mute/solo without clicks), indexed `[drums, bass, other, vocals]`.
     stem_gains: [GainSmoother; NUM_STEMS],
-    /// Per-stem WSOLA stretchers, so key-lock applies to each stem independently.
-    stem_stretch: [TimeStretch; NUM_STEMS],
 }
 
 impl DeckPlayer {
@@ -695,9 +768,7 @@ impl DeckPlayer {
             playing: false,
             scratching: false,
             scratch_speed: 0.0,
-            keylock: false,
-            stretch: TimeStretch::new(),
-            stretch_engaged: false,
+            keylock: KeylockStage::new(),
             gain: GainSmoother::new(1.0, device_rate, 8.0),
             tone: ToneStage::new(device_rate),
             xfader_assign: XfaderAssign::Thru,
@@ -720,7 +791,6 @@ impl DeckPlayer {
             replay_gain: 1.0,
             stems: None,
             stem_gains: std::array::from_fn(|_| GainSmoother::new(1.0, device_rate, 8.0)),
-            stem_stretch: std::array::from_fn(|_| TimeStretch::new()),
         }
     }
 
@@ -751,7 +821,7 @@ impl DeckPlayer {
         self.loop_in = new_in;
         self.loop_out = new_in + len;
         self.playhead = (self.playhead + delta).max(0.0);
-        self.stretch_engaged = false; // play-head jumped — re-prime the stretcher
+        self.keylock.mark_jumped(); // play-head jumped — re-prime the stretcher
     }
 
     /// Drive the main CUE button through the selected [`CueMode`]. RT-SAFE.
@@ -763,7 +833,7 @@ impl DeckPlayer {
                         // Playing → return to the cue point and pause.
                         self.playing = false;
                         self.playhead = self.cue_point;
-                        self.stretch_engaged = false;
+                        self.keylock.mark_jumped();
                     } else if (self.playhead - self.cue_point).abs() < 1.0 {
                         // Paused at the cue point → preview (play while held).
                         self.cue_previewing = true;
@@ -777,14 +847,14 @@ impl DeckPlayer {
                     self.cue_previewing = false;
                     self.playing = false;
                     self.playhead = self.cue_point;
-                    self.stretch_engaged = false;
+                    self.keylock.mark_jumped();
                 }
             }
             CueMode::Gated => {
                 // Play from the cue point while held; return to it on release.
                 self.playhead = self.cue_point;
                 self.playing = pressed;
-                self.stretch_engaged = false;
+                self.keylock.mark_jumped();
             }
         }
     }
@@ -816,18 +886,10 @@ impl DeckPlayer {
 
         let max = frames as f64 - 1.0;
 
-        // Read mode: with key-lock on, stream through the WSOLA stretcher (tempo without
-        // pitch); otherwise read directly. Scratching always uses the direct (varispeed)
-        // path. Re-prime the stretcher whenever we (re)enter stretched reading, since the
-        // play-head may have jumped (toggle / seek / scratch release).
-        let engaged = self.keylock && !self.scratching;
-        if engaged && !self.stretch_engaged {
-            self.stretch.reset();
-            for s in self.stem_stretch.iter_mut() {
-                s.reset();
-            }
-        }
-        self.stretch_engaged = engaged;
+        // Read mode: with key-lock on, stream through the WSOLA stretcher (tempo without pitch);
+        // otherwise read directly. Scratching always uses the direct (varispeed) path. The keylock
+        // stage re-primes its stretchers on the engage edge / after a play-head jump.
+        let engaged = self.keylock.begin_frame(self.scratching);
 
         let (l, r) = if let Some(stems) = self.stems.as_ref() {
             // Stems overlay: read each separated buffer at the same play-head and sum by its
@@ -842,7 +904,8 @@ impl DeckPlayer {
                     continue;
                 }
                 let (xl, xr) = if engaged {
-                    self.stem_stretch[i].next_frame(
+                    self.keylock.stretch_stem(
+                        i,
                         &stem.samples,
                         sframes,
                         self.base_ratio,
@@ -860,8 +923,8 @@ impl DeckPlayer {
             }
             (sl, sr)
         } else if engaged {
-            self.stretch
-                .next_frame(&buf.samples, frames, self.base_ratio, self.playhead)
+            self.keylock
+                .stretch_mix(&buf.samples, frames, self.base_ratio, self.playhead)
         } else {
             interp_stereo(&buf.samples, frames, self.playhead.clamp(0.0, max))
         };
@@ -1312,9 +1375,7 @@ impl Mixer {
                 }
                 AudioCommand::SetDeckKeylock { deck, active } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.keylock = active;
-                        // Force a re-prime on the next stretched frame.
-                        d.stretch_engaged = false;
+                        d.keylock.set_active(active);
                     }
                 }
                 AudioCommand::SetDeckXfaderAssign { deck, assign } => {
@@ -1340,7 +1401,7 @@ impl Mixer {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.playhead = frame.max(0.0);
                         // The play-head jumped — re-prime the stretcher on the next frame.
-                        d.stretch_engaged = false;
+                        d.keylock.mark_jumped();
                     }
                 }
                 AudioCommand::SetCueMode { deck, mode } => {
@@ -1371,8 +1432,7 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
-                        d.keylock = false;
-                        d.stretch_engaged = false;
+                        d.keylock.set_active(false);
                         d.fx.reset();
                         d.loop_active = false;
                         d.cue_point = 0.0;
@@ -1480,7 +1540,7 @@ impl Mixer {
                             d.roll_active = false;
                             d.loop_active = false;
                             d.playhead = d.slip_playhead;
-                            d.stretch_engaged = false; // play-head jumped — re-prime the stretcher
+                            d.keylock.mark_jumped(); // play-head jumped — re-prime the stretcher
                         }
                     }
                 }
@@ -1535,9 +1595,7 @@ impl Mixer {
                         for g in d.stem_gains.iter_mut() {
                             g.set_target(1.0);
                         }
-                        for s in d.stem_stretch.iter_mut() {
-                            s.reset();
-                        }
+                        d.keylock.mark_jumped();
                         let old = d.stems.replace(stems);
                         self.retire_stems(old);
                     }
@@ -1560,8 +1618,7 @@ impl Mixer {
                         d.playing = false;
                         d.scratching = false;
                         d.scratch_speed = 0.0;
-                        d.keylock = false;
-                        d.stretch_engaged = false;
+                        d.keylock.set_active(false);
                         d.fx.reset();
                         d.playhead = 0.0;
                         d.loop_active = false;
