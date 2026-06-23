@@ -209,6 +209,11 @@ enum EngineMsg {
     },
     StopAuxInput,
     AuxGain(f32),
+    SetLiveClock(Arc<compas_audio::LiveBeatClock>),
+    SetDeckSyncLive {
+        deck: usize,
+        active: bool,
+    },
     NoteOn {
         note: u8,
         velocity: u8,
@@ -603,6 +608,10 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::StartAuxInput { source } => AudioCommand::StartAuxInput { source },
                     EngineMsg::StopAuxInput => AudioCommand::StopAuxInput,
                     EngineMsg::AuxGain(g) => AudioCommand::SetAuxGain(g),
+                    EngineMsg::SetLiveClock(clock) => AudioCommand::SetLiveClock(clock),
+                    EngineMsg::SetDeckSyncLive { deck, active } => {
+                        AudioCommand::SetDeckSyncLive { deck, active }
+                    }
                     EngineMsg::NoteOn { note, velocity } => AudioCommand::NoteOn { note, velocity },
                     EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
                     EngineMsg::AllNotesOff => AudioCommand::AllNotesOff,
@@ -2195,6 +2204,8 @@ fn start_aux_input(
     let (producer, consumer) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
     let (analysis_tx, analysis_rx) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
     state.send(EngineMsg::StartAuxInput { source: consumer })?;
+    // Share the live beat clock with the mixer so decks can tempo-match the mic (slice 5.3).
+    let _ = state.send(EngineMsg::SetLiveClock(aux.clock.clone()));
 
     let (stop_tx, stop_rx) = channel::<()>();
     let (ready_tx, ready_rx) = channel::<Result<(String, u32), String>>();
@@ -2255,6 +2266,17 @@ fn stop_aux_input(state: State<'_, EngineHandle>, aux: State<'_, AuxState>) -> R
 #[tauri::command]
 fn set_aux_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::AuxGain(value))
+}
+
+/// Make a deck tempo-match the live beat clock (mic/aux), or stop. While the clock is locked the
+/// deck rate-matches the detected tempo; when it's unlocked the deck holds its own tempo.
+#[tauri::command]
+fn set_deck_sync_live(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckSyncLive { deck, active })
 }
 
 /// Current live beat-tracker readout (tempo/phase/confidence/lock of the aux input). Poll this
@@ -2778,6 +2800,7 @@ pub fn run() {
             stop_aux_input,
             set_aux_gain,
             live_beat_clock,
+            set_deck_sync_live,
             note_on,
             note_off,
             all_notes_off,

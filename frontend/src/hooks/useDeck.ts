@@ -16,6 +16,7 @@ import {
   pickAudioFile,
   setBeatgrid,
   setDeckSync,
+  setDeckSyncLive,
   setDeckXfaderAssign,
   setDeckEcho,
   setDeckReverb,
@@ -167,6 +168,8 @@ export interface DeckState {
   gridOffset: number;
   /** True while this deck is a continuous sync follower. */
   synced: boolean;
+  /** Following the live mic/aux beat clock (tempo-match). Mutually exclusive with deck sync. */
+  syncLive: boolean;
   /** Quantize: snap hot-cue jumps and beat-jumps to the beatgrid. */
   quantize: boolean;
   /** Main-cue behavior: 0 = CDJ, 1 = gated. */
@@ -219,6 +222,7 @@ export function useDeck(deck: number, dsp = true) {
   const [keylock, setKeylockState] = useState(false);
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
+  const [syncLive, setSyncLiveState] = useState(false);
   const [quantize, setQuantize] = useState(false);
   // Main-cue behavior (0 = CDJ, 1 = gated) and sync mode (0 = full, 1 = tempo-only) + leader pin.
   const [cueMode, setCueModeState] = useState(0);
@@ -534,7 +538,15 @@ export function useDeck(deck: number, dsp = true) {
       // Continuous beat-sync: follow `master` (deck index), or null to disengage.
       sync: (master: number | null) => {
         setSyncedState(master !== null);
+        if (master !== null) setSyncLiveState(false); // engine cancels live sync; mirror it
         setDeckSync(deck, master).catch(swallow);
+      },
+      // Tempo-match the live mic/aux beat clock (mutually exclusive with deck sync).
+      toggleSyncLive: () => {
+        const next = !syncLive;
+        setSyncLiveState(next);
+        if (next) setSyncedState(false);
+        setDeckSyncLive(deck, next).catch(swallow);
       },
       // Crossfader routing (0 = A, 1 = thru, 2 = B).
       setXfaderAssign: (a: number) => {
@@ -777,9 +789,9 @@ export function useDeck(deck: number, dsp = true) {
         );
       },
     };
-  }, [deck, playing, tempo, meta, isLeader]);
+  }, [deck, playing, tempo, meta, isLeader, syncLive]);
 
-  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, syncLive, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
   return { state, actions, deck };
 }
 

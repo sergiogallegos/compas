@@ -18,6 +18,7 @@ const FX_CRUSHER: usize = 3;
 const FX_DELAY_MAX_SECS: f32 = 2.0;
 use rtrb::{Producer, PushError};
 
+use crate::live::LiveBeatClock;
 use crate::sampler::Sampler;
 
 /// Number of decks the engine mixes. MVP uses 2; the array is sized for 4 so the
@@ -322,6 +323,13 @@ pub enum AudioCommand {
     SetDeckSync {
         deck: usize,
         master: Option<usize>,
+    },
+    /// Share the live beat clock (aux/mic tracker) with the mixer so decks can follow it.
+    SetLiveClock(Arc<LiveBeatClock>),
+    /// Make `deck` follow the live beat clock (tempo-match), or stop following it.
+    SetDeckSyncLive {
+        deck: usize,
+        active: bool,
     },
     /// Set a follower's sync mode (0 = full tempo+phase, 1 = tempo-only).
     SetDeckSyncMode {
@@ -817,6 +825,8 @@ struct DeckPlayer {
     sync_tempo: Option<f64>,
     /// Whether a follower matches tempo+phase or tempo only.
     sync_mode: SyncMode,
+    /// When set, this deck tempo-matches the live beat clock (mic/aux) instead of a leader deck.
+    sync_live: bool,
     /// Whether this deck is the explicit (pinned) sync leader — preferred by the auto-picker.
     sync_explicit_leader: bool,
     /// Main cue point in source frames, and the configurable CUE button behavior.
@@ -857,6 +867,7 @@ impl DeckPlayer {
             beat_offset: 0.0,
             beat_interval: 0.0,
             sync_master: None,
+            sync_live: false,
             sync_tempo: None,
             sync_mode: SyncMode::Full,
             sync_explicit_leader: false,
@@ -1167,6 +1178,8 @@ pub struct Mixer {
     sampler: Sampler,
     /// Aux/mic input, summed into the master alongside the synth and sampler.
     aux: AuxRouting,
+    /// Live beat clock (aux/mic tracker) shared from the control side, so decks can tempo-match it.
+    live_clock: Option<Arc<LiveBeatClock>>,
 }
 
 impl Mixer {
@@ -1208,6 +1221,7 @@ impl Mixer {
                 gain: GainSmoother::new(1.0, device_rate, 10.0),
                 primed: false,
             },
+            live_clock: None,
         }
     }
 
@@ -1323,7 +1337,28 @@ impl Mixer {
                 d.buffer.is_some(),
             );
         }
+        // Live beat clock snapshot (mic/aux). Taken once so the per-deck loop doesn't re-read it.
+        let live = self.live_clock.as_ref().map(|c| c.snapshot());
         for (i, d) in self.decks.iter_mut().enumerate() {
+            // Live sync: tempo-match the deck to the mic/aux beat clock when it's locked. Phase is
+            // left to the DJ for now (cross-domain phase-lock needs a timestamped clock — a
+            // documented follow-up); an unlocked/absent clock holds the deck's tempo.
+            if d.sync_live {
+                d.sync_tempo = match live {
+                    Some(s)
+                        if s.locked
+                            && s.bpm > 0.0
+                            && d.beat_interval > 0.0
+                            && d.base_ratio > 0.0 =>
+                    {
+                        let master_beat_rate = s.bpm as f64 / (60.0 * self.device_rate as f64);
+                        let base_adv = master_beat_rate * d.beat_interval; // follower frames/sample
+                        Some(base_adv / d.base_ratio)
+                    }
+                    _ => None,
+                };
+                continue;
+            }
             let Some(m) = d.sync_master else {
                 d.sync_tempo = None;
                 continue;
@@ -1606,10 +1641,23 @@ impl Mixer {
                         d.beat_interval = interval;
                     }
                 }
+                AudioCommand::SetLiveClock(clock) => self.live_clock = Some(clock),
+                AudioCommand::SetDeckSyncLive { deck, active } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.sync_live = active;
+                        d.sync_tempo = None;
+                        if active {
+                            d.sync_master = None; // live and deck-leader sync are mutually exclusive
+                        }
+                    }
+                }
                 AudioCommand::SetDeckSync { deck, master } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.sync_master = master;
                         d.sync_tempo = None;
+                        if master.is_some() {
+                            d.sync_live = false; // following a deck leader cancels live sync
+                        }
                     }
                     // Break any A↔B cycle: if the new master was following this deck, stop it.
                     if let Some(m) = master {
@@ -2306,6 +2354,36 @@ mod tests {
         assert_eq!(
             mixer.decks[0].sync_master, None,
             "new master must stop following the deck that now follows it"
+        );
+    }
+
+    #[test]
+    fn live_sync_tempo_matches_a_locked_clock_and_holds_when_unlocked() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        let clock = Arc::new(LiveBeatClock::default());
+        mixer.live_clock = Some(clock.clone());
+        // Deck 0 has its own grid (0.5 s beats) and follows the live clock.
+        mixer.decks[0].beat_interval = 24_000.0;
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].sync_live = true;
+
+        // Locked at 128 BPM → the follower rate-matches: frames/sample = (bpm/60/sr)·beat_interval.
+        clock.set_active(true);
+        clock.store(128.0, 0.0, 0.6, true);
+        mixer.update_sync();
+        let expected = (128.0 / 60.0 / 48_000.0) * 24_000.0 / 1.0;
+        let got = mixer.decks[0].sync_tempo.expect("live tempo when locked");
+        assert!(
+            (got - expected).abs() < 1e-9,
+            "got {got}, expected {expected}"
+        );
+
+        // Unlocked (low confidence) → don't drive sync; the deck holds its own tempo.
+        clock.store(128.0, 0.0, 0.05, false);
+        mixer.update_sync();
+        assert!(
+            mixer.decks[0].sync_tempo.is_none(),
+            "an unlocked live clock must not drive deck sync"
         );
     }
 

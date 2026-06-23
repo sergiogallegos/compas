@@ -631,6 +631,17 @@ export function Deck({
             SYNC
           </button>
           {dsp && (
+            <button
+              className={`chip mic-sync ${state.syncLive ? "chip--on" : ""}`}
+              style={{ flex: "none", width: "100%", padding: "3px 0", fontSize: 9 }}
+              onClick={actions.toggleSyncLive}
+              disabled={!meta}
+              title="Beat-match this deck to the live mic/aux input (tempo). Turn AUX on first."
+            >
+              MIC
+            </button>
+          )}
+          {dsp && (
             <div className="sync-opts">
               <button
                 className={`chip ${state.syncMode === 1 ? "chip--on" : ""}`}

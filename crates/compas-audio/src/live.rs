@@ -35,7 +35,7 @@ pub struct LiveBeatSnapshot {
 }
 
 impl LiveBeatClock {
-    fn set_active(&self, active: bool) {
+    pub(crate) fn set_active(&self, active: bool) {
         self.active.store(active, Ordering::Relaxed);
         if !active {
             // Clear the readout so a stale BPM doesn't linger after capture stops.
@@ -45,7 +45,7 @@ impl LiveBeatClock {
         }
     }
 
-    fn store(&self, bpm: f32, beat_phase: f32, confidence: f32, locked: bool) {
+    pub(crate) fn store(&self, bpm: f32, beat_phase: f32, confidence: f32, locked: bool) {
         self.bpm_bits.store(bpm.to_bits(), Ordering::Relaxed);
         self.phase_bits
             .store(beat_phase.to_bits(), Ordering::Relaxed);

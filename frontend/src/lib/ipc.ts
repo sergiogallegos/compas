@@ -571,6 +571,9 @@ export interface LiveBeat {
 }
 /** Current live beat-tracker readout (tempo/phase/confidence/lock of the aux input). */
 export const liveBeatClock = () => invoke<LiveBeat>("live_beat_clock");
+/** Make a deck tempo-match the live beat clock (mic/aux), or stop. */
+export const setDeckSyncLive = (deck: number, active: boolean) =>
+  invoke("set_deck_sync_live", { deck, active });
 
 // ---- Stem separation --------------------------------------------------------------
 

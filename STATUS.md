@@ -74,9 +74,19 @@ it's the capture path for live beat-tracking (slice 5).
   BPM + a lock dot** (green when locked). 2 new tests (`clock_round_trips…`,
   `run_live_analysis_locks_on_a_click…`). clippy `-D warnings` (engine+app) + fmt + tsc/vite clean.
 
-**Recommended next:** slice-5 **slice 3 — `SyncSource::Live` virtual leader**: let a deck beat-match
-to the live clock through the existing PLL (guarded by `locked`). Or live stem verification (needs
-the 301 MB model), or release readiness (updater signing keypair + secrets).
+- **Implementation slice 3 — live-clock deck sync DONE (tempo-match).** The mixer now holds an
+  `Option<Arc<LiveBeatClock>>` (shared from the control side via `AudioCommand::SetLiveClock` when
+  aux starts); a per-deck `sync_live` flag makes `update_sync` rate-match the deck to the live
+  tempo when the clock is **locked** (mutually exclusive with deck-leader sync; an unlocked/absent
+  clock holds the deck's tempo). IPC `set_deck_sync_live`; `useDeck` gains `syncLive` +
+  `toggleSyncLive`; each deck has a **MIC** chip by SYNC. Test
+  `live_sync_tempo_matches_a_locked_clock_and_holds_when_unlocked`. **Deferred (documented):**
+  continuous cross-domain *phase*-lock — needs a timestamped clock + extrapolation (design note §5);
+  today it's tempo-match (DJ aligns phase, like TempoOnly).
+
+**Recommended next:** live phase-lock follow-up (timestamp the `LiveBeatClock` + extrapolate), or
+live stem verification (needs the 301 MB model), or release readiness (updater signing keypair +
+secrets). The offline beat-tracking adoption-plan queue (slices 1–5) is now complete.
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
