@@ -113,7 +113,7 @@ the groove with the weighting disabled and locks on with it enabled; `misleading
 promoted Reference → Solid; `estimate_tempo_8s` benchmark shows no measurable change. Value-only — no
 public `TempoEstimate`/`BeatGrid` change.
 
-### 5. Online/live-input tracking
+### 5. Online/live-input tracking — DESIGN NOTE DONE; implementation gated
 
 Do not mix this into offline local-file analysis. If OBTAIN or a verified zero-latency source is
 adopted, it should live behind a separate live-input design because it trades future context for
@@ -121,9 +121,18 @@ causality.
 
 Acceptance:
 
-- Separate design note first.
-- No changes to local-file beatgrid quality without offline benchmarks.
-- Explicit routing/sync contract for mic, aux, external gear, or streaming control-only timing.
+- Separate design note first. ✅ — `docs/research/live-input-beat-tracking.md` (goal/non-goals, RT
+  boundary, OBTAIN-style causal algorithm, the virtual-leader sync contract with the existing deck
+  PLL + the shipped `compas-audio::input` aux capture, latency budget, phased plan, streaming-chunk
+  test plan).
+- No changes to local-file beatgrid quality without offline benchmarks. ▶ enforced per slice — the
+  planned `LiveTracker` is additive and must leave `estimate_*` + the matrix/benches untouched.
+- Explicit routing/sync contract for mic, aux, external gear, or streaming control-only timing. ✅
+  (design note §5).
+
+**Next implementation slice (stop-for-review):** the pure `LiveTracker` core in `compas-dsp`
+(sliding-window onset→tempo→phase, allocation-free, no engine wiring) with the streaming-chunk
+harness — zero engine surface, proves the algorithm on synthetic streams before any RT plumbing.
 
 ## First implementation decision
 

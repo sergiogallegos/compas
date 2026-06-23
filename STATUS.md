@@ -47,9 +47,16 @@ clean. UI verified rendering live. **Not yet exercised with a real mic from here
 input + clicking ON). Follow-ups: aux as its own channel strip w/ EQ/FX, dedicated mic PFL/cue, and
 it's the capture path for live beat-tracking (slice 5).
 
-**Recommended next:** **online/live-input beat-tracking (slice 5)** — now unblocked by mic/aux; needs
-its own design note first. Or live stem verification (needs the 301 MB model), or release readiness
-(updater signing keypair + secrets).
+**D. Live beat-tracking slice 5 — DESIGN NOTE DONE.** `docs/research/live-input-beat-tracking.md`:
+causal OBTAIN-style tracker on a separate analysis thread (off the audio callback) fed by a fan-out
+of the shipped aux capture; publishes a `LiveBeatClock` (bpm/phase/confidence/locked) that plugs
+into the deck sync PLL as a `SyncSource::Live` virtual leader (guarded by `locked`); streaming-chunk
+test plan. No code yet — gate says stop for review after the design note.
+
+**Recommended next:** implement slice-5 **slice 1 — the pure `LiveTracker` core in `compas-dsp`**
+(sliding-window onset→tempo→phase, allocation-free, streaming-chunk harness; zero engine surface).
+Or live stem verification (needs the 301 MB model), or release readiness (updater signing keypair +
+secrets).
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
