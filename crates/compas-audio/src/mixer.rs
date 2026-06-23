@@ -1827,6 +1827,72 @@ mod tests {
         assert!(l > 2.0 && l < 4.0, "midpoint {l} not between 2 and 4");
     }
 
+    #[test]
+    fn tone_stage_passthrough_when_filter_off_and_eq_flat() {
+        // Default ToneStage: filter bypassed, EQ at identity coefficients → exact passthrough.
+        let mut tone = ToneStage::new(48_000.0);
+        let (l, r) = tone.process(0.5, -0.25);
+        assert!(
+            (l - 0.5).abs() < 1e-6 && (r + 0.25).abs() < 1e-6,
+            "expected passthrough, got {l},{r}"
+        );
+    }
+
+    #[test]
+    fn tone_stage_low_pass_attenuates_nyquist_tone() {
+        // A ±1 per-sample signal is the Nyquist tone; a low cutoff should damp it toward zero.
+        let mut tone = ToneStage::new(48_000.0);
+        tone.set_filter(FilterMode::LowPass, 500.0, 0.707);
+        let mut last = 0.0f32;
+        for i in 0..512 {
+            let x = if i % 2 == 0 { 1.0 } else { -1.0 };
+            last = tone.process(x, x).0;
+        }
+        assert!(last.abs() < 0.5, "Nyquist tone not attenuated: {last}");
+    }
+
+    #[test]
+    fn keylock_stage_engages_only_when_active_and_not_scratching() {
+        let mut k = KeylockStage::new();
+        assert!(!k.begin_frame(false), "inactive → never engaged");
+        k.set_active(true);
+        assert!(k.begin_frame(false), "active + not scratching → engaged");
+        assert!(!k.begin_frame(true), "scratching forces the direct path");
+        k.set_active(false);
+        assert!(!k.begin_frame(false), "toggled off → not engaged");
+    }
+
+    #[test]
+    fn fader_stage_applies_unity_then_replay_gain() {
+        let mut f = FaderStage::new(48_000.0);
+        // Gain initialized and targeted at 1.0 → unity from the first advanced frame.
+        f.advance();
+        let (l, r) = f.apply(1.0, 1.0);
+        assert!(
+            (l - 1.0).abs() < 1e-3 && (r - 1.0).abs() < 1e-3,
+            "unity: {l},{r}"
+        );
+        // Loudness normalization scales the output, pre-fader.
+        f.set_replay_gain(0.5);
+        let (l, _) = f.apply(1.0, 1.0);
+        assert!((l - 0.5).abs() < 1e-3, "replay gain not applied: {l}");
+    }
+
+    #[test]
+    fn fader_stage_gain_smooths_toward_zero() {
+        // ~8 ms settle time → a few thousand frames at 48 kHz drives the smoother to ~0.
+        let mut f = FaderStage::new(48_000.0);
+        f.set_gain_target(0.0);
+        for _ in 0..4_096 {
+            f.advance();
+        }
+        let (l, r) = f.apply(1.0, 1.0);
+        assert!(
+            l.abs() < 1e-2 && r.abs() < 1e-2,
+            "gain did not fall to ~0: {l},{r}"
+        );
+    }
+
     fn ramp_deck() -> DeckPlayer {
         // A 100-frame ramp so the play-head's audio reflects its position.
         let mut samples = Vec::with_capacity(200);

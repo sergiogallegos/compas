@@ -120,22 +120,44 @@ heap-backed processor state is retired through the reclaim ring and RT-side park
 
 ## Current Implementation Mapping
 
-Today, the graph is mostly inline inside `crates/compas-audio/src/mixer.rs`:
+The graph lives in `crates/compas-audio/src/mixer.rs`. Several stages are now extracted into
+dedicated structs; the playhead/source read is the remaining inline block.
 
-- `DeckPlayer::next_frame` combines playhead, keylock, filter/EQ, FX, ReplayGain, and deck gain.
+Extracted stage structs (each tested in isolation, behavior-preserving):
+
+- **`KeylockStage`** (stage 3) — the key-lock toggle, the WSOLA mix stretcher, the per-stem
+  stretchers, and the `engaged` re-prime flag. `begin_frame(scratching)` computes whether stretched
+  reading is active and re-primes on the engage edge; `mark_jumped()` flags a play-head jump
+  (seek / loop / scratch release / stem swap); `set_active()` drives the toggle.
+- **`ToneStage`** (stage 5) — DJ filter → 3-band EQ, per channel. `process(l, r)`, `set_filter`,
+  `set_eq`.
+- **`DeckFxStage`** (stage 6) — `FxChain` already has a state/processor split and serves as this
+  stage directly. (Wholesale FX-chain replacement still needs the no-drop retire path when a reorder
+  command is added.)
+- **`FaderStage`** (stage 7) — channel-gain smoother + ReplayGain factor. `advance()` ticks the
+  smoother every frame (click-free unpause); `apply(l, r)` multiplies the post-FX frame by
+  gain × replay gain. ReplayGain is still applied post-FX; the gain-staging split (moving it ahead of
+  the tone block) is deferred — see migration step 4.
+
+Still inline:
+
+- `DeckPlayer::next_frame` runs the source read (interp / stems sum, delegating to `KeylockStage`
+  for stretch) and the play-head advance (scratch / sync / tempo, loop-roll slip, beat-loop wrap)
+  before handing the frame to the tone → fx → fader stages. Extracting these into
+  `DeckSourceStage` + `PlayheadStage` is the remaining slice; they are coupled to the source buffer
+  and `KeylockStage` (WSOLA needs random access around the play-head), so the split needs care.
 - `Mixer::next_frame` applies crossfader assignment and routes to master/cue/booth/record taps.
 - `OutputRouting` owns record, cue, and booth sinks.
-- `FxChain` already has a state/processor split and is the closest current model for a modular stage.
 
 ## Migration Plan
 
 1. Add small stage structs without changing audible behavior:
-   - `DeckSourceStage`
-   - `PlayheadStage`
-   - `KeylockStage`
-   - `ToneStage`
-   - `DeckFxStage`
-   - `DeckFaderStage`
+   - `DeckSourceStage` — pending (folded into the inline read for now)
+   - `PlayheadStage` — pending (folded into the inline read for now)
+   - `KeylockStage` — ✅ done
+   - `ToneStage` — ✅ done
+   - `DeckFxStage` — ✅ `FxChain` already serves as this stage
+   - `DeckFaderStage` — ✅ done (`FaderStage`)
 2. Move code from `DeckPlayer::next_frame` stage by stage, keeping existing tests green after each
    move.
 3. Add stage-level tests before changing behavior:

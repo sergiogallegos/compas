@@ -1,10 +1,38 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-22 (beat-tracking slices + full stem
-> separation S2/S3). See `ROADMAP.md` for the full plan + **competitive feature backlog** (the source
+> Checkpoint for picking work back up. Last updated: 2026-06-22 (modular deck-graph refactor —
+> stages 1 of N). See `ROADMAP.md` for the full plan + **competitive feature backlog** (the source
 > of truth for what's next), `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
-## ▶ Resume here (latest session — 2026-06-22, pushed to `main`)
+## ▶ Resume here (latest session — deck-graph refactor, pushed to `main`)
+
+**Modular per-deck graph refactor (`docs/DECK-GRAPH.md`), three behavior-preserving slices on
+`main`, each its own commit, tests green after each:**
+
+1. **`ToneStage`** (commit `a23e644`) — DJ filter → 3-band EQ extracted from `DeckPlayer` into a
+   stage with `process`/`set_eq`/`set_filter`. Order preserved (filter → EQ).
+2. **`KeylockStage`** (commit `9d22d78`) — key-lock toggle + WSOLA mix/stem stretchers + the
+   `engaged` re-prime flag. `begin_frame(scratching)` decides+re-primes, `mark_jumped()` flags
+   play-head jumps (the ~10 ad-hoc `stretch_engaged = false` sites now name the intent),
+   `set_active()` drives the toggle.
+3. **`FaderStage`** (commit `359e42b`) — channel-gain smoother + ReplayGain. `advance()` ticks every
+   frame (click-free unpause), `apply()` does gain × replay-gain post-FX. **`FxChain` already serves
+   as `DeckFxStage`.** Added 5 stage-level unit tests; `DECK-GRAPH.md` mapping + migration checklist
+   updated.
+
+Each slice: `cargo test -p compas-audio` (41 pass), `cargo clippy --all-targets -D warnings`, `cargo
+fmt`, and `cargo check` on the Tauri app — all clean. Note: rust-analyzer shows two false-positive
+E0308s in the test module (`[f32]` arrays it infers as `f64`); the compiler is happy.
+
+**Remaining deck-graph slices (next):**
+- **`DeckSourceStage` + `PlayheadStage`** — the source read (interp / stems sum) + play-head advance
+  (scratch / sync / tempo, loop-roll slip, beat-loop wrap) are still inline in
+  `DeckPlayer::next_frame`. They're coupled to the source buffer and `KeylockStage` (WSOLA needs
+  random access around the play-head), so the split needs care — this is the hardest slice.
+- **Pregain/fader split** — move ReplayGain ahead of the tone block (a real gain-staging change);
+  deferred pending listening + regression tests (`DECK-GRAPH.md` migration step 4).
+
+## ▶ Previous session (2026-06-22 — stems + beat-tracking, pushed to `main`)
 
 **Two workstreams landed this session, all committed + pushed to `main`:**
 
