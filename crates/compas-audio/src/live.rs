@@ -5,22 +5,44 @@
 //! [`compas_dsp::LiveTracker`], and publishes the result into a lock-free [`LiveBeatClock`] the UI
 //! polls. Nothing here runs on the audio callback.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use compas_dsp::LiveTracker;
 use rtrb::Consumer;
 
 /// Lock-free snapshot of the live beat tracker, shared between the analysis thread (writer) and the
 /// UI/IPC (reader). Same atomics pattern as `MonitorLatency` / `DeckTelemetry`.
-#[derive(Default)]
+///
+/// `beat_phase` is published with a timestamp (`stamp_nanos` since `epoch`), so a reader on another
+/// clock domain — the audio thread's sync PLL — can extrapolate the phase to *now* instead of
+/// locking to a stale snapshot. [`Self::snapshot`] does that extrapolation.
 pub struct LiveBeatClock {
+    /// Shared monotonic epoch; both the writer (stamping) and readers (extrapolating) measure
+    /// elapsed time against it, so they agree on "how old is this phase" across threads.
+    epoch: Instant,
     active: AtomicBool,
     locked: AtomicBool,
     bpm_bits: AtomicU32,
     phase_bits: AtomicU32,
     conf_bits: AtomicU32,
+    /// Nanoseconds since `epoch` when `beat_phase` was last published.
+    stamp_nanos: AtomicU64,
+}
+
+impl Default for LiveBeatClock {
+    fn default() -> Self {
+        Self {
+            epoch: Instant::now(),
+            active: AtomicBool::new(false),
+            locked: AtomicBool::new(false),
+            bpm_bits: AtomicU32::new(0),
+            phase_bits: AtomicU32::new(0),
+            conf_bits: AtomicU32::new(0),
+            stamp_nanos: AtomicU64::new(0),
+        }
+    }
 }
 
 /// Plain-data view of [`LiveBeatClock`] for IPC.
@@ -46,6 +68,10 @@ impl LiveBeatClock {
     }
 
     pub(crate) fn store(&self, bpm: f32, beat_phase: f32, confidence: f32, locked: bool) {
+        // Stamp first so a reader that sees the new phase also sees a fresh-or-older timestamp
+        // (never a newer one) — extrapolation then can't run the phase backwards.
+        self.stamp_nanos
+            .store(self.epoch.elapsed().as_nanos() as u64, Ordering::Relaxed);
         self.bpm_bits.store(bpm.to_bits(), Ordering::Relaxed);
         self.phase_bits
             .store(beat_phase.to_bits(), Ordering::Relaxed);
@@ -54,12 +80,24 @@ impl LiveBeatClock {
         self.locked.store(locked, Ordering::Relaxed);
     }
 
-    /// Read a consistent-enough snapshot (relaxed loads; the fields are advisory UI state).
+    /// Read a snapshot with `beat_phase` **extrapolated to now**: the published phase advanced by
+    /// the elapsed time since it was stamped, at the published tempo. This cancels the
+    /// analysis/IPC lag so a consumer on another clock (the audio-thread PLL) locks to the live
+    /// input's *current* phase, not a stale one. Relaxed loads — the fields are advisory.
     pub fn snapshot(&self) -> LiveBeatSnapshot {
+        let bpm = f32::from_bits(self.bpm_bits.load(Ordering::Relaxed));
+        let phase = f32::from_bits(self.phase_bits.load(Ordering::Relaxed));
+        let stamp = self.stamp_nanos.load(Ordering::Relaxed);
+        let age_secs = (self.epoch.elapsed().as_nanos() as u64).saturating_sub(stamp) as f64 / 1e9;
+        let beat_phase = if bpm > 0.0 {
+            ((phase as f64 + age_secs * bpm as f64 / 60.0).rem_euclid(1.0)) as f32
+        } else {
+            phase
+        };
         LiveBeatSnapshot {
             active: self.active.load(Ordering::Relaxed),
-            bpm: f32::from_bits(self.bpm_bits.load(Ordering::Relaxed)),
-            beat_phase: f32::from_bits(self.phase_bits.load(Ordering::Relaxed)),
+            bpm,
+            beat_phase,
             confidence: f32::from_bits(self.conf_bits.load(Ordering::Relaxed)),
             locked: self.locked.load(Ordering::Relaxed),
         }
@@ -105,7 +143,13 @@ mod tests {
         let s = c.snapshot();
         assert!(s.active);
         assert_eq!(s.bpm, 128.0);
-        assert_eq!(s.beat_phase, 0.25);
+        // beat_phase is extrapolated to "now"; with a just-stamped clock the age is ~microseconds,
+        // so it stays within a hair of the stored 0.25.
+        assert!(
+            (s.beat_phase - 0.25).abs() < 0.02,
+            "beat_phase {}",
+            s.beat_phase
+        );
         assert_eq!(s.confidence, 0.6);
         assert!(s.locked);
 

@@ -81,12 +81,19 @@ it's the capture path for live beat-tracking (slice 5).
   clock holds the deck's tempo). IPC `set_deck_sync_live`; `useDeck` gains `syncLive` +
   `toggleSyncLive`; each deck has a **MIC** chip by SYNC. Test
   `live_sync_tempo_matches_a_locked_clock_and_holds_when_unlocked`. **Deferred (documented):**
-  continuous cross-domain *phase*-lock — needs a timestamped clock + extrapolation (design note §5);
-  today it's tempo-match (DJ aligns phase, like TempoOnly).
+  it's mutually exclusive with deck-leader sync.
+- **Live phase-lock refinement DONE.** `LiveBeatClock` now timestamps each published phase (shared
+  monotonic `epoch` + `stamp_nanos`); `snapshot()` **extrapolates `beat_phase` to now** (advances it
+  by the elapsed age at the published tempo), cancelling the analysis/IPC lag across clock domains.
+  The mixer's live sync now honors the deck's **sync_mode**: **Full** phase-locks to the live beat
+  with the same bounded ±8% bend as deck-to-deck sync; **TempoOnly** just matches BPM. So the deck's
+  existing **TEMPO** chip now also toggles live phase-lock vs tempo-only. Tests:
+  `live_sync_full_mode_bends_toward_the_live_phase` (+ updated tempo-only/round-trip). Engine-only;
+  no IPC/UI change.
 
-**Recommended next:** live phase-lock follow-up (timestamp the `LiveBeatClock` + extrapolate), or
-live stem verification (needs the 301 MB model), or release readiness (updater signing keypair +
-secrets). The offline beat-tracking adoption-plan queue (slices 1–5) is now complete.
+**Recommended next:** live stem verification (needs the 301 MB model + `--features stems` build), or
+release readiness (updater signing keypair + secrets). The offline beat-tracking adoption-plan queue
+(slices 1–5) and the live-input follow-ups are complete.
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 

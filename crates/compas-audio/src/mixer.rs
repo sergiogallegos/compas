@@ -1340,9 +1340,11 @@ impl Mixer {
         // Live beat clock snapshot (mic/aux). Taken once so the per-deck loop doesn't re-read it.
         let live = self.live_clock.as_ref().map(|c| c.snapshot());
         for (i, d) in self.decks.iter_mut().enumerate() {
-            // Live sync: tempo-match the deck to the mic/aux beat clock when it's locked. Phase is
-            // left to the DJ for now (cross-domain phase-lock needs a timestamped clock — a
-            // documented follow-up); an unlocked/absent clock holds the deck's tempo.
+            // Live sync: rate-match the deck to the mic/aux beat clock when it's locked. In Full
+            // mode also phase-lock — the clock's `beat_phase` is extrapolated to now (see
+            // `LiveBeatClock::snapshot`), so we null the phase error with the same bounded bend as
+            // deck-to-deck sync. TempoOnly matches BPM and lets the DJ hold the offset. An
+            // unlocked/absent clock holds the deck's own tempo.
             if d.sync_live {
                 d.sync_tempo = match live {
                     Some(s)
@@ -1353,7 +1355,16 @@ impl Mixer {
                     {
                         let master_beat_rate = s.bpm as f64 / (60.0 * self.device_rate as f64);
                         let base_adv = master_beat_rate * d.beat_interval; // follower frames/sample
-                        Some(base_adv / d.base_ratio)
+                        let bend = match d.sync_mode {
+                            SyncMode::TempoOnly => 0.0,
+                            SyncMode::Full => {
+                                let mut err = s.beat_phase as f64
+                                    - beat_phase(d.playhead, d.beat_offset, d.beat_interval);
+                                err -= err.round(); // wrap to the nearest beat [−0.5, 0.5]
+                                (SYNC_PHASE_GAIN * err).clamp(-SYNC_MAX_BEND, SYNC_MAX_BEND)
+                            }
+                        };
+                        Some(base_adv * (1.0 + bend) / d.base_ratio)
                     }
                     _ => None,
                 };
@@ -2362,10 +2373,12 @@ mod tests {
         let (_tx, mut mixer) = mixer_with_commands();
         let clock = Arc::new(LiveBeatClock::default());
         mixer.live_clock = Some(clock.clone());
-        // Deck 0 has its own grid (0.5 s beats) and follows the live clock.
+        // Deck 0 has its own grid (0.5 s beats) and follows the live clock, tempo-only so the
+        // rate-match is exact (no phase bend).
         mixer.decks[0].beat_interval = 24_000.0;
         mixer.decks[0].base_ratio = 1.0;
         mixer.decks[0].sync_live = true;
+        mixer.decks[0].sync_mode = SyncMode::TempoOnly;
 
         // Locked at 128 BPM → the follower rate-matches: frames/sample = (bpm/60/sr)·beat_interval.
         clock.set_active(true);
@@ -2384,6 +2397,40 @@ mod tests {
         assert!(
             mixer.decks[0].sync_tempo.is_none(),
             "an unlocked live clock must not drive deck sync"
+        );
+    }
+
+    #[test]
+    fn live_sync_full_mode_bends_toward_the_live_phase() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        let clock = Arc::new(LiveBeatClock::default());
+        mixer.live_clock = Some(clock.clone());
+        // Deck 0 at playhead 0 → its beat phase is 0; Full sync should phase-lock to the live beat.
+        mixer.decks[0].beat_interval = 24_000.0;
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].playhead = 0.0;
+        mixer.decks[0].beat_offset = 0.0;
+        mixer.decks[0].sync_live = true;
+        mixer.decks[0].sync_mode = SyncMode::Full;
+        clock.set_active(true);
+        let base = (128.0 / 60.0 / 48_000.0) * 24_000.0;
+
+        // Live phase 0.25 beat *ahead* of the deck → the deck must speed up (bend > 0).
+        clock.store(128.0, 0.25, 0.6, true);
+        mixer.update_sync();
+        let ahead = mixer.decks[0].sync_tempo.expect("live tempo");
+        assert!(
+            ahead > base,
+            "deck should speed up toward an ahead phase: {ahead} vs {base}"
+        );
+
+        // Live phase 0.25 beat *behind* (0.75 wraps to −0.25) → the deck must slow down (bend < 0).
+        clock.store(128.0, 0.75, 0.6, true);
+        mixer.update_sync();
+        let behind = mixer.decks[0].sync_tempo.expect("live tempo");
+        assert!(
+            behind < base,
+            "deck should slow toward a behind phase: {behind} vs {base}"
         );
     }
 
