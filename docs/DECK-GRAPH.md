@@ -129,15 +129,17 @@ Extracted stage structs (each tested in isolation, behavior-preserving):
   stretchers, and the `engaged` re-prime flag. `begin_frame(scratching)` computes whether stretched
   reading is active and re-primes on the engage edge; `mark_jumped()` flags a play-head jump
   (seek / loop / scratch release / stem swap); `set_active()` drives the toggle.
+- **`PregainStage`** (stage 4) — loudness normalization (ReplayGain) applied *before* the tone/FX
+  stages, so EQ/filter and the nonlinear bitcrusher see a predictable input level. `apply(l, r)`,
+  `set(factor)`; static factor for now (the frontend sets it on load).
 - **`ToneStage`** (stage 5) — DJ filter → 3-band EQ, per channel. `process(l, r)`, `set_filter`,
   `set_eq`.
 - **`DeckFxStage`** (stage 6) — `FxChain` already has a state/processor split and serves as this
   stage directly. (Wholesale FX-chain replacement still needs the no-drop retire path when a reorder
   command is added.)
-- **`FaderStage`** (stage 7) — channel-gain smoother + ReplayGain factor. `advance()` ticks the
-  smoother every frame (click-free unpause); `apply(l, r)` multiplies the post-FX frame by
-  gain × replay gain. ReplayGain is still applied post-FX; the gain-staging split (moving it ahead of
-  the tone block) is deferred — see migration step 4.
+- **`FaderStage`** (stage 7) — channel-gain smoother only (ReplayGain now lives in `PregainStage`).
+  `advance()` ticks the smoother every frame (click-free unpause); `apply(l, r)` multiplies the
+  post-FX frame by the channel gain.
 
 Source read + play-head advance (stages 1–2) are extracted as **methods** on `DeckPlayer`, not
 separate structs:
@@ -182,8 +184,11 @@ Still inline:
    - FX bypass/order;
    - fader smoothing and crossfader assignment;
    - cue/booth/record bus independence.
-4. Once structure is stable, move ReplayGain before the tone block if listening tests and regression
-   tests confirm the gain staging is correct.
+4. ✅ Done — ReplayGain moved ahead of the tone block as `PregainStage`. This is a real gain-staging
+   change: pre-FX normalization makes the nonlinear bitcrusher (and any future nonlinear FX) react to
+   a loudness-normalized input rather than the raw track level. Linear FX (echo/reverb/flanger) are
+   unaffected since gain commutes with them. ReplayGain defaults to 1.0 (no-op) and is only non-unity
+   when the frontend sets it on load.
 5. Use the snapshot/reclaim path for any graph swap that owns buffers or heap-backed processor
    state.
 

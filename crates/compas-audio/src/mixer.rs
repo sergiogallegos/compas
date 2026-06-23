@@ -697,16 +697,39 @@ impl KeylockStage {
     }
 }
 
-/// Output-level stage of the deck graph: loudness normalization (ReplayGain, pre-fader) and the
-/// deck's channel fader / gain. The gain smoother advances every frame — even on silent/paused
-/// frames — so unpausing is click-free; `current` holds the value advanced this frame so `apply`
-/// and the early-return paths stay consistent. Crossfader assignment stays a routing decision in the
-/// mixer, applied after this stage. RT-SAFE.
+/// Pregain stage of the deck graph: loudness normalization (ReplayGain / library loudness) applied
+/// *before* the tone and FX stages, so EQ, filter, and especially the nonlinear bitcrusher see a
+/// predictable input level regardless of the source track's loudness. Static factor for now (the
+/// frontend sets it on load); 1.0 = off. RT-SAFE.
+struct PregainStage {
+    factor: f32,
+}
+
+impl PregainStage {
+    fn new() -> Self {
+        PregainStage { factor: 1.0 }
+    }
+
+    /// Apply the loudness-normalization factor to one stereo frame. RT-SAFE.
+    #[inline]
+    fn apply(&self, l: f32, r: f32) -> (f32, f32) {
+        (l * self.factor, r * self.factor)
+    }
+
+    /// Set the ReplayGain / loudness factor; 1.0 = off. RT-SAFE.
+    fn set(&mut self, factor: f32) {
+        self.factor = factor;
+    }
+}
+
+/// Output-level stage of the deck graph: the deck's channel fader / gain, applied after FX. The
+/// smoother advances every frame — even on silent/paused frames — so unpausing is click-free;
+/// `current` holds the value advanced this frame so `apply` and the early-return paths stay
+/// consistent. Crossfader assignment stays a routing decision in the mixer, after this stage.
+/// RT-SAFE.
 struct FaderStage {
     /// Channel fader / deck gain, smoothed to avoid zipper noise.
     gain: GainSmoother,
-    /// Loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 = off.
-    replay_gain: f32,
     /// Gain value advanced this frame (see `advance`).
     current: f32,
 }
@@ -715,7 +738,6 @@ impl FaderStage {
     fn new(device_rate: f32) -> Self {
         FaderStage {
             gain: GainSmoother::new(1.0, device_rate, 8.0),
-            replay_gain: 1.0,
             current: 1.0,
         }
     }
@@ -727,22 +749,15 @@ impl FaderStage {
         self.current = self.gain.next_gain();
     }
 
-    /// Apply this frame's loudness normalization (pre-fader) and channel gain to one stereo frame.
-    /// RT-SAFE.
+    /// Apply this frame's channel gain to one stereo frame. RT-SAFE.
     #[inline]
     fn apply(&self, l: f32, r: f32) -> (f32, f32) {
-        let g = self.current * self.replay_gain;
-        (l * g, r * g)
+        (l * self.current, r * self.current)
     }
 
     /// Set the channel fader / deck gain target. RT-SAFE.
     fn set_gain_target(&mut self, gain: f32) {
         self.gain.set_target(gain);
-    }
-
-    /// Set the loudness-normalization (ReplayGain) factor; 1.0 = off. RT-SAFE.
-    fn set_replay_gain(&mut self, factor: f32) {
-        self.replay_gain = factor;
     }
 }
 
@@ -762,7 +777,9 @@ struct DeckPlayer {
     scratch_speed: f64,
     /// Key-lock (master tempo) stage: per-deck WSOLA time-stretch for the mix buffer and stems.
     keylock: KeylockStage,
-    /// Output-level stage: ReplayGain (pre-fader) + channel fader/gain.
+    /// Pregain stage: loudness normalization (ReplayGain) applied before the tone/FX stages.
+    pregain: PregainStage,
+    /// Output-level stage: the channel fader / deck gain, applied after FX.
     fader: FaderStage,
     /// Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
     tone: ToneStage,
@@ -817,6 +834,7 @@ impl DeckPlayer {
             scratching: false,
             scratch_speed: 0.0,
             keylock: KeylockStage::new(),
+            pregain: PregainStage::new(),
             fader: FaderStage::new(device_rate),
             tone: ToneStage::new(device_rate),
             xfader_assign: XfaderAssign::Thru,
@@ -940,11 +958,14 @@ impl DeckPlayer {
         let (l, r) = self.read_source_frame(engaged);
         self.advance_playhead(max);
 
+        // Pregain stage: loudness normalization (ReplayGain) before tone/FX, so EQ/filter and the
+        // nonlinear bitcrusher see a predictable input level regardless of track loudness.
+        let (l, r) = self.pregain.apply(l, r);
         // Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
         let (l, r) = self.tone.process(l, r);
         // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
         let (l, r) = self.fx.process(l, r);
-        // Fader stage: loudness normalization (pre-fader) then the channel fader / deck gain.
+        // Fader stage: the channel fader / deck gain (post-FX).
         self.fader.apply(l, r)
     }
 
@@ -1343,7 +1364,7 @@ impl Mixer {
                 }
                 AudioCommand::SetDeckReplayGain { deck, gain } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.fader.set_replay_gain(gain.clamp(0.1, 8.0));
+                        d.pregain.set(gain.clamp(0.1, 8.0));
                     }
                 }
                 AudioCommand::SetDeckEq {
@@ -1519,7 +1540,7 @@ impl Mixer {
                         d.loop_active = false;
                         d.cue_point = 0.0;
                         d.cue_previewing = false;
-                        d.fader.set_replay_gain(1.0);
+                        d.pregain.set(1.0);
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
                         d.sync_master = None;
@@ -1898,7 +1919,7 @@ mod tests {
     }
 
     #[test]
-    fn fader_stage_applies_unity_then_replay_gain() {
+    fn fader_stage_applies_channel_gain() {
         let mut f = FaderStage::new(48_000.0);
         // Gain initialized and targeted at 1.0 → unity from the first advanced frame.
         f.advance();
@@ -1907,10 +1928,18 @@ mod tests {
             (l - 1.0).abs() < 1e-3 && (r - 1.0).abs() < 1e-3,
             "unity: {l},{r}"
         );
-        // Loudness normalization scales the output, pre-fader.
-        f.set_replay_gain(0.5);
-        let (l, _) = f.apply(1.0, 1.0);
-        assert!((l - 0.5).abs() < 1e-3, "replay gain not applied: {l}");
+    }
+
+    #[test]
+    fn pregain_stage_applies_loudness_factor() {
+        let mut p = PregainStage::new();
+        assert_eq!(p.apply(1.0, -1.0), (1.0, -1.0), "default is unity");
+        p.set(0.5);
+        assert_eq!(
+            p.apply(1.0, -1.0),
+            (0.5, -0.5),
+            "loudness factor scales the frame"
+        );
     }
 
     #[test]
