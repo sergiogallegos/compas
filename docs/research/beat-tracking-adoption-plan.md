@@ -92,7 +92,7 @@ invent a tempo). `beat_tracking_resolves_half_double_tempo_trap` is now active;
 `accent_trap_150` to Solid. The diagnostics path uses the same `select_tempo`, so `selected_bpm`
 stays in lockstep with the public API (and may now be an octave of `candidates[selected]`).
 
-### 4. Sparse-intro weighting
+### 4. Sparse-intro weighting — DONE
 
 Reduce the influence of isolated intro hits when a later steady region provides stronger periodic
 evidence.
@@ -102,6 +102,16 @@ Acceptance:
 - Sparse-intro fixture remains active.
 - A new sparse-intro variant with misleading early hits passes.
 - Beatgrid phase still lands near the first real steady beat or reports lower confidence.
+
+Landed as `apply_density_weight` (called in `analyze_tempo`; see
+`docs/research/summaries/sparse-intro-weighting.md`). Each onset-envelope sample is scaled by a
+local onset *rate* (a moving average of a saturating onset presence `env/(env+mean_env)`, so loud
+hits don't read as "busy"), via `w = act/(act + 0.5·mean_act)`. Uniformly-active material is scaled
+by a constant → tempo peak and comb phase unchanged; only below-average-rate regions (sparse intros,
+breakdowns) are suppressed. New teeth test `beatgrid_resists_loud_sparse_intro` is pulled 0.224 s off
+the groove with the weighting disabled and locks on with it enabled; `misleading_sparse_124` is
+promoted Reference → Solid; `estimate_tempo_8s` benchmark shows no measurable change. Value-only — no
+public `TempoEstimate`/`BeatGrid` change.
 
 ### 5. Online/live-input tracking
 

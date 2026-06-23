@@ -81,6 +81,42 @@ fn beat_tracking_ignores_sparse_intro_before_steady_section() {
 }
 
 #[test]
+fn beatgrid_resists_loud_sparse_intro() {
+    // Harder sparse-intro variant: a few VERY loud, widely-spaced intro hits sit at a phase
+    // offset from the real groove and try to capture the downbeat. The steady section is only
+    // moderately loud, so by raw summed energy the loud isolated hits can win the phase comb —
+    // density weighting suppresses them (they're sparse) so the downbeat stays on the groove.
+    let bpm = 124.0;
+    let dur = 12.0;
+    let interval = 60.0 / bpm;
+    let mut samples = vec![0.0f32; (SR as f32 * dur) as usize];
+    // The real groove: moderate amplitude, starting at 5.0 s.
+    let groove_start = 5.0f32;
+    add_clicks(&mut samples, bpm, groove_start, dur, 1.0);
+    // Loud, widely-spaced intro hits (every 4 beats → genuinely sparse, ~1.9 s gaps) placed
+    // half a beat off the groove's phase. Because they share a phase, by raw summed energy they
+    // can capture the downbeat comb; density weighting suppresses them (low local activity).
+    let groove_phase = groove_start - (groove_start / interval).floor() * interval;
+    let intro_phase = groove_phase + 0.5 * interval;
+    for k in 0..3 {
+        add_click(&mut samples, intro_phase + k as f32 * 4.0 * interval, 6.0);
+    }
+
+    let grid = estimate_beatgrid(&samples, SR);
+    assert_bpm_close(grid.bpm, bpm, 2.0);
+
+    // The downbeat must lock to the groove (beats at 4.0 + k·interval), not the loud intro.
+    let interval = 60.0 / bpm;
+    let rel = (4.0f32 - grid.first_beat_sec).rem_euclid(interval);
+    let phase_err = rel.min(interval - rel);
+    assert!(
+        phase_err <= 0.05,
+        "downbeat pulled off the groove by {phase_err:.3}s (first_beat {:.3}s)",
+        grid.first_beat_sec
+    );
+}
+
+#[test]
 #[ignore = "reference case: requires a time-varying tempo model, not the current single-BPM estimator"]
 fn beat_tracking_reference_tempo_ramp() {
     let total_sec = 20.0;
@@ -527,9 +563,11 @@ fn evaluation_matrix() -> Vec<Case> {
             2.0,
             swung_track(126.0, 16.0),
         ),
+        // Sparse-intro weighting (slice 4): isolated misleading intro hits no longer pull the
+        // estimate off the steady groove that follows.
         bpm(
             "misleading_sparse_124",
-            Tier::Reference,
+            Tier::Solid,
             124.0,
             2.0,
             misleading_sparse_intro(124.0, 20.0),

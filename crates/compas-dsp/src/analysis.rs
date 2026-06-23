@@ -129,6 +129,7 @@ fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
     }
 
     let env_rate = sample_rate as f32 / HOP as f32;
+    apply_density_weight(&mut env, env_rate);
     let lag_min = (60.0 * env_rate / MAX_BPM).floor().max(1.0) as usize;
     let lag_max = ((60.0 * env_rate / MIN_BPM).ceil() as usize).min(env.len() - 1);
     if lag_max <= lag_min {
@@ -161,6 +162,63 @@ fn analyze_tempo(samples: &[f32], sample_rate: u32) -> Option<TempoAnalysis> {
         best_lag,
         best_r,
     })
+}
+
+/// Window for the local-activity smoothing used by [`apply_density_weight`], in seconds.
+/// A couple of seconds is long enough to span several beats (so a steady groove reads as
+/// uniformly "busy") but short enough to isolate a sparse intro from the groove after it.
+const DENSITY_WINDOW_SEC: f32 = 2.0;
+
+/// Sparse-intro weighting: scale each onset-envelope sample by how *often* onsets occur in
+/// its local neighbourhood, so a few isolated intro hits (sparse, even if very loud) cannot
+/// outweigh a denser steady groove later in the track when tempo/phase are scored.
+///
+/// "Activity" is the moving average over a [`DENSITY_WINDOW_SEC`] window of a *saturated*
+/// onset presence `env / (env + mean_env)` — saturating is the key point: a few very loud
+/// hits read the same as ordinary onsets, so density measures onset *rate*, not loudness
+/// (an energy-based measure was fooled by loud sparse hits). The per-sample weight is then
+/// `act / (act + 0.5·mean_act)`.
+///
+/// A uniformly-active envelope (a clean click track) has `act ≈ mean_act` everywhere, so
+/// every sample is scaled by the *same* constant — leaving the autocorrelation peak and the
+/// comb's argmax phase unchanged. Only regions whose onset rate is well below the track
+/// average (sparse intros, breakdowns) are suppressed. Offline.
+fn apply_density_weight(env: &mut [f32], env_rate: f32) {
+    let n = env.len();
+    let win = ((DENSITY_WINDOW_SEC * env_rate) as usize).clamp(8, n.max(8));
+    if n < 2 * win {
+        // Too short to tell "sparse" from "steady" — leave it alone rather than guess.
+        return;
+    }
+    let mean_env = env.iter().sum::<f32>() / n as f32;
+    if mean_env <= 1e-9 {
+        return;
+    }
+    // Amplitude-robust onset presence in [0, 1): a loud hit and an ordinary onset both
+    // saturate toward 1, silence maps to 0 — so the moving average below is an onset *rate*.
+    let sat: Vec<f32> = env.iter().map(|&v| v / (v + mean_env)).collect();
+    let mut prefix = Vec::with_capacity(n + 1);
+    prefix.push(0.0f32);
+    for &v in &sat {
+        prefix.push(prefix[prefix.len() - 1] + v);
+    }
+    let half = win / 2;
+    let mut act = vec![0.0f32; n];
+    let mut sum_act = 0.0f32;
+    for (i, a) in act.iter_mut().enumerate() {
+        let lo = i.saturating_sub(half);
+        let hi = (i + half + 1).min(n);
+        *a = (prefix[hi] - prefix[lo]) / (hi - lo) as f32;
+        sum_act += *a;
+    }
+    let mean_act = sum_act / n as f32;
+    if mean_act <= 1e-9 {
+        return;
+    }
+    let denom_ref = 0.5 * mean_act;
+    for (v, &a) in env.iter_mut().zip(act.iter()) {
+        *v *= a / (a + denom_ref);
+    }
 }
 
 impl TempoAnalysis {
