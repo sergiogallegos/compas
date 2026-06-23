@@ -933,15 +933,31 @@ impl DeckPlayer {
 
         let max = frames as f64 - 1.0;
 
-        // Read mode: with key-lock on, stream through the WSOLA stretcher (tempo without pitch);
-        // otherwise read directly. Scratching always uses the direct (varispeed) path. The keylock
-        // stage re-primes its stretchers on the engage edge / after a play-head jump.
+        // Source-read stage, then play-head advance: sample the source at the current play-head
+        // (stems sum or mix buffer, through the key-lock stretcher when engaged), then move the
+        // play-head for the next frame (scratch / sync / tempo, loop-roll slip, beat-loop wrap).
         let engaged = self.keylock.begin_frame(self.scratching);
+        let (l, r) = self.read_source_frame(engaged);
+        self.advance_playhead(max);
 
-        let (l, r) = if let Some(stems) = self.stems.as_ref() {
+        // Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
+        let (l, r) = self.tone.process(l, r);
+        // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
+        let (l, r) = self.fx.process(l, r);
+        // Fader stage: loudness normalization (pre-fader) then the channel fader / deck gain.
+        self.fader.apply(l, r)
+    }
+
+    /// Source-read stage: sample the source at the current play-head and return one stereo frame.
+    /// Sums the separated stems (each at its smoothed gain) when loaded, otherwise reads the mix
+    /// buffer; `engaged` selects the key-lock stretcher over direct interpolation. The play-head is
+    /// not advanced here. RT-SAFE.
+    #[inline]
+    fn read_source_frame(&mut self, engaged: bool) -> (f32, f32) {
+        if let Some(stems) = self.stems.as_ref() {
             // Stems overlay: read each separated buffer at the same play-head and sum by its
             // smoothed gain. Key-lock stretches each stem independently. The mix `buffer` still
-            // governs `frames`/`max`/advance above, so play-head math is unchanged.
+            // governs frames/advance, so play-head math is unchanged.
             let mut sl = 0.0f32;
             let mut sr = 0.0f32;
             for (i, stem) in stems.iter().enumerate() {
@@ -969,13 +985,29 @@ impl DeckPlayer {
                 sr += xr * g;
             }
             (sl, sr)
-        } else if engaged {
-            self.keylock
-                .stretch_mix(&buf.samples, frames, self.base_ratio, self.playhead)
+        } else if let Some(buf) = self.buffer.as_ref() {
+            let frames = buf.frames();
+            if engaged {
+                self.keylock
+                    .stretch_mix(&buf.samples, frames, self.base_ratio, self.playhead)
+            } else {
+                interp_stereo(
+                    &buf.samples,
+                    frames,
+                    self.playhead.clamp(0.0, frames as f64 - 1.0),
+                )
+            }
         } else {
-            interp_stereo(&buf.samples, frames, self.playhead.clamp(0.0, max))
-        };
+            (0.0, 0.0)
+        }
+    }
 
+    /// Play-head advance stage: move the play-head one frame. Scratching drives it directly from the
+    /// jog rate (clamped to `max` = last frame index); otherwise it advances at the sync (PLL) or
+    /// user tempo, the loop-roll shadow play-head advances unlooped, and a beat loop wraps back to
+    /// loop-in. RT-SAFE.
+    #[inline]
+    fn advance_playhead(&mut self, max: f64) {
         if self.scratching {
             // Hand-driven read rate (can be negative); clamp to the track bounds.
             self.playhead = (self.playhead + self.base_ratio * self.scratch_speed).clamp(0.0, max);
@@ -984,8 +1016,8 @@ impl DeckPlayer {
             let rate = self.sync_tempo.unwrap_or(self.tempo);
             let advance = self.base_ratio * rate;
             self.playhead += advance;
-            // Loop-roll slip: the shadow play-head advances unlooped, so a release lands
-            // exactly where the track would be had the roll never happened.
+            // Loop-roll slip: the shadow play-head advances unlooped, so a release lands exactly
+            // where the track would be had the roll never happened.
             if self.roll_active {
                 self.slip_playhead += advance;
             }
@@ -997,13 +1029,6 @@ impl DeckPlayer {
                 }
             }
         }
-
-        // Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
-        let (l, r) = self.tone.process(l, r);
-        // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
-        let (l, r) = self.fx.process(l, r);
-        // Fader stage: loudness normalization (pre-fader) then the channel fader / deck gain.
-        self.fader.apply(l, r)
     }
 }
 
@@ -1928,6 +1953,43 @@ mod tests {
         assert_eq!(
             mixer.decks[0].playhead, 0.0,
             "PLAY at end rewinds to the cue point instead of staying parked"
+        );
+    }
+
+    #[test]
+    fn read_source_frame_reads_mix_at_the_playhead() {
+        // ramp_deck's frame i is (i, i); reading at an integer play-head returns that frame.
+        let mut d = ramp_deck();
+        d.playhead = 5.0;
+        let (l, r) = d.read_source_frame(false); // not engaged → direct interpolation
+        assert!(
+            (l - 5.0).abs() < 1e-4 && (r - 5.0).abs() < 1e-4,
+            "read frame 5: {l},{r}"
+        );
+    }
+
+    #[test]
+    fn advance_playhead_reverse_scratch_clamps_at_zero() {
+        let mut d = ramp_deck();
+        d.playhead = 1.0;
+        d.scratching = true;
+        d.scratch_speed = -10.0; // pulled backward past the start
+        d.advance_playhead(99.0);
+        assert_eq!(d.playhead, 0.0, "reverse scratch clamps at the start");
+    }
+
+    #[test]
+    fn advance_playhead_wraps_inside_an_active_loop() {
+        let mut d = ramp_deck(); // base_ratio = tempo = 1.0 → advance of 1 frame
+        d.loop_active = true;
+        d.loop_in = 10.0;
+        d.loop_out = 20.0;
+        d.playhead = 19.5;
+        d.advance_playhead(99.0); // 19.5 + 1 = 20.5 → wraps to 10.5
+        assert!(
+            (d.playhead - 10.5).abs() < 1e-9,
+            "wrapped to loop_in + overshoot: {}",
+            d.playhead
         );
     }
 

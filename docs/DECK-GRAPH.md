@@ -139,21 +139,36 @@ Extracted stage structs (each tested in isolation, behavior-preserving):
   gain × replay gain. ReplayGain is still applied post-FX; the gain-staging split (moving it ahead of
   the tone block) is deferred — see migration step 4.
 
+Source read + play-head advance (stages 1–2) are extracted as **methods** on `DeckPlayer`, not
+separate structs:
+
+- **`read_source_frame(engaged)`** (stages 1–2 read) — samples the source at the current play-head:
+  sums the stems (each at its smoothed gain) when loaded, otherwise reads the mix buffer, through
+  `KeylockStage` when engaged or direct cubic-Hermite interpolation otherwise.
+- **`advance_playhead(max)`** (stage 2 transport) — moves the play-head one frame: scratch rate, or
+  sync (PLL) / user tempo, plus the loop-roll shadow play-head and beat-loop wrap.
+
+`next_frame` is now a readable pipeline: `fader.advance` → early-outs → `read_source_frame` →
+`advance_playhead` → `tone` → `fx` → `fader.apply`.
+
+These stay methods (sharing `DeckPlayer`'s transport fields) rather than a `PlayheadStage` struct on
+purpose: `playhead` and the loop/sync/scratch fields are read/written ~100× across the audio-thread
+**sync PLL**, telemetry publishing, and the seek/loop/scratch/beat-jump command handlers. The PLL in
+particular needs simultaneous `&mut` access to *two* decks' play-heads, which the flat-field layout
+supports cleanly; moving the play-head into a sub-struct would cascade through all those sites and
+fight the borrow checker in RT-critical code, for no behavior gain. The methods give the
+isolation/testability benefit (each is unit-tested) at near-zero risk.
+
 Still inline:
 
-- `DeckPlayer::next_frame` runs the source read (interp / stems sum, delegating to `KeylockStage`
-  for stretch) and the play-head advance (scratch / sync / tempo, loop-roll slip, beat-loop wrap)
-  before handing the frame to the tone → fx → fader stages. Extracting these into
-  `DeckSourceStage` + `PlayheadStage` is the remaining slice; they are coupled to the source buffer
-  and `KeylockStage` (WSOLA needs random access around the play-head), so the split needs care.
 - `Mixer::next_frame` applies crossfader assignment and routes to master/cue/booth/record taps.
 - `OutputRouting` owns record, cue, and booth sinks.
 
 ## Migration Plan
 
 1. Add small stage structs without changing audible behavior:
-   - `DeckSourceStage` — pending (folded into the inline read for now)
-   - `PlayheadStage` — pending (folded into the inline read for now)
+   - `DeckSourceStage` — ✅ extracted as the `read_source_frame` method (see note above)
+   - `PlayheadStage` — ✅ extracted as the `advance_playhead` method (see note above)
    - `KeylockStage` — ✅ done
    - `ToneStage` — ✅ done
    - `DeckFxStage` — ✅ `FxChain` already serves as this stage
