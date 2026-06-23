@@ -23,8 +23,11 @@ behavior-preserving, each its own commit, tests green after each:
 - 8 isolated stage tests added; **45 compas-audio tests pass**, clippy `--all-targets -D warnings`,
   fmt, and Tauri `cargo check` all clean. (rust-analyzer shows 2 false-positive E0308s in the test
   module — `[f32]` arrays it guesses as `f64`; the compiler is happy.)
-- **Only deferred piece:** the **pregain/fader split** (move ReplayGain ahead of the tone block — a
-  real gain-staging change, needs listening + regression tests; `DECK-GRAPH.md` migration step 4).
+- **Pregain/fader split — DONE** (`d962b03`): `PregainStage` (ReplayGain) now applies *before*
+  tone/FX; `FaderStage` is channel-gain-only after FX. Intentional behavior change — the nonlinear
+  bitcrusher now sees a loudness-normalized input (linear FX unaffected; ReplayGain defaults to 1.0).
+  A listening test on loud/quiet tracks with the crusher engaged is still advisable. **This was the
+  last open refactor item — the modular deck graph is now complete.**
 
 **2. PLAY-at-end auto-rewind fix** (`1df4bf1`) — pressing PLAY while the play-head is parked at/past
 the end now rewinds to the cue point (was a no-op). New test `play_at_end_rewinds_to_the_cue_point`.
