@@ -87,10 +87,10 @@ pub struct TempoDiagnostics {
 }
 
 /// Tempo search range. Results outside are octave-folded into it.
-const MIN_BPM: f32 = 70.0;
-const MAX_BPM: f32 = 180.0;
-const FRAME: usize = 1024;
-const HOP: usize = 256;
+pub(crate) const MIN_BPM: f32 = 70.0;
+pub(crate) const MAX_BPM: f32 = 180.0;
+pub(crate) const FRAME: usize = 1024;
+pub(crate) const HOP: usize = 256;
 /// Most diagnostic tempo candidates surfaced by [`estimate_tempo_diagnostics`].
 const MAX_CANDIDATES: usize = 6;
 
@@ -332,7 +332,7 @@ impl TempoAnalysis {
 /// comfortable beat-matching tempo: it nudges genuine 2:1 ties toward the danceable octave
 /// while staying flat enough not to override a clearly-dominant tempo. Returns a weight in
 /// `(0, 1]`. See `docs/research/summaries/half-double-tempo-scoring.md`.
-fn tempo_prior(bpm: f32) -> f32 {
+pub(crate) fn tempo_prior(bpm: f32) -> f32 {
     /// Preferred tempo center (BPM).
     const PREF_BPM: f32 = 125.0;
     /// Width of the resonance in natural-log tempo units (wide → gentle preference).

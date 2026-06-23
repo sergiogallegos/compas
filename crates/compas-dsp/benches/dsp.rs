@@ -3,7 +3,9 @@
 //! estimator, so regressions in either show up as wall-clock changes.
 
 use compas_dsp::analysis::{estimate_beatgrid, estimate_tempo};
-use compas_dsp::{Biquad, BiquadCoeffs, Crossfader, Delay, Reverb, ThreeBandEq, TimeStretch};
+use compas_dsp::{
+    Biquad, BiquadCoeffs, Crossfader, Delay, LiveTracker, Reverb, ThreeBandEq, TimeStretch,
+};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 const BLOCK: usize = 1024;
@@ -210,6 +212,44 @@ fn bench_beatgrid(c: &mut Criterion) {
     });
 }
 
+fn bench_live_tracker(c: &mut Criterion) {
+    // Steady-state per-chunk cost of the causal live tracker: warm it up past the window so tempo
+    // re-estimation is active, then bench pushing one ~23 ms chunk. Cost must be bounded and
+    // independent of total stream length (it operates over a fixed-size sliding window).
+    let sr = 44_100u32;
+    let chunk = 1024usize;
+    let period = (sr as f32 * 60.0 / 128.0) as usize;
+    let make = |frames: usize, off: usize| {
+        let mut s = vec![0.0f32; frames];
+        let mut t = 0usize;
+        while t < frames {
+            for k in 0..64 {
+                if let Some(v) = s.get_mut(t + k) {
+                    *v = (1.0 - k as f32 / 64.0) * if k % 2 == 0 { 1.0 } else { -1.0 };
+                }
+            }
+            t += period;
+        }
+        let _ = off;
+        s
+    };
+    let warm = make(sr as usize * 10, 0); // 10 s warm-up so the window is full
+    let one = make(chunk, 0);
+    c.bench_function("live_tracker_push_1024", |bn| {
+        bn.iter_batched_ref(
+            || {
+                let mut t = LiveTracker::new(sr);
+                t.push(&warm);
+                t
+            },
+            |t| {
+                t.push(black_box(&one));
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+}
+
 criterion_group!(
     benches,
     bench_biquad,
@@ -220,6 +260,7 @@ criterion_group!(
     bench_time_stretch,
     bench_tempo,
     bench_tempo_signal_matrix,
-    bench_beatgrid
+    bench_beatgrid,
+    bench_live_tracker
 );
 criterion_main!(benches);

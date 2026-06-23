@@ -13,9 +13,11 @@
 
 pub mod analysis;
 pub mod fx;
+pub mod live;
 pub mod rt;
 
 pub use fx::{Effect, FxChain, FxSlot};
+pub use live::{LiveEstimate, LiveTracker};
 
 pub use rt::{
     meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,

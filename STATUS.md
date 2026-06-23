@@ -47,16 +47,27 @@ clean. UI verified rendering live. **Not yet exercised with a real mic from here
 input + clicking ON). Follow-ups: aux as its own channel strip w/ EQ/FX, dedicated mic PFL/cue, and
 it's the capture path for live beat-tracking (slice 5).
 
-**D. Live beat-tracking slice 5 — DESIGN NOTE DONE.** `docs/research/live-input-beat-tracking.md`:
-causal OBTAIN-style tracker on a separate analysis thread (off the audio callback) fed by a fan-out
-of the shipped aux capture; publishes a `LiveBeatClock` (bpm/phase/confidence/locked) that plugs
-into the deck sync PLL as a `SyncSource::Live` virtual leader (guarded by `locked`); streaming-chunk
-test plan. No code yet — gate says stop for review after the design note.
+**D. Live beat-tracking slice 5 — DESIGN NOTE + CORE DONE.**
+- **Design note:** `docs/research/live-input-beat-tracking.md` (causal OBTAIN-style tracker on a
+  separate analysis thread off the audio callback, fed by a fan-out of the shipped aux capture;
+  publishes a `LiveBeatClock` that plugs into the deck sync PLL as a `SyncSource::Live` virtual
+  leader guarded by `locked`; streaming-chunk test plan).
+- **Implementation slice 1 — `compas_dsp::LiveTracker` (pure, no engine surface).** Causal:
+  incremental spectral-flux onset → sliding-window (8 s) autocorrelation tempo, octave-resolved via
+  the shared `tempo_prior` → comb-locked phase re-combed each ~16-hop update and advanced by a
+  forward oscillator between updates. Allocation-free after `new` (FFT via `process_with_scratch`);
+  `push(&[f32]) -> Option<LiveEstimate{bpm,beat_phase,confidence,locked}>` buffers partial hops so
+  chunk boundaries never change the result. 7-test streaming harness
+  (`tests/live_beat_tracking_harness.rs`): cold-start lock, faster-tempo, relock-after-step,
+  dropout, false-onset robustness, silence-no-lock, and the **no-look-ahead determinism** invariant
+  (whole-signal == arbitrary chunks, bit-identical). `cargo bench live_tracker_push_1024` ≈ 19.6 µs
+  per 23 ms chunk (~0.08% RT, stream-length-independent); `estimate_tempo_8s` unchanged. Offline
+  `estimate_*` + matrix untouched (only made a few consts/`tempo_prior` `pub(crate)`).
 
-**Recommended next:** implement slice-5 **slice 1 — the pure `LiveTracker` core in `compas-dsp`**
-(sliding-window onset→tempo→phase, allocation-free, streaming-chunk harness; zero engine surface).
-Or live stem verification (needs the 301 MB model), or release readiness (updater signing keypair +
-secrets).
+**Recommended next:** slice-5 **slice 2 — engine wiring**: fan out the aux capture to an analysis
+ring, run `LiveTracker` on a dedicated thread, publish a `LiveBeatClock` (atomics) + IPC/telemetry
+so the UI shows live BPM/confidence/locked. Then slice 3 (`SyncSource::Live` virtual leader in the
+deck PLL). Or live stem verification (needs the 301 MB model), or release readiness (signing keys).
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
