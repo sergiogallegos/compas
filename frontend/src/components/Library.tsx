@@ -139,13 +139,6 @@ export const Library = forwardRef<
             {lib.tracks.length}
           </span>
         </div>
-        {["Spotify", "Apple Music", "SoundCloud"].map((s) => (
-          <div key={s} className="src-row src-row--muted" title="Streaming integration is paused (Phase 2)">
-            <span className="src-dot" style={{ background: "var(--text-disabled)" }} />
-            <span className="src-name">{s}</span>
-            <span className="ctrl-tag">P2</span>
-          </div>
-        ))}
 
         <div className="overline src-group src-group--crates">
           CRATES
