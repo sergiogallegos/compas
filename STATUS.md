@@ -1,11 +1,44 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-22 (deck-graph refactor complete +
-> local-only/Traktor-style UI). **All commits below are local on `main` — NOT pushed yet.** See
-> `ROADMAP.md` for the full plan + **competitive feature backlog**, `CHANGELOG.md` for history,
-> `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-23 (Pioneer-style UI pass + one-window
+> layout + beat-tracking sparse-intro weighting). **Everything below is committed AND pushed to
+> `origin/main`** (through `84e1a55`). See `ROADMAP.md` for the full plan + **competitive feature
+> backlog**, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 
-## ▶ Resume here (latest session — committed to local `main`, not pushed)
+## ▶ Resume here (latest session — 2026-06-23, pushed to `main`)
+
+**Two workstreams landed, all committed + pushed:**
+
+**A. Pioneer-style UI/UX pass + one-window layout (`4d94b26`).** Frontend + one small engine fix:
+- **Backlit LED buttons** — lit states glow at the edge/ring over a dark face instead of full-color
+  fills (PLAY/CUE/SYNC, `.chip--on`, active loops). **PLAY/CUE and loop IN/OUT are now circular**
+  (round Pioneer buttons); CUE = round amber ring, PLAY = round green ring.
+- **Flashing states** — PLAY ready-pulse (loaded+paused), end-of-track amber flash on the platter +
+  PLAY (`END_WARNING_SECS = 30`), active-loop pulse. Loops light **amber/orange** (Pioneer), not green.
+- **Loop IN feedback** — IN now arms (amber-lit) + flashes OUT + draws a loop-in marker on the
+  waveform (was a silent no-op; `loop.armed` added to `useDeck`).
+- **Smooth waveform** — rAF-interpolated GPU transform of the SVG `<g>` between the 30 Hz position
+  samples (no path re-render), with right-edge overscan. Fixes the steppy scroll.
+- **One-window layout (Traktor/Serato-style, no page scroll)** — compacted deck/waveform footprint +
+  **2-column channel-knob grid** in the mixer so decks + mixer + library all fit; the track list
+  scrolls internally with a clean thin scrollbar (`.tl-body`/`.tracklist` got `min-height: 0`).
+- **RT meter fix** — skip the first 3 cold warmup callbacks from the overrun count; the startup
+  "callback overrun 1" was a harmless false positive (`mixer.rs`).
+- **User-confirmed in the running app:** round backlit CUE/PLAY, one-window fit, library usable.
+
+**B. Beat-tracking sparse-intro weighting — adoption-plan slice 4 DONE (`84e1a55`).** `analyze_tempo`
+now applies `apply_density_weight`: scales each onset-envelope sample by a local onset *rate* (moving
+average of a saturating `env/(env+mean_env)`), so isolated/loud intro hits can't capture tempo/phase
+from a denser groove. Clean tracks scaled by a constant → tempo peak + comb phase unchanged. Teeth
+test `beatgrid_resists_loud_sparse_intro` (0.224 s off without it, locks on with it);
+`misleading_sparse_124` promoted Reference → Solid; bench unchanged (~5.45 ms). Source note:
+`docs/research/summaries/sparse-intro-weighting.md`. **Only offline beat-tracking slice left is #5
+(online/live-input) — needs its own design note and pairs with mic/aux inputs.**
+
+**Recommended next:** **microphone / aux inputs** (in progress — pairs with the live beat-tracking
+design); then live stem verification (needs the 301 MB model), or release readiness (signing keys).
+
+## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
 **1. Modular per-deck graph refactor — DONE (`docs/DECK-GRAPH.md`).** All stages extracted,
 behavior-preserving, each its own commit, tests green after each:
@@ -48,7 +81,7 @@ the end now rewinds to the cue point (was a no-op). New test `play_at_end_rewind
 front — live stem verification (needs the 301 MB model), beat-tracking slice #4 (sparse-intro
 weighting), microphone/aux inputs, or release readiness (updater signing keypair + secrets).
 
-## ▶ Previous session (2026-06-22 — stems + beat-tracking, pushed to `main`)
+## ▶ Earlier session (2026-06-22 — stems + beat-tracking, pushed to `main`)
 
 **Two workstreams landed this session, all committed + pushed to `main`:**
 
