@@ -17,7 +17,6 @@ use std::time::{Duration, Instant};
 mod controllers;
 mod db;
 mod hid;
-mod spotify;
 
 use compas_audio::{
     compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
@@ -2530,7 +2529,6 @@ pub fn run() {
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(engine)
@@ -2666,8 +2664,7 @@ pub fn run() {
             hid_connect,
             hid_disconnect,
             midi_disconnect,
-            set_midi_synth,
-            spotify::spotify_listen
+            set_midi_synth
         ])
         .run(tauri::generate_context!());
 

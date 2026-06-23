@@ -13,13 +13,6 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-maximize",
-    "core:window:allow-unmaximize",
-    {
-      "identifier": "opener:allow-open-url",
-      "allow": [
-        { "url": "https://accounts.spotify.com/*" },
-        { "url": "https://*.spotify.com/*" }
-      ]
-    }
+    "core:window:allow-unmaximize"
   ]
 }
