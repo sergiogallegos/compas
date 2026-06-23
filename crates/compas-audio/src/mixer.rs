@@ -697,6 +697,55 @@ impl KeylockStage {
     }
 }
 
+/// Output-level stage of the deck graph: loudness normalization (ReplayGain, pre-fader) and the
+/// deck's channel fader / gain. The gain smoother advances every frame — even on silent/paused
+/// frames — so unpausing is click-free; `current` holds the value advanced this frame so `apply`
+/// and the early-return paths stay consistent. Crossfader assignment stays a routing decision in the
+/// mixer, applied after this stage. RT-SAFE.
+struct FaderStage {
+    /// Channel fader / deck gain, smoothed to avoid zipper noise.
+    gain: GainSmoother,
+    /// Loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 = off.
+    replay_gain: f32,
+    /// Gain value advanced this frame (see `advance`).
+    current: f32,
+}
+
+impl FaderStage {
+    fn new(device_rate: f32) -> Self {
+        FaderStage {
+            gain: GainSmoother::new(1.0, device_rate, 8.0),
+            replay_gain: 1.0,
+            current: 1.0,
+        }
+    }
+
+    /// Advance the gain smoother one frame. Call unconditionally — even on silent/paused frames —
+    /// so unpausing is click-free. RT-SAFE.
+    #[inline]
+    fn advance(&mut self) {
+        self.current = self.gain.next_gain();
+    }
+
+    /// Apply this frame's loudness normalization (pre-fader) and channel gain to one stereo frame.
+    /// RT-SAFE.
+    #[inline]
+    fn apply(&self, l: f32, r: f32) -> (f32, f32) {
+        let g = self.current * self.replay_gain;
+        (l * g, r * g)
+    }
+
+    /// Set the channel fader / deck gain target. RT-SAFE.
+    fn set_gain_target(&mut self, gain: f32) {
+        self.gain.set_target(gain);
+    }
+
+    /// Set the loudness-normalization (ReplayGain) factor; 1.0 = off. RT-SAFE.
+    fn set_replay_gain(&mut self, factor: f32) {
+        self.replay_gain = factor;
+    }
+}
+
 /// Per-deck audio state living on the audio thread.
 struct DeckPlayer {
     buffer: Option<Arc<DeckBuffer>>,
@@ -713,7 +762,8 @@ struct DeckPlayer {
     scratch_speed: f64,
     /// Key-lock (master tempo) stage: per-deck WSOLA time-stretch for the mix buffer and stems.
     keylock: KeylockStage,
-    gain: GainSmoother,
+    /// Output-level stage: ReplayGain (pre-fader) + channel fader/gain.
+    fader: FaderStage,
     /// Tonal-shaping stage: DJ filter → 3-band EQ, per channel.
     tone: ToneStage,
     /// Crossfader routing (4-deck assign matrix): A side, B side, or straight through.
@@ -748,8 +798,6 @@ struct DeckPlayer {
     cue_mode: CueMode,
     /// True while a CDJ-style preview (play-while-held) is active, so release snaps back.
     cue_previewing: bool,
-    /// Loudness-normalization (ReplayGain) factor applied pre-fader; 1.0 = off.
-    replay_gain: f32,
     /// Optional separated stems (`[drums, bass, other, vocals]`) overlaying the mix. When present,
     /// the deck reads and sums these instead of `buffer`; the mix `buffer` still drives length,
     /// play-head, beatgrid, and `base_ratio`. Retired through the reclaim ring like `buffer`.
@@ -769,7 +817,7 @@ impl DeckPlayer {
             scratching: false,
             scratch_speed: 0.0,
             keylock: KeylockStage::new(),
-            gain: GainSmoother::new(1.0, device_rate, 8.0),
+            fader: FaderStage::new(device_rate),
             tone: ToneStage::new(device_rate),
             xfader_assign: XfaderAssign::Thru,
             cue: false,
@@ -788,7 +836,6 @@ impl DeckPlayer {
             cue_point: 0.0,
             cue_mode: CueMode::Cdj,
             cue_previewing: false,
-            replay_gain: 1.0,
             stems: None,
             stem_gains: std::array::from_fn(|_| GainSmoother::new(1.0, device_rate, 8.0)),
         }
@@ -862,7 +909,7 @@ impl DeckPlayer {
     /// Pull and process one stereo frame. RT-SAFE.
     #[inline]
     fn next_frame(&mut self) -> (f32, f32) {
-        let g = self.gain.next_gain(); // advance smoother even when paused (click-free unpause)
+        self.fader.advance(); // advance gain smoother even when paused (click-free unpause)
 
         let Some(buf) = self.buffer.as_ref() else {
             return (0.0, 0.0);
@@ -955,8 +1002,8 @@ impl DeckPlayer {
         let (l, r) = self.tone.process(l, r);
         // Per-deck FX chain (echo → reverb → flanger → bitcrusher by default), post-EQ.
         let (l, r) = self.fx.process(l, r);
-        let g = g * self.replay_gain; // loudness normalization, pre-fader
-        (l * g, r * g)
+        // Fader stage: loudness normalization (pre-fader) then the channel fader / deck gain.
+        self.fader.apply(l, r)
     }
 }
 
@@ -1266,12 +1313,12 @@ impl Mixer {
                 AudioCommand::SetMasterGain(g) => self.master.set_target(g),
                 AudioCommand::SetDeckGain { deck, gain } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.gain.set_target(gain);
+                        d.fader.set_gain_target(gain);
                     }
                 }
                 AudioCommand::SetDeckReplayGain { deck, gain } => {
                     if let Some(d) = self.decks.get_mut(deck) {
-                        d.replay_gain = gain.clamp(0.1, 8.0);
+                        d.fader.set_replay_gain(gain.clamp(0.1, 8.0));
                     }
                 }
                 AudioCommand::SetDeckEq {
@@ -1437,7 +1484,7 @@ impl Mixer {
                         d.loop_active = false;
                         d.cue_point = 0.0;
                         d.cue_previewing = false;
-                        d.replay_gain = 1.0;
+                        d.fader.set_replay_gain(1.0);
                         d.beat_offset = beat_offset;
                         d.beat_interval = beat_interval;
                         d.sync_master = None;
