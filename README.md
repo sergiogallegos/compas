@@ -69,7 +69,8 @@ Contributing & orientation: see `CONTRIBUTING.md` and `AGENTS.md`. Changes are t
 - **Windows:** [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
   (preinstalled on Windows 11) and the **MSVC build tools** (Visual Studio C++ workload).
 - **macOS:** Xcode Command Line Tools (`xcode-select --install`).
-- **Tauri CLI:** `cargo install tauri-cli --version "^2"` (or use `npm run tauri` from `frontend/`).
+- **Tauri CLI:** `cargo install tauri-cli --version "^2"` (or use the copy installed under
+  `frontend/node_modules` — see below).
 
 ## Build & run the engine (no GUI, fast)
 
@@ -87,13 +88,16 @@ cargo clippy           # lint
 # 1) install frontend deps (once)
 cd frontend && npm install && cd ..
 
-# 2) dev mode (hot-reload UI + native rebuilds)
+# 2) dev mode (hot-reload UI + native rebuilds) — run from the repo root
 cargo tauri dev
-#   ...or, without the global CLI:
-cd frontend && npm run tauri dev
+#   ...or, without the global CLI, use the one in frontend/node_modules:
+frontend/node_modules/.bin/tauri dev          # macOS/Linux
+frontend\node_modules\.bin\tauri.cmd dev      # Windows
 ```
 
-`cargo tauri dev` runs the Vite dev server (`http://localhost:5173`) and the native shell together.
+Run these from the **repo root**, not from `frontend/`: the Tauri CLI locates `src-tauri/tauri.conf.json`
+by searching subfolders of the current directory. `cargo tauri dev` runs the Vite dev server
+(`http://localhost:5173`) and the native shell together.
 
 ## Build a release bundle
 

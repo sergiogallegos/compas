@@ -29,7 +29,10 @@ cargo fmt --all
 cargo bench -p compas-dsp                    # DSP hot-path benchmarks
 node scripts/check-versions.mjs              # Cargo/Tauri/frontend version consistency
 cd frontend && npm install && npm run typecheck && npm run build
-cargo tauri dev                              # run the full app (or frontend\node_modules\.bin\tauri.cmd dev)
+cargo tauri dev                              # run the full app — from the repo root, NOT frontend/
+# no global CLI? use the local one (still from repo root):
+#   frontend/node_modules/.bin/tauri dev       (macOS/Linux)
+#   frontend\node_modules\.bin\tauri.cmd dev   (Windows)
 node scripts/make-test-audio.mjs             # synth 120/128 BPM test WAVs into samples/
 pwsh scripts/install-hooks.ps1               # opt in to local pre-commit checks
 ```
