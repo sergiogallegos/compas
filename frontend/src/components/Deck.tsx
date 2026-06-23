@@ -297,7 +297,11 @@ export function Deck({
           >
             <div
               className="platter-ring"
-              style={{ background: `conic-gradient(${color} ${frac * 360}deg, rgba(255,255,255,.07) 0)` }}
+              style={{
+                // Position ring: elapsed in the deck color, the remaining track kept visible (not
+                // near-invisible) so the whole circle reads as song progress, CDJ-style.
+                background: `conic-gradient(${color} ${frac * 360}deg, rgba(255,255,255,.16) 0)`,
+              }}
             />
             <div className="platter-disc" style={{ transform: `rotate(${scratching ? dragAngle : spin}deg)` }}>
               <div className="platter-marker" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
