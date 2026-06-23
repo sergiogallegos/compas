@@ -1438,6 +1438,16 @@ fn db_create_crate(db: State<'_, db::Db>, name: String, is_playlist: bool) -> Re
     with_db(&db, |c| db::create_crate(c, &name, is_playlist))
 }
 
+/// Create a smart crate from a saved search-grammar query (populates dynamically).
+#[tauri::command]
+fn db_create_smart_crate(
+    db: State<'_, db::Db>,
+    name: String,
+    query: String,
+) -> Result<i64, String> {
+    with_db(&db, |c| db::create_smart_crate(c, &name, &query))
+}
+
 #[tauri::command]
 fn db_delete_crate(db: State<'_, db::Db>, id: i64) -> Result<(), String> {
     with_db(&db, |c| db::delete_crate(c, id))
@@ -2749,6 +2759,7 @@ pub fn run() {
             db_history,
             db_search,
             db_create_crate,
+            db_create_smart_crate,
             db_delete_crate,
             db_list_crates,
             db_add_to_crate,

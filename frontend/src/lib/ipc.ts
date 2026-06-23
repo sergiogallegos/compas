@@ -272,11 +272,16 @@ export interface DbCrate {
   name: string;
   is_playlist: boolean;
   track_count: number;
+  /** True for a smart crate (populated by a saved search rather than manual membership). */
+  is_smart: boolean;
 }
-/** Search with the grammar: `bpm:120-128 key:8A artist:foo title:bar -live` (terms AND-ed). */
+/** Search with the grammar: `bpm:120-128 key:8A artist:foo title:bar -live · OR groups`. */
 export const dbSearch = (query: string) => invoke<DbTrack[]>("db_search", { query });
 export const dbCreateCrate = (name: string, isPlaylist: boolean) =>
   invoke<number>("db_create_crate", { name, isPlaylist });
+/** Create a smart crate from a saved search query (populates dynamically). */
+export const dbCreateSmartCrate = (name: string, query: string) =>
+  invoke<number>("db_create_smart_crate", { name, query });
 export const dbDeleteCrate = (id: number) => invoke("db_delete_crate", { id });
 export const dbListCrates = () => invoke<DbCrate[]>("db_list_crates");
 export const dbAddToCrate = (crateId: number, path: string) =>

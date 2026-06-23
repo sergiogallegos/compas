@@ -71,7 +71,9 @@ CREATE TABLE IF NOT EXISTS crates (
     name        TEXT NOT NULL,
     -- 0 = crate (unordered set), 1 = playlist (ordered by position)
     is_playlist INTEGER NOT NULL DEFAULT 0,
-    created_at  INTEGER NOT NULL
+    created_at  INTEGER NOT NULL,
+    -- Non-null for a smart crate: a saved search-grammar query that populates it dynamically.
+    query       TEXT
 );
 
 CREATE TABLE IF NOT EXISTS crate_tracks (
@@ -86,6 +88,9 @@ CREATE TABLE IF NOT EXISTS crate_tracks (
 pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
     let conn = Connection::open(path)?;
     conn.execute_batch(SCHEMA)?;
+    // Idempotent migration for DBs created before smart crates: add the column if missing.
+    // (Errors — i.e. "duplicate column" — are expected and ignored.)
+    let _ = conn.execute("ALTER TABLE crates ADD COLUMN query TEXT", []);
     Ok(Db(Mutex::new(conn)))
 }
 
@@ -471,6 +476,8 @@ pub struct CrateRow {
     pub name: String,
     pub is_playlist: bool,
     pub track_count: i64,
+    /// True for a smart crate (populated by a saved search rather than manual membership).
+    pub is_smart: bool,
 }
 
 /// Create a crate (`is_playlist = false`) or ordered playlist and return its id.
@@ -478,6 +485,16 @@ pub fn create_crate(c: &Connection, name: &str, is_playlist: bool) -> rusqlite::
     c.execute(
         "INSERT INTO crates (name, is_playlist, created_at) VALUES (?1, ?2, ?3)",
         params![name, is_playlist as i64, now()],
+    )?;
+    Ok(c.last_insert_rowid())
+}
+
+/// Create a smart crate: a saved search-grammar `query` that populates the crate dynamically
+/// (see [`build_search`]). Smart crates ignore manual membership.
+pub fn create_smart_crate(c: &Connection, name: &str, query: &str) -> rusqlite::Result<i64> {
+    c.execute(
+        "INSERT INTO crates (name, is_playlist, created_at, query) VALUES (?1, 0, ?2, ?3)",
+        params![name, now(), query],
     )?;
     Ok(c.last_insert_rowid())
 }
@@ -490,15 +507,18 @@ pub fn delete_crate(c: &Connection, id: i64) -> rusqlite::Result<()> {
 pub fn list_crates(c: &Connection) -> rusqlite::Result<Vec<CrateRow>> {
     let mut stmt = c.prepare(
         "SELECT cr.id, cr.name, cr.is_playlist,
-                (SELECT COUNT(*) FROM crate_tracks ct WHERE ct.crate_id = cr.id)
+                (SELECT COUNT(*) FROM crate_tracks ct WHERE ct.crate_id = cr.id),
+                cr.query
          FROM crates cr ORDER BY cr.name ASC",
     )?;
     let rows = stmt.query_map([], |r| {
+        let query: Option<String> = r.get(4)?;
         Ok(CrateRow {
             id: r.get(0)?,
             name: r.get(1)?,
             is_playlist: r.get::<_, i64>(2)? != 0,
             track_count: r.get(3)?,
+            is_smart: query.is_some(),
         })
     })?;
     rows.collect()
@@ -526,8 +546,23 @@ pub fn remove_from_crate(c: &Connection, crate_id: i64, path: &str) -> rusqlite:
     Ok(())
 }
 
-/// List a crate's tracks — ordered by position for playlists, by title for crates.
+/// List a crate's tracks. A smart crate (non-null `query`) runs its saved search instead of
+/// returning stored membership; manual crates/playlists return their members (playlists ordered
+/// by position, crates by title).
 pub fn crate_tracks(c: &Connection, crate_id: i64) -> rusqlite::Result<Vec<TrackRow>> {
+    // Smart crate? Run its saved query.
+    let query: Option<String> = c
+        .query_row(
+            "SELECT query FROM crates WHERE id = ?1",
+            params![crate_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    if let Some(q) = query {
+        return search_tracks(c, &q);
+    }
+
     let mut stmt = c.prepare(
         "SELECT t.path, t.title, t.artist, t.duration_ms, t.bpm, t.key_camelot, t.key_name,
                 t.grid_offset_sec, t.gain, t.play_count, t.last_played_at
@@ -704,5 +739,43 @@ mod tests {
 
         delete_crate(&c, id).unwrap();
         assert!(list_crates(&c).unwrap().is_empty());
+    }
+
+    #[test]
+    fn smart_crate_runs_its_saved_query() {
+        let c = mem();
+        add_track(&c, "/a.mp3", "Da Funk", "Daft Punk", 1).unwrap();
+        upsert_analysis(&c, "/a.mp3", 123.0, 0.9, 0.0, 0.5, "8A", "A minor").unwrap();
+        add_track(&c, "/b.mp3", "Genesis", "Justice", 1).unwrap();
+        upsert_analysis(&c, "/b.mp3", 128.0, 0.9, 0.0, 0.5, "9A", "E minor").unwrap();
+
+        let id = create_smart_crate(&c, "Daft only", "artist:daft").unwrap();
+        // list_crates flags it smart.
+        let cr = list_crates(&c).unwrap();
+        assert_eq!(cr.len(), 1);
+        assert!(cr[0].is_smart);
+        assert!(!cr[0].is_playlist);
+
+        // crate_tracks runs the saved query, not stored membership.
+        let tracks = crate_tracks(&c, id).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].path, "/a.mp3");
+
+        // Adding a second matching track updates the smart crate automatically.
+        add_track(&c, "/c.mp3", "Aerodynamic", "Daft Punk", 1).unwrap();
+        assert_eq!(crate_tracks(&c, id).unwrap().len(), 2);
+
+        // A plain crate still returns manual membership (no query).
+        let plain = create_crate(&c, "Manual", false).unwrap();
+        add_to_crate(&c, plain, "/b.mp3").unwrap();
+        assert!(
+            !list_crates(&c)
+                .unwrap()
+                .iter()
+                .find(|x| x.id == plain)
+                .unwrap()
+                .is_smart
+        );
+        assert_eq!(crate_tracks(&c, plain).unwrap().len(), 1);
     }
 }

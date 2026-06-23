@@ -3,6 +3,7 @@ import {
   dbAddToCrate,
   dbCrateTracks,
   dbCreateCrate,
+  dbCreateSmartCrate,
   dbListCrates,
   dbPlanNext,
   dbSearch,
@@ -79,6 +80,14 @@ export const Library = forwardRef<
       .then(() => refreshCrates())
       .catch(() => {});
   };
+  // Save the current search as a smart crate that re-runs the query whenever it's opened.
+  const saveSearchAsCrate = () => {
+    const query = q.trim();
+    if (!query) return;
+    dbCreateSmartCrate(`✨ ${query}`, query)
+      .then(() => refreshCrates())
+      .catch(() => {});
+  };
   const viewCrate = (c: DbCrate) => {
     setActiveCrate(c);
     setSuggestFor(null);
@@ -142,7 +151,12 @@ export const Library = forwardRef<
 
         <div className="overline src-group src-group--crates">
           CRATES
-          <button className="crate-add" onClick={createCrate} title="New crate">＋</button>
+          <span style={{ display: "flex", gap: 4 }}>
+            {q.trim() && (
+              <button className="crate-add" onClick={saveSearchAsCrate} title={`Save this search as a smart crate: ${q.trim()}`}>✨</button>
+            )}
+            <button className="crate-add" onClick={createCrate} title="New crate">＋</button>
+          </span>
         </div>
         {crates.length === 0 && <div className="src-row src-row--muted"><span className="src-name">No crates</span></div>}
         {crates.map((c) => (
@@ -150,11 +164,11 @@ export const Library = forwardRef<
             key={c.id}
             className={`src-row ${activeCrate?.id === c.id ? "src-row--active" : ""}`}
             onClick={() => viewCrate(c)}
-            title="Click to view; the ＋ on a track adds it to the selected crate"
+            title={c.is_smart ? "Smart crate — re-runs its saved search when opened" : "Click to view; the ＋ on a track adds it to the selected crate"}
           >
-            <span className="src-dot" style={{ background: c.is_playlist ? "var(--stream)" : "var(--status-warn)" }} />
+            <span className="src-dot" style={{ background: c.is_smart ? "var(--accent)" : c.is_playlist ? "var(--stream)" : "var(--status-warn)" }} />
             <span className="src-name">{c.name}</span>
-            <span className="ctrl-tag">{c.track_count}</span>
+            <span className="ctrl-tag">{c.is_smart ? "✨" : c.track_count}</span>
           </div>
         ))}
       </aside>
@@ -262,7 +276,7 @@ export const Library = forwardRef<
                     >
                       Q
                     </button>
-                    {activeCrate && (
+                    {activeCrate && !activeCrate.is_smart && (
                       <button
                         className="tl-next"
                         onClick={(e) => { e.stopPropagation(); addToActiveCrate(t); }}
