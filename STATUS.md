@@ -64,10 +64,19 @@ it's the capture path for live beat-tracking (slice 5).
   per 23 ms chunk (~0.08% RT, stream-length-independent); `estimate_tempo_8s` unchanged. Offline
   `estimate_*` + matrix untouched (only made a few consts/`tempo_prior` `pub(crate)`).
 
-**Recommended next:** slice-5 **slice 2 — engine wiring**: fan out the aux capture to an analysis
-ring, run `LiveTracker` on a dedicated thread, publish a `LiveBeatClock` (atomics) + IPC/telemetry
-so the UI shows live BPM/confidence/locked. Then slice 3 (`SyncSource::Live` virtual leader in the
-deck PLL). Or live stem verification (needs the 301 MB model), or release readiness (signing keys).
+- **Implementation slice 2 — engine wiring DONE.** The aux capture now fans each frame into a
+  second "analysis" ring (`open_aux_input` takes an optional analysis `Producer`); a dedicated
+  non-RT thread (`compas_audio::run_live_analysis`) drains it, downmixes to mono, runs the
+  `LiveTracker` at the **input device's** sample rate, and publishes a lock-free
+  `LiveBeatClock` (bpm/phase/confidence/locked/active). `start_aux_input` spawns it after learning
+  the device rate; it self-terminates when capture stops (producer dropped → ring abandoned). New
+  IPC `live_beat_clock`; `useAux` polls it ≈8 Hz while capture is on; the **AUX row shows a live
+  BPM + a lock dot** (green when locked). 2 new tests (`clock_round_trips…`,
+  `run_live_analysis_locks_on_a_click…`). clippy `-D warnings` (engine+app) + fmt + tsc/vite clean.
+
+**Recommended next:** slice-5 **slice 3 — `SyncSource::Live` virtual leader**: let a deck beat-match
+to the live clock through the existing PLL (guarded by `locked`). Or live stem verification (needs
+the 301 MB model), or release readiness (updater signing keypair + secrets).
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 

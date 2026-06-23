@@ -34,13 +34,21 @@ pub struct AuxInput {
     _stream: cpal::Stream,
     /// The device name actually opened (for logging / UI confirmation).
     pub device_name: String,
+    /// The input device's sample rate — the rate captured frames are pushed at, so a live
+    /// beat tracker draining the analysis tap knows its time base.
+    pub sample_rate: u32,
 }
 
 /// Open the named input device (or the default when `None`) and start pushing captured audio
-/// (interleaved stereo f32) into `producer`. A mono device is duplicated to both channels; a
-/// device with more than two channels contributes only its first two. Must be called on, and
-/// the result kept on, a dedicated thread (`cpal::Stream` is not `Send`).
-pub fn open_aux_input(device_name: Option<&str>, producer: Producer<f32>) -> Result<AuxInput> {
+/// (interleaved stereo f32) into `producer`, and — if given — a copy into `analysis` (the live
+/// beat-tracking tap). A mono device is duplicated to both channels; a device with more than two
+/// channels contributes only its first two. Must be called on, and the result kept on, a dedicated
+/// thread (`cpal::Stream` is not `Send`).
+pub fn open_aux_input(
+    device_name: Option<&str>,
+    producer: Producer<f32>,
+    analysis: Option<Producer<f32>>,
+) -> Result<AuxInput> {
     let host = cpal::default_host();
     let device = match device_name {
         Some(want) => host
@@ -59,11 +67,12 @@ pub fn open_aux_input(device_name: Option<&str>, producer: Producer<f32>) -> Res
         .map_err(|e| CompasError::Device(e.to_string()))?;
     let sample_format = supported.sample_format();
     let config: cpal::StreamConfig = supported.into();
+    let sample_rate = config.sample_rate.0;
 
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => build_input_stream::<f32>(&device, &config, producer),
-        cpal::SampleFormat::I16 => build_input_stream::<i16>(&device, &config, producer),
-        cpal::SampleFormat::U16 => build_input_stream::<u16>(&device, &config, producer),
+        cpal::SampleFormat::F32 => build_input_stream::<f32>(&device, &config, producer, analysis),
+        cpal::SampleFormat::I16 => build_input_stream::<i16>(&device, &config, producer, analysis),
+        cpal::SampleFormat::U16 => build_input_stream::<u16>(&device, &config, producer, analysis),
         other => Err(CompasError::Device(format!(
             "unsupported sample format: {other:?}"
         ))),
@@ -74,16 +83,18 @@ pub fn open_aux_input(device_name: Option<&str>, producer: Producer<f32>) -> Res
     Ok(AuxInput {
         _stream: stream,
         device_name: name,
+        sample_rate,
     })
 }
 
 /// Build the aux input stream for sample type `T`, converting each captured frame to a stereo
-/// f32 pair and pushing it into `producer`. Drops on overflow so the capture callback never
-/// blocks (RT-safe on the capture side too).
+/// f32 pair and pushing it into `producer` (and a copy into `analysis`, if present, for the live
+/// beat tracker). Drops on overflow so the capture callback never blocks (RT-safe on capture too).
 fn build_input_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mut producer: Producer<f32>,
+    mut analysis: Option<Producer<f32>>,
 ) -> Result<cpal::Stream>
 where
     T: SizedSample + Send + 'static,
@@ -111,6 +122,14 @@ where
                     if producer.slots() >= 2 {
                         let _ = producer.push(l);
                         let _ = producer.push(r);
+                    }
+                    // Fan out a copy to the analysis tap (live beat tracking). Independent overflow
+                    // handling so a slow analysis drain never backs up the mixer feed.
+                    if let Some(a) = analysis.as_mut() {
+                        if a.slots() >= 2 {
+                            let _ = a.push(l);
+                            let _ = a.push(r);
+                        }
                     }
                 }
             },

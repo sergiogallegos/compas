@@ -145,19 +145,17 @@
 .deck--mirror .readouts,
 .deck--mirror .deck-body { flex-direction: row-reverse; }
 .platter-col { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-/* jog platter — vinyl-style (Traktor/Serato): rubber rim, concentric grooves, spinning marker,
-   and a record-label center under the BPM readout. */
-.platter { width: 118px; height: 118px; position: relative; border-radius: 50%; background: radial-gradient(circle at 50% 42%, #26262e 0%, #131318 72%); border: 1px solid var(--border-hairline-strong); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: inset 0 0 0 6px rgba(0,0,0,.32), inset 0 2px 10px rgba(0,0,0,.6), 0 6px 18px rgba(0,0,0,.5); }
-.platter--scratch { cursor: grabbing; border-color: var(--text-tertiary); }
-/* record label disc (non-rotating) behind the centered readout */
-.platter::after { content: ""; position: absolute; inset: 40px; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #2a2a33, #16161b); border: 1px solid var(--border-hairline); box-shadow: inset 0 1px 2px rgba(0,0,0,.5); z-index: 1; pointer-events: none; }
-.platter-ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; z-index: 0; -webkit-mask: radial-gradient(circle, transparent 56%, #000 57%); mask: radial-gradient(circle, transparent 56%, #000 57%); }
-.platter-disc { position: absolute; inset: 6px; border-radius: 50%; pointer-events: none; z-index: 1; will-change: transform; background: repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,.05) 0 1px, transparent 1px 5px); }
-/* faint diameter line so rotation reads clearly even when the marker is on the far side */
-.platter-disc::after { content: ""; position: absolute; left: 50%; top: 9%; bottom: 9%; width: 2px; transform: translateX(-50%); background: linear-gradient(180deg, transparent, rgba(255,255,255,.1) 22%, rgba(255,255,255,.1) 78%, transparent); }
-.platter-marker { position: absolute; left: calc(50% - 1.5px); top: 4px; width: 3px; height: 18px; border-radius: 2px; z-index: 2; }
-.platter-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; z-index: 3; }
-.platter-bpm { font-weight: 700; font-size: 15px; color: #fff; }
+/* Minimal virtual-deck jog: dark touch surface, slim progress ring, and a small rotating cue mark. */
+.platter { width: 122px; height: 122px; position: relative; isolation: isolate; border-radius: 50%; background: radial-gradient(circle at 50% 42%, #22252c 0 32%, #15171d 33% 67%, #0d0e12 68%); border: 1px solid rgba(255,255,255,.12); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -10px 20px rgba(0,0,0,.5), 0 7px 18px rgba(0,0,0,.5); }
+.platter--scratch { cursor: grabbing; border-color: rgba(255,255,255,.24); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), inset 0 -10px 20px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.045), 0 8px 22px rgba(0,0,0,.6); }
+.platter::before { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: radial-gradient(circle, transparent 0 67%, rgba(255,255,255,.12) 68% 70%, rgba(255,255,255,.035) 71% 78%, transparent 79%); z-index: 0; pointer-events: none; }
+.platter::after { content: ""; position: absolute; inset: 35px; border-radius: 50%; background: radial-gradient(circle at 50% 36%, #252933, #101116 74%); border: 1px solid rgba(255,255,255,.11); box-shadow: inset 0 1px 1px rgba(255,255,255,.07), inset 0 -6px 12px rgba(0,0,0,.46), 0 0 0 5px rgba(0,0,0,.24); z-index: 2; pointer-events: none; }
+.platter-ring { position: absolute; inset: 10px; border-radius: 50%; pointer-events: none; z-index: 1; filter: saturate(1.1); -webkit-mask: radial-gradient(circle, transparent 61%, #000 62% 66%, transparent 67%); mask: radial-gradient(circle, transparent 61%, #000 62% 66%, transparent 67%); }
+.platter-disc { position: absolute; inset: 12px; border-radius: 50%; pointer-events: none; z-index: 1; will-change: transform; background: radial-gradient(circle, transparent 0 54%, rgba(255,255,255,.13) 55% 56%, transparent 57%), conic-gradient(from 0deg, rgba(255,255,255,.18) 0 1deg, transparent 1deg 360deg); -webkit-mask: radial-gradient(circle, transparent 0 55%, #000 56% 76%, transparent 77%); mask: radial-gradient(circle, transparent 0 55%, #000 56% 76%, transparent 77%); }
+.platter-disc::after { content: ""; position: absolute; left: 50%; top: 4px; width: 2px; height: 18px; transform: translateX(-50%); border-radius: 2px; background: rgba(255,255,255,.78); box-shadow: 0 0 5px rgba(255,255,255,.22); }
+.platter-marker { position: absolute; left: calc(50% - 2px); top: 4px; width: 4px; height: 18px; border-radius: 2px; z-index: 2; }
+.platter-center { position: absolute; inset: 33px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; z-index: 3; border-radius: 50%; }
+.platter-bpm { font-weight: 800; font-size: 16px; color: #fff; line-height: 1; }
 .platter-btns { display: flex; gap: 8px; }
 /* main CUE — amber (CDJ/Serato convention); flashes bright while held */
 /* CUE: backlit amber — dark face, amber LED ring + soft glow; brighter on press. */
@@ -185,8 +183,8 @@
 /* End-of-track: platter outer glow flashes amber, keeping its base inset shading. */
 .platter--warn { animation: platter-warn 0.55s ease-in-out infinite; }
 @keyframes platter-warn {
-  0%, 100% { box-shadow: inset 0 0 0 6px rgba(0,0,0,.32), inset 0 2px 10px rgba(0,0,0,.6), 0 6px 18px rgba(0,0,0,.5), 0 0 0 0 rgba(var(--cue-rgb), 0); }
-  50% { box-shadow: inset 0 0 0 6px rgba(0,0,0,.32), inset 0 2px 10px rgba(0,0,0,.6), 0 6px 18px rgba(0,0,0,.5), 0 0 18px 3px rgba(var(--cue-rgb), 0.75); }
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -10px 20px rgba(0,0,0,.5), 0 7px 18px rgba(0,0,0,.5), 0 0 0 0 rgba(var(--cue-rgb), 0); }
+  50% { box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), inset 0 -10px 20px rgba(0,0,0,.5), 0 7px 18px rgba(0,0,0,.5), 0 0 18px 3px rgba(var(--cue-rgb), 0.75); }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn-play--ready, .btn-play--warn, .platter--warn, .chip--loopon, .chip--armflash { animation: none; }
@@ -359,6 +357,10 @@
 .phones { display: flex; align-items: center; gap: 8px; padding-top: 5px; margin-top: 3px; border-top: 1px solid var(--border-hairline); color: var(--text-secondary); }
 .phones-dev { flex: 1; min-width: 0; background: var(--surface-control); color: var(--text-secondary); border: 1px solid var(--border-hairline-strong); border-radius: var(--r-pad); padding: 3px 5px; font-size: 10px; }
 .phones-dev:disabled { opacity: 0.7; }
+/* Aux live beat readout: a lock dot + BPM (lights green when the tracker is locked). */
+.aux-bpm { display: flex; align-items: center; gap: 4px; flex: none; font-size: 10px; font-weight: 600; color: var(--text-secondary); min-width: 40px; justify-content: flex-end; }
+.aux-lock { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--text-disabled); transition: background 120ms, box-shadow 120ms; }
+.aux-lock--on { background: var(--status-ok); box-shadow: 0 0 6px var(--status-ok); }
 .phones .chip.phones-on { flex: none; padding: 4px 9px; font-size: 9px; }
 
 .knob { display: flex; flex-direction: column; align-items: center; gap: 3px; touch-action: none; user-select: none; -webkit-user-select: none; }

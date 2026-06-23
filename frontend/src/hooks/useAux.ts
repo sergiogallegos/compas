@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import {
   inTauri,
   listInputDevices,
+  liveBeatClock,
   setAuxGain,
   startAuxInput,
   stopAuxInput,
+  type LiveBeat,
 } from "../lib/ipc";
 
 /** Aux / microphone input: capture from an input device and sum it into the master bus. */
@@ -18,6 +20,8 @@ export interface AuxApi {
   toggle: () => Promise<void>;
   gain: number;
   setGain: (v: number) => void;
+  /** Live beat-tracker readout (tempo/phase/confidence/lock), or null when capture is off. */
+  live: LiveBeat | null;
 }
 
 export function useAux(): AuxApi {
@@ -26,6 +30,7 @@ export function useAux(): AuxApi {
   const [enabled, setEnabled] = useState(false);
   const [connectedName, setConnectedName] = useState<string | null>(null);
   const [gain, setGainState] = useState(1.0);
+  const [live, setLive] = useState<LiveBeat | null>(null);
 
   const rescan = useCallback(() => {
     if (!inTauri()) return;
@@ -35,6 +40,26 @@ export function useAux(): AuxApi {
   useEffect(() => {
     rescan();
   }, [rescan]);
+
+  // Poll the live beat clock while capture is on (≈8 Hz — snappy enough for a BPM readout).
+  useEffect(() => {
+    if (!enabled || !inTauri()) {
+      setLive(null);
+      return;
+    }
+    let alive = true;
+    const id = window.setInterval(() => {
+      liveBeatClock()
+        .then((b) => {
+          if (alive) setLive(b);
+        })
+        .catch(() => {});
+    }, 125);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, [enabled]);
 
   const toggle = useCallback(async () => {
     try {
@@ -69,5 +94,6 @@ export function useAux(): AuxApi {
     toggle,
     gain,
     setGain,
+    live,
   };
 }

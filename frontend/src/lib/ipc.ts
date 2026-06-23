@@ -561,6 +561,17 @@ export const stopAuxInput = () => invoke("stop_aux_input");
 /** Aux/mic input level, summed into the master bus. */
 export const setAuxGain = (value: number) => invoke("set_aux_gain", { value });
 
+/** Live beat-tracker readout for the aux input. */
+export interface LiveBeat {
+  active: boolean;
+  bpm: number;
+  beat_phase: number;
+  confidence: number;
+  locked: boolean;
+}
+/** Current live beat-tracker readout (tempo/phase/confidence/lock of the aux input). */
+export const liveBeatClock = () => invoke<LiveBeat>("live_beat_clock");
+
 // ---- Stem separation --------------------------------------------------------------
 
 export interface StemsModelStatus {

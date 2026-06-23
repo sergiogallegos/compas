@@ -124,6 +124,19 @@ function Aux({ aux }: { aux: AuxApi }) {
       >
         {aux.enabled ? "ON" : "OFF"}
       </button>
+      {aux.enabled && (
+        <span
+          className="aux-bpm mono"
+          title={
+            aux.live?.locked
+              ? `Live beat lock · ${aux.live.bpm.toFixed(1)} BPM (conf ${(aux.live.confidence ?? 0).toFixed(2)})`
+              : "Listening for a beat…"
+          }
+        >
+          <span className={`aux-lock ${aux.live?.locked ? "aux-lock--on" : ""}`} />
+          {aux.live?.locked ? aux.live.bpm.toFixed(1) : "— —"}
+        </span>
+      )}
       <Knob value={aux.gain} min={0} max={2} size={22} label="AUX" onChange={aux.setGain} />
     </div>
   );

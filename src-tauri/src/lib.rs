@@ -2146,9 +2146,21 @@ fn set_booth_volume(state: State<'_, EngineHandle>, value: f32) -> Result<(), St
 }
 
 /// Owns the aux/mic input thread (mirrors [`CueState`]/[`BoothState`], but capturing). The cpal
-/// input stream lives on the spawned thread; dropping the sender ends it.
+/// input stream lives on the spawned thread; dropping the sender ends it. The live beat clock is
+/// shared with the analysis thread (writer) and the `live_beat_clock` command (reader).
 struct AuxState {
     stop: Mutex<Option<Sender<()>>>,
+    clock: Arc<compas_audio::LiveBeatClock>,
+}
+
+/// Serializable snapshot of the live beat tracker for the UI.
+#[derive(Clone, Copy, serde::Serialize)]
+struct LiveBeat {
+    active: bool,
+    bpm: f32,
+    beat_phase: f32,
+    confidence: f32,
+    locked: bool,
 }
 
 /// List available input devices (mics / line-in); first is usually the system default.
@@ -2157,7 +2169,8 @@ fn list_input_devices() -> Vec<String> {
     compas_audio::input_device_names()
 }
 
-/// Stop the active aux-input thread (if any) and tell the mixer to stop draining.
+/// Stop the active aux-input thread (if any) and tell the mixer to stop draining. The live
+/// analysis thread self-terminates once the input stream (and its analysis tap) is dropped.
 fn stop_aux_internal(state: &EngineHandle, aux: &AuxState) {
     let _ = state.send(EngineMsg::StopAuxInput);
     if let Ok(mut guard) = aux.stop.lock() {
@@ -2166,7 +2179,8 @@ fn stop_aux_internal(state: &EngineHandle, aux: &AuxState) {
 }
 
 /// Start aux/mic capture on `device` (None = default input). A dedicated thread owns the cpal
-/// input stream and pushes captured audio into a ring; the mixer drains it into the master bus.
+/// input stream and pushes captured audio into a ring the mixer drains into the master bus; the
+/// stream also fans a copy into an analysis ring a second thread runs the live beat tracker over.
 /// Returns the opened device's name.
 #[tauri::command]
 fn start_aux_input(
@@ -2176,38 +2190,48 @@ fn start_aux_input(
 ) -> Result<String, String> {
     stop_aux_internal(&state, &aux); // replace any existing aux input
 
-    // The input stream produces; the mixer consumes. Hand the consumer to the mixer first so it
-    // is ready when capture starts filling the ring.
+    // The input stream produces; the mixer consumes (sum into master) and the analysis thread
+    // consumes (live beat tracking). Hand the mixer its consumer first so it's ready to drain.
     let (producer, consumer) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
+    let (analysis_tx, analysis_rx) = RingBuffer::<f32>::new(CUE_RING_CAPACITY);
     state.send(EngineMsg::StartAuxInput { source: consumer })?;
 
     let (stop_tx, stop_rx) = channel::<()>();
-    let (ready_tx, ready_rx) = channel::<Result<String, String>>();
+    let (ready_tx, ready_rx) = channel::<Result<(String, u32), String>>();
     let spawn = thread::Builder::new()
         .name("compas-aux-input".to_string())
-        .spawn(
-            move || match compas_audio::open_aux_input(device.as_deref(), producer) {
+        .spawn(move || {
+            match compas_audio::open_aux_input(device.as_deref(), producer, Some(analysis_tx)) {
                 Ok(input) => {
-                    let _ = ready_tx.send(Ok(input.device_name.clone()));
+                    let _ = ready_tx.send(Ok((input.device_name.clone(), input.sample_rate)));
                     let _ = stop_rx.recv(); // park until told to stop (or the sender is dropped)
-                    drop(input); // closes the input stream
+                    drop(input); // closes the input stream (and drops the analysis producer)
                 }
                 Err(e) => {
                     let _ = ready_tx.send(Err(e.to_string()));
                 }
-            },
-        );
+            }
+        });
     if let Err(e) = spawn {
         let _ = state.send(EngineMsg::StopAuxInput);
         return Err(format!("could not spawn aux input thread: {e}"));
     }
 
     match ready_rx.recv() {
-        Ok(Ok(name)) => {
+        Ok(Ok((name, sample_rate))) => {
             if let Ok(mut guard) = aux.stop.lock() {
                 *guard = Some(stop_tx);
             }
-            tracing::info!("aux input started → {name}");
+            // Spawn the live-analysis thread now that we know the input's sample rate. It drains
+            // the analysis ring and exits on its own when the input stream (producer) is dropped.
+            let clock = aux.clock.clone();
+            if let Err(e) = thread::Builder::new()
+                .name("compas-live-beat".to_string())
+                .spawn(move || compas_audio::run_live_analysis(analysis_rx, sample_rate, clock))
+            {
+                tracing::warn!("live beat analysis thread not started: {e}");
+            }
+            tracing::info!("aux input started → {name} @ {sample_rate} Hz");
             Ok(name)
         }
         Ok(Err(e)) => {
@@ -2231,6 +2255,20 @@ fn stop_aux_input(state: State<'_, EngineHandle>, aux: State<'_, AuxState>) -> R
 #[tauri::command]
 fn set_aux_gain(state: State<'_, EngineHandle>, value: f32) -> Result<(), String> {
     state.send(EngineMsg::AuxGain(value))
+}
+
+/// Current live beat-tracker readout (tempo/phase/confidence/lock of the aux input). Poll this
+/// while aux capture is on for a live BPM display.
+#[tauri::command]
+fn live_beat_clock(aux: State<'_, AuxState>) -> LiveBeat {
+    let s = aux.clock.snapshot();
+    LiveBeat {
+        active: s.active,
+        bpm: s.bpm,
+        beat_phase: s.beat_phase,
+        confidence: s.confidence,
+        locked: s.locked,
+    }
 }
 
 // ----------------------------------------------------------------------------------
@@ -2642,6 +2680,7 @@ pub fn run() {
         })
         .manage(AuxState {
             stop: Mutex::new(None),
+            clock: Arc::new(compas_audio::LiveBeatClock::default()),
         })
         .manage(hid::HidState::default())
         .setup(move |app| {
@@ -2738,6 +2777,7 @@ pub fn run() {
             start_aux_input,
             stop_aux_input,
             set_aux_gain,
+            live_beat_clock,
             note_on,
             note_off,
             all_notes_off,
