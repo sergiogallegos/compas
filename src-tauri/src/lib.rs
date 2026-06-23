@@ -1180,14 +1180,18 @@ fn set_deck_stem_gain(
     state.send(EngineMsg::SetDeckStemGain { deck, stem, gain })
 }
 
-/// Default htdemucs model download URL.
-///
-/// FLAGGED: the repo/filename and checksum must be verified against the published model before the
-/// first stem-enabled release (the spike used `StemSplitio/htdemucs-onnx`, ~301 MB fp32). Override
-/// at runtime with `COMPAS_HTDEMUCS_URL`; set `COMPAS_HTDEMUCS_SHA256` to enable integrity checking.
+/// Default htdemucs model download URL — verified against `StemSplitio/htdemucs-onnx` (the model
+/// the export spike used; the single-file fp32 graph, 316,446,953 bytes ≈ 301 MB). Override at
+/// runtime with `COMPAS_HTDEMUCS_URL`.
 #[cfg(feature = "stems")]
 const HTDEMUCS_URL: &str =
     "https://huggingface.co/StemSplitio/htdemucs-onnx/resolve/main/htdemucs.onnx";
+
+/// Expected SHA-256 of `htdemucs.onnx` (the Hugging Face LFS oid for the file above), enforced on
+/// download so a truncated/tampered/wrong model is rejected. Override with `COMPAS_HTDEMUCS_SHA256`
+/// (e.g. for a mirror or the fp16-weights variant).
+#[cfg(feature = "stems")]
+const HTDEMUCS_SHA256: &str = "68d0bf16428ef66e692cdff8a9ccf28f1ef3f69440d57e58605a4cc55fcc5e74";
 
 #[cfg(feature = "stems")]
 #[derive(serde::Serialize, Clone)]
@@ -1271,16 +1275,17 @@ fn run_model_download(app: &AppHandle) -> Result<(), String> {
         let _ = std::fs::remove_file(&tmp);
         return Err("downloaded an empty file".into());
     }
-    // Optional integrity check — only when a checksum is configured (we can't bake a verified one yet).
-    if let Ok(expected) = std::env::var("COMPAS_HTDEMUCS_SHA256") {
-        if !expected.is_empty() {
-            let got = format!("{:x}", hasher.finalize());
-            if !got.eq_ignore_ascii_case(&expected) {
-                let _ = std::fs::remove_file(&tmp);
-                return Err(format!(
-                    "model checksum mismatch (expected {expected}, got {got})"
-                ));
-            }
+    // Integrity check: enforce the baked SHA-256 by default; a non-empty COMPAS_HTDEMUCS_SHA256
+    // overrides it (mirror / fp16 variant), and setting it empty disables the check.
+    let expected =
+        std::env::var("COMPAS_HTDEMUCS_SHA256").unwrap_or_else(|_| HTDEMUCS_SHA256.to_string());
+    if !expected.is_empty() {
+        let got = format!("{:x}", hasher.finalize());
+        if !got.eq_ignore_ascii_case(&expected) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(format!(
+                "model checksum mismatch (expected {expected}, got {got})"
+            ));
         }
     }
 
