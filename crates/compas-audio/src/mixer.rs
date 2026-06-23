@@ -1412,6 +1412,16 @@ impl Mixer {
                 }
                 AudioCommand::SetDeckPlaying { deck, playing } => {
                     if let Some(d) = self.decks.get_mut(deck) {
+                        // Pressing PLAY while the play-head is parked at/past the end (a finished
+                        // track auto-stops there) rewinds to the cue point first, so the deck
+                        // restarts instead of silently refusing to play.
+                        if playing {
+                            let frames = d.buffer.as_ref().map_or(0, |b| b.frames());
+                            if frames > 0 && d.playhead >= frames as f64 {
+                                d.playhead = d.cue_point;
+                                d.keylock.mark_jumped();
+                            }
+                        }
                         d.playing = playing;
                     }
                 }
@@ -1890,6 +1900,34 @@ mod tests {
         assert!(
             l.abs() < 1e-2 && r.abs() < 1e-2,
             "gain did not fall to ~0: {l},{r}"
+        );
+    }
+
+    #[test]
+    fn play_at_end_rewinds_to_the_cue_point() {
+        let (mut tx, mut mixer) = mixer_with_commands();
+        mixer.decks[0] = ramp_deck();
+        let frames = mixer.decks[0]
+            .buffer
+            .as_ref()
+            .expect("ramp deck has a buffer")
+            .frames();
+        // Simulate a finished track: play-head parked at the end, transport stopped.
+        mixer.decks[0].playhead = frames as f64;
+        mixer.decks[0].cue_point = 0.0;
+        mixer.decks[0].playing = false;
+
+        tx.push(AudioCommand::SetDeckPlaying {
+            deck: 0,
+            playing: true,
+        })
+        .ok();
+        mixer.drain_commands();
+
+        assert!(mixer.decks[0].playing, "PLAY engages the transport");
+        assert_eq!(
+            mixer.decks[0].playhead, 0.0,
+            "PLAY at end rewinds to the cue point instead of staying parked"
         );
     }
 
