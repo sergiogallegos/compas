@@ -65,6 +65,8 @@ export interface LoopState {
   beats: number | null;
   inFrame: number;
   outFrame: number;
+  /** Manual loop-in set and waiting for OUT (no active loop yet) — for IN/OUT button feedback. */
+  armed?: boolean;
 }
 
 /** Tempo step per −/+ trim click (0.1%). */
@@ -601,19 +603,20 @@ export function useDeck(deck: number, dsp = true) {
           if (canPersist) dbSetLoop(path as string, 0, inFrame, outFrame, beats).catch(swallow);
         }
       },
-      loopIn: () => setLoopState((l) => ({ ...l, inFrame: frameRef.current, beats: null })),
+      // Arm the loop: store the in-point and light IN until OUT lands (no engine loop yet).
+      loopIn: () => setLoopState((l) => ({ ...l, inFrame: frameRef.current, beats: null, armed: true })),
       loopOut: () => {
         const out = frameRef.current;
         const l = loopRef.current;
         if (out > l.inFrame) {
           setLoopCmd(deck, l.inFrame, out, true).catch(swallow);
-          setLoopState({ active: true, beats: null, inFrame: l.inFrame, outFrame: out });
+          setLoopState({ active: true, beats: null, inFrame: l.inFrame, outFrame: out, armed: false });
           if (canPersist) dbSetLoop(path as string, 0, l.inFrame, out, null).catch(swallow);
         }
       },
       clearLoop: () => {
         setLoopActiveCmd(deck, false).catch(swallow);
-        setLoopState((l) => ({ ...l, active: false }));
+        setLoopState((l) => ({ ...l, active: false, armed: false }));
         if (canPersist) dbClearLoop(path as string, 0).catch(swallow);
       },
       // Halve/double the active loop, anchored at the loop-in. Mirror the new length locally.

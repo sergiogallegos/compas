@@ -1,4 +1,4 @@
-import { useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { DeckState } from "../hooks/useDeck";
 import { bandColor } from "../lib/ipc";
 
@@ -58,15 +58,46 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
   const nowTime = Math.max(0, state.frame - state.rate * state.latencySecs) / sr;
   const t0 = nowTime - NOW_FRAC * view; // left edge time
   const t1 = t0 + view;
+  // Overscan the right edge so the rAF interpolation (below) has drawn content to scroll in
+  // between the 30 Hz position samples — otherwise a thin gap would flicker at the right.
+  const overSec = view * 0.08;
+  const t1o = t1 + overSec;
 
   const xOf = (t: number) => ((t - t0) / view) * VW;
+
+  // Smooth scroll: position events arrive at the telemetry rate (30 Hz), which alone looks
+  // stepped. We translate the rendered <g> by the sub-sample time elapsed since the last event
+  // via requestAnimationFrame — a GPU-composited transform, so the waveform/beat paths are NOT
+  // re-rendered each frame (the cost the event-driven design deliberately avoids).
+  const gRef = useRef<SVGGElement>(null);
+  const animRef = useRef({ playing: false, rate: 0, sr: 1, view, frameAt: 0 });
+  animRef.current = { playing: state.playing, rate: state.rate, sr, view, frameAt: state.frameAt };
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const g = gRef.current;
+      if (g) {
+        const a = animRef.current;
+        let dxFrac = 0;
+        if (a.playing && a.frameAt > 0 && a.sr > 0 && a.view > 0) {
+          const elapsed = (performance.now() - a.frameAt) / 1000; // s since last sample
+          dxFrac = (elapsed * a.rate) / (a.sr * a.view); // fraction of the window advanced
+          dxFrac = Math.max(0, Math.min(0.08, dxFrac)); // cap at the overscan margin
+        }
+        g.setAttribute("transform", `translate(${(-dxFrac * VW).toFixed(2)} 0)`);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   // waveform slice
   const slice = (scale: number): string => {
     if (binSec <= 0) return "";
     const cy = VH / 2;
     const i0 = Math.max(0, Math.floor(t0 / binSec));
-    const i1 = Math.min(peaks.length - 1, Math.ceil(t1 / binSec));
+    const i1 = Math.min(peaks.length - 1, Math.ceil(t1o / binSec));
     if (i1 <= i0) return "";
     let d = `M ${xOf(i0 * binSec).toFixed(1)} ${cy}`;
     for (let i = i0; i <= i1; i++) {
@@ -86,7 +117,7 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
     let k = Math.floor((t0 - offset) / interval) - 1;
     for (let n = 0; n < 4096; n++, k++) {
       const t = offset + k * interval;
-      if (t > t1) break;
+      if (t > t1o) break;
       if (t >= t0 && t >= 0) beats.push({ x: xOf(t), down: ((k % 4) + 4) % 4 === 0 });
     }
   }
@@ -103,6 +134,7 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
     <div className="wf-lane" onPointerDown={handle}>
       {peaks.length > 0 && (
         <svg className="wf-svg" viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none">
+          <g ref={gRef}>
           <g>
             {beats.map((b, i) => (
               <line key={i} x1={b.x} y1={0} x2={b.x} y2={VH} stroke={b.down ? color : "rgba(255,255,255,.12)"} strokeWidth={b.down ? 1.6 : 0.7} opacity={b.down ? 0.6 : 1} />
@@ -113,7 +145,7 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
               {(() => {
                 const cy = VH / 2;
                 const i0 = Math.max(0, Math.floor(t0 / binSec));
-                const i1 = Math.min(peaks.length - 1, Math.ceil(t1 / binSec));
+                const i1 = Math.min(peaks.length - 1, Math.ceil(t1o / binSec));
                 // Cap at ~one line per pixel column so wide zooms stay cheap to render.
                 const step = Math.max(1, Math.ceil((i1 - i0) / VW));
                 const bw = Math.max(0.7, (binSec / view) * VW * step);
@@ -134,6 +166,7 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
               <path d={slice(0.46)} fill={color} opacity={0.92} />
             </>
           )}
+          </g>
         </svg>
       )}
       <div className="wf-scrim" style={{ width: `${NOW_FRAC * 100}%` }} />
@@ -148,6 +181,13 @@ function WaveLane({ lane, view }: { lane: Lane; view: number }) {
               style={{ left: `${left * 100}%`, width: `${(right - left) * 100}%`, background: `${color}22`, borderColor: color }}
             />
           );
+        })()}
+      {!state.loop.active &&
+        state.loop.armed &&
+        (() => {
+          const x = (state.loop.inFrame / sr - t0) / view;
+          if (x < 0 || x > 1) return null;
+          return <div className="wf-loop-in" style={{ left: `${x * 100}%`, background: color, boxShadow: `0 0 6px ${color}` }} />;
         })()}
       {streaming && <div className="wf-hatch" />}
       <div className="wf-label">

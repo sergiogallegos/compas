@@ -1134,6 +1134,9 @@ pub struct Mixer {
     /// Smoothed audio-callback load, and the running overrun count.
     rt_load: f32,
     xrun_count: u64,
+    /// Audio callbacks seen so far. The first couple are cold (lazy init / cache misses / device
+    /// warmup) and routinely overrun their budget without any audible glitch, so they don't count.
+    callbacks: u64,
     /// Polyphonic synth instrument, summed into the master (post-deck, pre-master-gain).
     synth: Synth,
     /// Sampler / performance pads, summed into the master alongside the synth.
@@ -1171,6 +1174,7 @@ impl Mixer {
             routing: OutputRouting::new(device_rate),
             rt_load: 0.0,
             xrun_count: 0,
+            callbacks: 0,
             synth: Synth::new(device_rate),
             sampler: Sampler::new(device_rate),
         }
@@ -1186,7 +1190,11 @@ impl Mixer {
         } else {
             self.rt_load * 0.9 + load * 0.1
         };
-        if load >= 1.0 {
+        // Skip the warmup callbacks: the first blocks run cold and overrun without an audible
+        // glitch (the output ring is still priming). Real underruns show up on steady-state blocks.
+        const WARMUP_CALLBACKS: u64 = 3;
+        self.callbacks += 1;
+        if load >= 1.0 && self.callbacks > WARMUP_CALLBACKS {
             self.xrun_count += 1;
         }
         self.telemetry

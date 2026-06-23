@@ -153,8 +153,8 @@ function Phones({ cue }: { cue: CueApi }) {
       >
         {cue.enabled ? "ON" : "OFF"}
       </button>
-      <Knob value={cue.mix} min={0} max={1} size={26} label="CUE◁▷MAS" onChange={cue.setMix} />
-      <Knob value={cue.volume} min={0} max={1} size={26} label="PHONES" onChange={cue.setVolume} />
+      <Knob value={cue.mix} min={0} max={1} size={22} label="CUE◁▷MAS" onChange={cue.setMix} />
+      <Knob value={cue.volume} min={0} max={1} size={22} label="PHONES" onChange={cue.setVolume} />
     </div>
   );
 }
@@ -183,7 +183,7 @@ function Booth({ booth }: { booth: BoothApi }) {
       >
         {booth.enabled ? "ON" : "OFF"}
       </button>
-      <Knob value={booth.volume} min={0} max={1} size={26} label="BOOTH" onChange={booth.setVolume} />
+      <Knob value={booth.volume} min={0} max={1} size={22} label="BOOTH" onChange={booth.setVolume} />
     </div>
   );
 }
@@ -222,18 +222,18 @@ function ChannelStrip({
       </div>
 
       <div className={`knob-stack ${dsp ? "" : "knob-stack--locked"}`}>
-        <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={28} color={color} disabled={!dsp}
+        <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={22} color={color} disabled={!dsp}
           onChange={(v) => actions.setGain(v)} />
-        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={28} color={color} disabled={!dsp}
+        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={22} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, hi: v })} />
-        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={28} color={color} disabled={!dsp}
+        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={22} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, mid: v })} />
-        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={28} color={color} disabled={!dsp}
+        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={22} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, low: v })} />
-        <Knob label="FILTER" value={state.filter} min={-1} max={1} size={28} color={color} disabled={!dsp}
+        <Knob label="FILTER" value={state.filter} min={-1} max={1} size={22} color={color} disabled={!dsp}
           onChange={(v) => actions.setFilter(v)} />
         {onFxMacro && (
-          <Knob label="FX" value={fxMacro} min={0} max={1} size={28} color={color} disabled={!dsp}
+          <Knob label="FX" value={fxMacro} min={0} max={1} size={22} color={color} disabled={!dsp}
             onChange={(v) => { setFxMacro(v); onFxMacro(ctrl.deck, v); }} />
         )}
         {!dsp && <span className="eq-na">EQ N/A</span>}

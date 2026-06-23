@@ -35,6 +35,10 @@ const STEM_LABELS = ["DRUMS", "BASS", "OTHER", "VOX"];
 // valid CSS — a CSS var like `var(--accent)` can't take an appended alpha.
 const CUE_COLORS = ["#ff5b4c", "#ff8c1a", "#ffcf3a", "#3ddc97", "#28e0ff", "#2ea6ff", "#9b6bff", "#ff5bbf"];
 
+// Seconds of track remaining at which the deck flashes the Pioneer-style end-of-track warning
+// (platter ring + PLAY button). TODO: surface as a user setting (CDJs make this configurable).
+const END_WARNING_SECS = 30;
+
 /// Degrees of platter rotation per second of audio (≈33⅓ RPM). Matches the play-head
 /// `spin` mapping so a scratch gesture converts cleanly to a read-rate: speed = ω / this.
 const DEG_PER_SEC = 200;
@@ -92,6 +96,14 @@ export function Deck({
   const frac = frames > 0 ? Math.min(1, frame / frames) : 0;
   const effBpm = meta ? meta.bpm * tempo : 0;
   const spin = (((frame / rate) * 200) % 360 + 360) % 360;
+
+  // End-of-track warning: source-time remaining (natural-rate seconds, like the TIME readout).
+  // Flashes only while playing so a deck parked near the end doesn't blink forever.
+  const remainingSecs = frames > 0 ? (frames - frame) / rate : Infinity;
+  const endWarning = !!meta && playing && remainingSecs > 0 && remainingSecs <= END_WARNING_SECS;
+
+  // Manual loop-in is set and waiting for OUT — light IN, invite OUT.
+  const loopArmed = !!state.loop.armed && !state.loop.active;
 
   // tempo fader works in percent for display; ratio for the engine.
   const pct = (tempo - 1) * 100;
@@ -275,7 +287,7 @@ export function Deck({
         {/* platter */}
         <div className="platter-col">
           <div
-            className={`platter${scratching ? " platter--scratch" : ""}`}
+            className={`platter${scratching ? " platter--scratch" : ""}${endWarning ? " platter--warn" : ""}`}
             ref={platterRef}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -292,8 +304,8 @@ export function Deck({
             </div>
             <div className="platter-center">
               <span className="mono platter-bpm">{meta && effBpm > 0 ? effBpm.toFixed(1) : "—"}</span>
-              <span className="overline" style={{ color: scratching || playing ? color : "var(--text-tertiary)" }}>
-                {scratching ? "SCRATCH" : playing ? "PLAYING" : "CUED"}
+              <span className="overline" style={{ color: endWarning ? "var(--cue)" : scratching || playing ? color : "var(--text-tertiary)" }}>
+                {scratching ? "SCRATCH" : endWarning ? "ENDING" : playing ? "PLAYING" : "CUED"}
               </span>
             </div>
           </div>
@@ -320,14 +332,10 @@ export function Deck({
               CUE
             </button>
             <button
-              className="btn-play"
+              className={`btn-play${playing ? " btn-play--on" : meta ? " btn-play--ready" : ""}${endWarning ? " btn-play--warn" : ""}`}
               onClick={actions.togglePlay}
               disabled={!meta}
-              style={
-                playing
-                  ? { background: "linear-gradient(180deg, #44e6a4, #2bb37a)", color: "#06251a", boxShadow: "0 0 16px rgba(var(--status-ok-rgb), 0.5)" }
-                  : { background: "linear-gradient(180deg, #2b2b34, #1c1c23)", color: "#fff", boxShadow: "none" }
-              }
+              title={playing ? "Pause" : meta ? "Play (ready)" : "Play"}
             >
               <Icon name={playing ? "pause" : "play"} size={16} />
             </button>
@@ -360,12 +368,19 @@ export function Deck({
           {dsp ? (
             <>
               <div className="chip-row">
-                <button className="chip" onClick={actions.loopIn} disabled={!meta} title="Set loop in">IN</button>
                 <button
-                  className={`chip ${state.loop.active ? "chip--loopon" : ""}`}
+                  className={`chip chip--round ${loopArmed ? "chip--armed" : ""}`}
+                  onClick={actions.loopIn}
+                  disabled={!meta}
+                  title="Set loop-in point (then press OUT to close the loop)"
+                >
+                  IN
+                </button>
+                <button
+                  className={`chip chip--round ${state.loop.active ? "chip--loopon" : loopArmed ? "chip--armflash" : ""}`}
                   onClick={actions.loopOut}
                   disabled={!meta}
-                  title="Set loop out & enable"
+                  title={loopArmed ? "Set loop-out & enable the loop" : "Set loop out & enable"}
                 >
                   OUT
                 </button>
