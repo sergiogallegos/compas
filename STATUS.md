@@ -12,11 +12,10 @@
 > `CONTRIBUTING.md`). (2) **Live stem verification** — a real separation run needs the 301 MB model
 > on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
 > **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual
-> leader~~ **DONE** (`556b88d`); remaining: stems shared-grain key-lock; FX beat-sync to the
-> internal clock (the deck-sync half landed; wiring the echo/flanger beat times to the global clock
-> is a follow-up); INT CLK row styling polish (deferred — `styles.css` left to Codex); audio-device-
-> thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT mid-test.
-> **Coordination:**
+> leader~~ **DONE** (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE** (echo/flanger beat
+> times track the clock when a deck is on INT); remaining: stems shared-grain key-lock; INT CLK row
+> styling polish (deferred — `styles.css` left to Codex); audio-device-thread items (cue/booth
+> auto-reopen, user-selectable record source) — do when NOT mid-test. **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
 > own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
 
@@ -132,9 +131,16 @@ phase-locks, TempoOnly matches BPM. IPC `set_internal_clock`/`set_deck_sync_inte
 gains `syncInternal` + `toggleSyncInternal`; each deck has an **INT** chip by SYNC/MIC; a
 `useInternalClock` hook drives an **INT CLK** row in the mixer (ON/OFF + BPM input). 3 new tests
 (tempo-match + hold-when-inactive, Full-mode phase bend, mutual-exclusion command path); 55
-compas-audio tests pass. clippy `-D warnings` (engine+app) + fmt + tsc/vite clean. **Follow-ups:**
-wire the echo/flanger beat times to the global clock (deck-sync half done); INT CLK row styling
-(`styles.css` left to Codex). **Not yet exercised live** (needs a running app).
+compas-audio tests pass. clippy `-D warnings` (engine+app) + fmt + tsc/vite clean. **Not yet
+exercised live** (needs a running app).
+- **FX beat-sync to the internal clock — DONE.** `useDeck` now takes the internal clock and computes
+  an effective `fxBeatSec`: when a deck follows the clock (INT), the engine rate-matches its audio to
+  the clock tempo, so its **echo/flanger beat-times derive from `60/clockBpm`** instead of the deck's
+  analyzed grid (decks not on INT keep using their own grid — musically correct, since the delay/LFO
+  must match the audio's actual tempo). A re-push effect re-applies active echo/flanger when the
+  effective tempo source changes (live clock-BPM edit, INT toggle, or new grid on load) without a
+  chip re-toggle. `pushEcho`/`pushFlanger` extracted to component-scope `useCallback`s; tsc/vite
+  clean. Frontend-only. INT CLK row styling still deferred (`styles.css` left to Codex).
 
 **F. Live OS file-watch — DONE (`500b291`).** Watched folders now auto-import on real filesystem
 events, not just scan-on-launch/add. Added `notify = "8"`; a `FolderWatch` managed state holds a
