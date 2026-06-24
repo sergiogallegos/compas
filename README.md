@@ -47,6 +47,13 @@ Prebuilt installers for **Windows, macOS, and Linux** are published on the
 CI on each `v*` tag). The project landing page in `website/` links directly to the latest per-OS
 installer. The app then keeps itself current via the built-in updater.
 
+> **Beta builds aren't code-signed yet**, so your OS will warn on first launch (the app is safe — it's
+> Gatekeeper / SmartScreen blocking an unsigned download):
+> - **Windows:** SmartScreen → **More info → Run anyway**.
+> - **macOS:** if you see *"Compás DJ.app is damaged and can't be opened"* (common on Apple Silicon),
+>   drag it to **Applications**, then run `xattr -cr "/Applications/Compás DJ.app"` in Terminal and open
+>   it. Signed/notarized macOS + Windows builds are pending a paid Developer ID / code-signing cert.
+
 ![compas performance screen](docs/assets/screenshot_june22.jpg)
 
 > The performance UI (Traktor-inspired dark theme): dual decks with per-deck color identity, center

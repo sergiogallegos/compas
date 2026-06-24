@@ -37,9 +37,19 @@ the product-agnostic core; `crates/compas-audio` is the **Compás DJ** engine. T
 planned (`docs/COMPAS-STUDIO-PLAN.md`). See `AGENTS.md` for a fuller orientation.
 
 ## Release setup (one-time, maintainer only)
-Tagging `v*` triggers `.github/workflows/release.yml`, which builds Windows + macOS installers
-and (when signing keys are configured) publishes a signed `latest.json` that the in-app
-auto-updater consumes. To finish wiring a real release:
+Tagging `v*` triggers `.github/workflows/release.yml`, which builds Windows, macOS, and Linux
+installers and publishes a signed `latest.json` (updater signature) to a **draft** GitHub Release.
+
+> **Current state (v0.1.0):** the **updater key is configured** (passwordless minisign key in the
+> `TAURI_SIGNING_PRIVATE_KEY` secret; pubkey baked into `tauri.conf.json`), so the build is green and
+> signs `latest.json`. But the installers are **not OS code-signed** — there's no Apple Developer ID
+> or Windows code-signing cert yet, so users get first-launch warnings (Windows "Run anyway"; macOS
+> *"damaged"* → `xattr -cr "/Applications/Compás DJ.app"`). The `APPLE_*` env block in `release.yml`
+> is intentionally disabled (passing empty cert secrets breaks the macOS bundle); re-enable it once a
+> Developer ID exists. Steps 1–3 below (the updater key) are **done**; steps 4–5 (OS signing) are
+> pending paid certs.
+
+To (re)wire signing:
 
 1. **Generate the updater signing keypair** (once per project; keep the private key offline):
 

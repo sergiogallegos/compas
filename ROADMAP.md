@@ -153,11 +153,16 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ✅ **Quantize** — per-deck Q snaps hot-cue jumps + beat-jumps to the grid (loops already snap).
 
 **Tier 2 — modern differentiators (what 2025-26 DJs expect):**
-- 🔨 **STEM separation** (vocal/drum/bass/melody isolation) — table-stakes across
-  Serato/rekordbox/Traktor/VirtualDJ/djay; biggest single feature gap. **Model decision made
-  2026-06-20:** offline pre-computed stems (4 buffers/deck, mixed at playback) via `ort`
-  (ONNX Runtime, quarantined native dep) + **htdemucs**, model fetched on first use
-  (optional-download). True real-time separation deferred. See "Decisions made".
+- ⬜ **Key Shift (± semitones) + Key Sync** — **planned next (v0.1.1).** The notable gap vs
+  rekordbox (Key Sync/Key Shift), Serato (Pitch 'n Time), and Traktor (key adjust). We already detect
+  Camelot key, have harmonic suggestions, and ship key-lock (WSOLA) — so **Key Shift is the same
+  stretcher with a pitch ratio of `2^(semitones/12)` on the grain step** (shift pitch without changing
+  tempo, key-lock stays on), exposed as a per-deck **KEY ±** control. **Key Sync** computes the
+  semitone offset to make a deck harmonically compatible with another (off the existing Camelot data)
+  and applies the shift. Engine: `compas-dsp` grain step + a `compas-audio` per-deck pitch param + IPC
+  + UI. See `STATUS.md`.
+- ❌ ~~**STEM separation**~~ — **removed (2026-06-24).** The Demucs/htdemucs AI approach was dropped
+  (upstream archived; no AI for now). May be revisited later with a different, non-archived engine.
 - 🔶 **More FX + beat-synced timing + FX units/chains** — echo, reverb, beat-synced flanger, and
   bitcrusher ship; phaser + FX chaining still open. (FX time already in beats.)
 - ✅ **Sampler / performance pads** — 8 pads, one-shots (polyphonic) + per-pad loop toggle, global

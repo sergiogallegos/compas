@@ -24,10 +24,23 @@
 > README + AGENTS/ARCHITECTURE/CONTRIBUTING rebranded. **Build/run now from `apps/compas-dj/`** (see
 > Run/verify below). All checks green from the new layout.
 >
+> **✅ FIRST CROSS-PLATFORM RELEASE GREEN (v0.1.0, 2026-06-24, `68f87a5`).** The `release.yml`
+> pipeline builds + signs on Windows, macOS, and Linux — published to a **draft** GitHub Release
+> (Win `.msi`/`.exe`, macOS `.dmg`/`.app`, Linux `.deb`/`.AppImage`, signed `latest.json`). The
+> **updater signing key is set** (passwordless minisign `82D09E3B222C0BD2`; `TAURI_SIGNING_PRIVATE_KEY`
+> secret). Fixes it took: tauri-action `projectPath: apps/compas-dj`; Linux `libasound2-dev` +
+> `libudev-dev` + `pkg-config`; removed empty `APPLE_*` secrets (codesign). **Builds are NOT
+> code-signed** (no paid Apple Developer ID / Windows cert yet) → first launch warns: Windows
+> SmartScreen "Run anyway"; macOS shows *"damaged"* → fix is `xattr -cr "/Applications/Compás DJ.app"`
+> (confirmed working on an M2). Re-enable the `APPLE_*` block in `release.yml` when a Developer ID
+> exists. Draft is unpublished — maintainer publishes when ready.
+>
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
-> (no code until its phases start deliberately). Remaining standalone work: (1) **release signing
-> key** — the only true release blocker; your one-time secret (`npx tauri signer generate`, paste
-> pubkey into `apps/compas-dj/src-tauri/tauri.conf.json`, add GitHub secrets; `CONTRIBUTING.md`).
+> (no code until its phases start deliberately). **Next feature: Key Shift (± semitones) + Key Sync
+> (v0.1.1)** — reuses the WSOLA key-lock engine (pitch ratio `2^(semitones/12)` on the grain step) +
+> a per-deck KEY ± control + a Key Sync button off the existing Camelot detection; see `ROADMAP.md`
+> Tier 2. Other standalone work: (1) **paid signing certs** — Apple Developer ID + Windows cert to
+> ship signed/notarized builds (the only thing between us and a clean public release).
 > (2) **Deferred polish:**
 > ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
 > (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~

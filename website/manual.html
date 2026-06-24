@@ -75,10 +75,18 @@
       <h3>Install &amp; first launch</h3>
       <p>
         Download the installer for your OS from the <a href="index.html#download">download section</a>, run it,
-        and launch compas. As an unsigned beta, Windows SmartScreen may say <em>"Windows protected your PC"</em>
-        — click <strong>More info → Run anyway</strong>. On macOS, if you see <em>"unidentified developer"</em>,
-        right-click the app and choose <strong>Open</strong> once.
+        and launch Compás DJ. The beta builds are <strong>not code-signed yet</strong>, so your OS will warn
+        on first launch — the app is safe; it's just Gatekeeper / SmartScreen blocking an unsigned download:
       </p>
+      <ul>
+        <li><strong>Windows:</strong> SmartScreen says <em>"Windows protected your PC"</em> —
+          click <strong>More info → Run anyway</strong>.</li>
+        <li><strong>macOS:</strong> you may see <em>"Compás DJ.app is damaged and can't be opened"</em>
+          (especially on Apple Silicon). That's the quarantine flag, not real damage. Drag the app to
+          <strong>Applications</strong>, then in <strong>Terminal</strong> run
+          <code>xattr -cr "/Applications/Compás DJ.app"</code> and open it. If it still warns, also run
+          <code>codesign --force --deep --sign - "/Applications/Compás DJ.app"</code>.</li>
+      </ul>
       <h3>Load your first track</h3>
       <ul>
         <li>Click the <strong>Load…</strong> button (or the artwork tile) on a deck to pick an audio file.</li>
@@ -274,8 +282,10 @@
 
       <h2 id="trouble">Troubleshooting</h2>
       <ul>
-        <li><strong>"Windows protected your PC" / "unidentified developer."</strong> Expected for unsigned beta
-          builds — use <em>More info → Run anyway</em> (Windows) or right-click → <em>Open</em> (macOS).</li>
+        <li><strong>"Windows protected your PC" / macOS "damaged and can't be opened."</strong> Expected for
+          unsigned beta builds. Windows: <em>More info → Run anyway</em>. macOS: run
+          <code>xattr -cr "/Applications/Compás DJ.app"</code> in Terminal, then open it (see
+          <a href="#start">Install &amp; first launch</a>).</li>
         <li><strong>No sound.</strong> Check your system output device and master gain; confirm the channel's
           crossfader assignment and that the crossfader isn't fully on the other side.</li>
         <li><strong>Crackles / dropouts (rising xruns).</strong> Close heavy background apps; on laptops, use a

@@ -83,11 +83,23 @@
         <p class="note mono" id="dl-note">Open-source · MIT · Windows, macOS &amp; Linux installers via GitHub Releases</p>
 
         <div class="notice warn" style="max-width: 640px; margin: 26px auto 0; text-align: left;">
-          <h4>⚠ Public beta — in progress</h4>
+          <h4>⚠ Public beta — not code-signed yet</h4>
           <p>
-            compas is early and under active development. Builds are <strong>not yet code-signed</strong>, so on
-            first launch Windows SmartScreen shows <em>"More info → Run anyway"</em> and macOS shows
-            <em>"unidentified developer"</em> (right-click the app → <strong>Open</strong>). Hit a bug?
+            Compás DJ is early and under active development, and the builds are
+            <strong>not yet code-signed</strong> — so your OS will warn on first launch. The app is safe;
+            this is just Gatekeeper / SmartScreen blocking an unsigned download.
+          </p>
+          <ul style="margin: 8px 0 0; padding-left: 18px;">
+            <li><strong>Windows:</strong> SmartScreen shows <em>"Windows protected your PC"</em> →
+              click <strong>More info → Run anyway</strong>.</li>
+            <li><strong>macOS (Apple Silicon &amp; Intel):</strong> you may see
+              <em>"Compás DJ.app is damaged and can't be opened"</em> — that's the quarantine flag, not a
+              real problem. Drag the app to <strong>Applications</strong>, then in <strong>Terminal</strong> run
+              <code>xattr -cr "/Applications/Compás DJ.app"</code> and open it. (Tip: type
+              <code>xattr -cr </code> then drag the app into Terminal to fill the path.)</li>
+          </ul>
+          <p style="margin-top: 8px;">
+            Hit a bug?
             <a href="https://github.com/sergiogallegos/compas/issues" target="_blank" rel="noopener">Open an issue ↗</a>
             — Windows &amp; macOS test reports especially welcome.
           </p>
