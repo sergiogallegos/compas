@@ -522,9 +522,12 @@ sampler pads, the sampler, the perf row, cue monitoring, the SQLite DB, MIDI-lea
 all described in the **Done** section below. SQLite was also verified end-to-end via a live DB
 query (migration + analysis-cache + play history).
 
-**Only remaining unverified item:** **MIDI with real hardware** — when the Akai MPK Mini MK3 is on
-hand, load its starter profile (or LEARN), check knobs drive the mixer + pads fire the sampler,
-and that pads don't honk the synth while the instrument panel is closed.
+**Real hardware MIDI — VERIFIED (2026-06-24).** The maintainer ran **Compás DJ from the new
+`apps/compas-dj/` layout** and performed a live **two-song transition** with an **Akai MPK Mini**:
+knobs mapped (via MIDI-learn) to a deck's **low/mid/hi EQ + gain**, and **play/stop** on buttons —
+all worked. This validates the full session arc in the running app (monorepo move + `compas-dj`
+rename + stem-feature removal) with live hardware, and closes the long-standing "MIDI with real
+hardware" unverified caveat. (Earlier note kept for history below.)
 
 Next, from the ROADMAP backlog:
 
