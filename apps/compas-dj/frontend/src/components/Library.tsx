@@ -17,8 +17,10 @@ import {
   dbSearch,
   inTauri,
   loadTrack,
+  formatKey,
   type DbCrate,
   type DbTrack,
+  type KeyNotation,
 } from "../lib/ipc";
 import { useLibrary } from "../hooks/useLibrary";
 import { Icon } from "./icons";
@@ -40,8 +42,13 @@ function fmtMs(ms: number): string {
 /** `loadedPaths[0]` = Deck A's file path, `[1]` = Deck B's — for A/B row tags. */
 export const Library = forwardRef<
   HTMLElement,
-  { loadedPaths: (string | undefined)[]; focusTarget?: "library" | "crates" | null; focusSeq?: number }
->(function Library({ loadedPaths, focusTarget = null, focusSeq = 0 }, ref) {
+  {
+    loadedPaths: (string | undefined)[];
+    keyNotation?: KeyNotation;
+    focusTarget?: "library" | "crates" | null;
+    focusSeq?: number;
+  }
+>(function Library({ loadedPaths, keyNotation = "camelot", focusTarget = null, focusSeq = 0 }, ref) {
   const lib = useLibrary();
   const [q, setQ] = useState("");
   const rootRef = useRef<HTMLElement>(null);
@@ -307,7 +314,7 @@ export const Library = forwardRef<
         )}
 
         <div className="tl-head tl-grid">
-          <span>#</span><span>TITLE</span><span>ARTIST</span><span>TIME</span><span>LOAD</span>
+          <span>#</span><span>TITLE</span><span>ARTIST</span><span>BPM</span><span>KEY</span><span>TIME</span><span>LOAD</span>
         </div>
 
         <div className="tl-body">
@@ -365,14 +372,10 @@ export const Library = forwardRef<
                       />
                     )}
                   </span>
-                  <span className="tl-artist">
-                    {t.artist}
-                    {(t.bpm || t.key_camelot) && (
-                      <span className="tl-meta mono">
-                        {t.bpm ? ` · ${Math.round(t.bpm)}` : ""}
-                        {t.key_camelot ? ` · ${t.key_camelot}` : ""}
-                      </span>
-                    )}
+                  <span className="tl-artist">{t.artist}</span>
+                  <span className="mono tl-bpm">{t.bpm ? Math.round(t.bpm) : "—"}</span>
+                  <span className="mono tl-key" title={t.key_name ?? undefined}>
+                    {t.key_camelot ? formatKey(t.key_camelot, t.key_name, keyNotation) : "—"}
                   </span>
                   <span className="mono">{fmtMs(t.duration_ms)}</span>
                   <span className="tl-load">

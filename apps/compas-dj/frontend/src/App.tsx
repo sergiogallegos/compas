@@ -20,7 +20,7 @@ import { useInternalClock } from "./hooks/useInternalClock";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type EngineStatus, type MasterMeter } from "./lib/ipc";
+import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type EngineStatus, type KeyNotation, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--deck-a)", "var(--deck-b)", "var(--deck-c)", "var(--deck-d)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -56,6 +56,12 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [contrast, setContrast] = useState(false);
+  const [keyNotation, setKeyNotation] = useState<KeyNotation>(
+    () => (localStorage.getItem("compas.keyNotation") as KeyNotation | null) ?? "camelot",
+  );
+  useEffect(() => {
+    localStorage.setItem("compas.keyNotation", keyNotation);
+  }, [keyNotation]);
   const [recording, setRecording] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
   const [profileName, setProfileName] = useState(() => localStorage.getItem("compas.profileName") ?? "Main");
@@ -309,6 +315,7 @@ export function App() {
               onSync={() => toggleSync(leftDeck, rightDeck)}
               syncEnabled={pairReady}
               syncActive={leftDeck.state.synced}
+              keyNotation={keyNotation}
               mirror
               slots={[
                 { label: "A", active: leftSel === 0, onSelect: () => setLeftSel(0) },
@@ -333,13 +340,14 @@ export function App() {
               onSync={() => toggleSync(rightDeck, leftDeck)}
               syncEnabled={pairReady}
               syncActive={rightDeck.state.synced}
+              keyNotation={keyNotation}
               slots={[
                 { label: "B", active: rightSel === 1, onSelect: () => setRightSel(1) },
                 { label: "D", active: rightSel === 3, onSelect: () => setRightSel(3) },
               ]}
             />
           </div>
-          <Library loadedPaths={loadedPaths} />
+          <Library loadedPaths={loadedPaths} keyNotation={keyNotation} />
         </div>
       </div>
       <StatusBar sampleRate={sampleRate} audioStatus={audioStatus} />
@@ -354,6 +362,8 @@ export function App() {
           cue={cue}
           contrast={contrast}
           onToggleContrast={() => setContrast((v) => !v)}
+          keyNotation={keyNotation}
+          onToggleKeyNotation={() => setKeyNotation((v) => (v === "camelot" ? "musical" : "camelot"))}
           onOpenKeys={() => openPanel(setShowKeys)}
           onOpenMap={() => openPanel(setShowMap)}
           onOpenPads={() => openPanel(setShowPads)}

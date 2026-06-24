@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type DragEvent, type ReactElement } from "react";
 import type { DeckController, DeckState } from "../hooks/useDeck";
-import { bandColor, loadTrack } from "../lib/ipc";
+import { bandColor, formatKey, loadTrack, type KeyNotation } from "../lib/ipc";
 
 // drag-and-drop MIME carrying a track path from the library onto a deck
 const TRACK_DND = "application/x-compas-track";
@@ -55,6 +55,7 @@ export function Deck({
   onSync,
   syncEnabled = false,
   syncActive = false,
+  keyNotation = "camelot",
   mirror = false,
   slots,
 }: {
@@ -63,6 +64,8 @@ export function Deck({
   onSync?: () => void;
   syncEnabled?: boolean;
   syncActive?: boolean;
+  /** Camelot (8A) vs musical (C#m) key display. */
+  keyNotation?: KeyNotation;
   /** Mirror the deck so the platter sits on the inner edge (next to the mixer). */
   mirror?: boolean;
   /** Deck-select tabs for this slot (e.g. A/C or B/D). */
@@ -287,7 +290,7 @@ export function Deck({
         <div className="tile">
           <span className="overline">KEY</span>
           <span className="mono tile-val" style={{ color }} title={meta?.key_name}>
-            {meta?.key_camelot ?? "—"}
+            {meta?.key_camelot ? formatKey(meta.key_camelot, meta.key_name, keyNotation) : "—"}
           </span>
         </div>
         <div className="tile">

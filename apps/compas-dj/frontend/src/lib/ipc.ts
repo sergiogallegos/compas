@@ -44,6 +44,16 @@ export const bandColor = ([low, mid, high]: [number, number, number]): string =>
   return `rgb(${r}, ${g}, ${b})`;
 };
 
+/** How a musical key is displayed: Camelot wheel codes (8A/7B) or standard names (C#m/D). */
+export type KeyNotation = "camelot" | "musical";
+
+/** Format a detected key for display in the chosen notation, falling back to "—" when unknown. */
+export const formatKey = (
+  camelot: string | null | undefined,
+  name: string | null | undefined,
+  notation: KeyNotation,
+): string => (notation === "musical" ? name || camelot || "—" : camelot || "—");
+
 export interface DeckPosition {
   deck: number;
   frame: number;

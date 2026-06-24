@@ -1,6 +1,7 @@
 import type { AuxApi } from "../hooks/useAux";
 import type { BoothApi } from "../hooks/useBooth";
 import type { CueApi } from "../hooks/useCue";
+import type { KeyNotation } from "../lib/ipc";
 import { Icon } from "./icons";
 
 export function SettingsPanel({
@@ -9,6 +10,8 @@ export function SettingsPanel({
   cue,
   contrast,
   onToggleContrast,
+  keyNotation,
+  onToggleKeyNotation,
   onOpenKeys,
   onOpenMap,
   onOpenPads,
@@ -20,6 +23,8 @@ export function SettingsPanel({
   cue: CueApi;
   contrast: boolean;
   onToggleContrast: () => void;
+  keyNotation: KeyNotation;
+  onToggleKeyNotation: () => void;
   onOpenKeys: () => void;
   onOpenMap: () => void;
   onOpenPads: () => void;
@@ -84,6 +89,10 @@ export function SettingsPanel({
           <button className={`settings-tile ${contrast ? "settings-tile--on" : ""}`} onClick={onToggleContrast}>
             <Icon name="sun" size={18} />
             <span>High contrast</span>
+          </button>
+          <button className="settings-tile" onClick={onToggleKeyNotation}>
+            <Icon name="music" size={18} />
+            <span>Key: {keyNotation === "camelot" ? "Camelot (8A)" : "Musical (C#m)"}</span>
           </button>
           <button className="settings-tile" onClick={onOpenKeys}>
             <Icon name="music" size={18} />
