@@ -18,6 +18,20 @@ cd apps/compas-dj/frontend && npm run typecheck && npm run build
 
 CI runs the same on Windows/macOS/Linux; keep it green.
 
+## AI-assisted contributions
+Agent-written and AI-assisted PRs are first-class here (much of compas is built this way). To keep
+them reviewable:
+- **Mark it** AI-assisted in the PR title or description.
+- **Include an Evidence section** — the most useful validation, not a narrative: which of
+  `cargo test` / `clippy -D warnings` / `tsc` / `vite build` you ran and that they're green, plus any
+  in-app check. Reviewers trust inspected code, tests, and CI over prose.
+- **Confirm you understand the change** — be able to explain what it does and why.
+- **Self-review first.** Run `/code-review` (or your agent's review) against `origin/main` and address
+  findings before requesting human review; resolve/reply to review-bot threads rather than leaving
+  cleanup for the maintainer.
+- **No surprise GitHub writes** — don't push/tag/open PRs the maintainer didn't ask for. Delegated
+  agents commit on a branch for review (see `AGENTS.md` § Agent coordination), never to `main`.
+
 ## Conventions
 - **Real-time safety is non-negotiable.** Nothing in the audio callback may allocate, lock, block,
   log, or panic. Functions safe to call there carry an `RT-SAFE` doc-comment — respect the contract.
