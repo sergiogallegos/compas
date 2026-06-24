@@ -86,22 +86,16 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 - ✅ Master-clock **sync engine** — continuous tempo **+ phase** lock (audio-thread PLL).
 - ✅ **4-deck** — A/C + B/D switching slots, 4-channel mixer, per-deck crossfader assign.
 
-## Phase 5 — Stems / FX / recording 🔨
+## Phase 5 — FX / recording 🔨
 
-- 🔨 **Stem separation** — **decided 2026-06-20** (see "Decisions made"): offline pre-computed
-  stems via `ort` (ONNX Runtime) + htdemucs, optional-download model. S1 offline pipeline is
-  implemented (model-rate/source-rate resampling). **S2 engine-core done:** each deck overlays four
-  `Arc<DeckBuffer>` stems read/summed at the play-head (per-stem smoothed gain + key-lock stretch),
-  with RT-safe no-drop retirement sized for stem swaps (`LoadDeckStems`/`ClearDeckStems`/
-  `SetDeckStemGain`). **S2 IPC + job done:** `separate_stems` runs htdemucs on a worker thread with
-  progress events and installs the stems; the native ONNX runtime is behind a `stems` cargo feature
-  so the default build/CI stay pure. **S3 UI done:** per-deck STEMS control — separate button with a
-  progress strip, DRUMS/BASS/OTHER/VOX level knobs + per-stem mute, one-click revert to the mix.
-  **Disk cache + model download done:** stems cache to `<app-data>/stems` as WAVs (feature-independent
-  reload), and a GET MODEL button streams htdemucs into `<app-data>/models` (gated behind the `stems`
-  feature). Stem separation is now functionally complete; the default model URL/checksum are flagged
-  placeholders to verify before the first stem-enabled release.
-- ✅ **Effects rack:** echo/delay + reverb on the local DSP bus (filter already existed).
+- ❌ ~~**Stem separation**~~ — **removed 2026-06-24.** The whole Demucs/htdemucs + `ort`
+  (ONNX Runtime) stem-separation feature was deleted: the `compas-stems` crate, the `stems` cargo
+  feature, the `ureq`/`sha2`/`ort` deps, all stem IPC/engine/UI, and the model download. **No AI/ML
+  in compas for now** — the upstream Demucs project is archived and we're not taking on an ML
+  runtime dependency. May be revisited later only with a non-archived, non-AI approach. (Decks read
+  the mix buffer only.)
+- ✅ **Effects rack:** echo/delay + reverb + flanger + bitcrusher on the local DSP bus (filter
+  already existed).
 - ✅ **Master recording** (master tap → lock-free ring → WAV writer thread).
 
 ## Phase 6 — MIDI controller mapping / hardware 🔨
@@ -119,7 +113,8 @@ Out of scope for P1: key-lock time-stretch, continuous sync engine, cue/loops, s
 > **Note:** features were pulled forward out of phase order. Beyond P1, what's *actually* shipped
 > already includes key-lock, beat loops, hot cues, the echo/reverb FX rack, jog-wheel scratch, and
 > master recording. The big remaining functional work is the **continuous/phase sync engine**, the
-> **4-deck layout**, **MIDI mapping**, **stem separation**, and **auto-mix transitions** (P3).
+> **4-deck layout**, **MIDI mapping**, and **auto-mix transitions** (P3). (Stem separation was
+> removed — no AI/ML; see Phase 5.)
 
 ---
 
@@ -177,6 +172,21 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ⬜ Streaming services (unpark when ready; PKCE auth already built).
 - ⬜ **Ableton Link / MIDI clock** — tempo-sync with Ableton and external gear.
 - ⬜ Auto-gain / loudness normalization on analysis.
+- ⬜ **Package / export tools** (rekordbox-inspired; pure-Rust ZIP/deflate, no AI) — bundle data
+  into portable archives:
+  - **Crate/playlist export** — a `.zip` of the crate's audio files **plus a sidecar manifest**
+    carrying each track's cues, saved loops, beatgrid (BPM/first-beat/offset), key, gain, and tags,
+    so a set moves between machines (or to a USB) without losing performance data. Re-import reads
+    the manifest back into the library DB.
+  - **Controller profile packs** — export/import one or more `ControllerProfile`s (mappings +
+    optional script) as a shareable pack, for distributing device maps.
+  - **Diagnostics bundle** — one click gathers logs, app/build info, engine status/RT telemetry,
+    device list, and settings (no audio) into a `.zip` for bug reports.
+  - **Backup / restore** — a full library package (DB + watched-folder list + controller profiles +
+    settings; audio optional) to snapshot and restore an install.
+  - *Rust: a `compas-export`/packaging module over a pure-Rust zip+deflate crate (e.g. `zip`); the
+    manifest is serde JSON; reuses the existing SQLite library + analysis cache. UI: export buttons
+    on crates, the controllers panel, and Settings.*
 
 **Tier 4 — advanced / niche (later, maybe never):**
 - ⬜ Video mixing, karaoke, DMX lighting · HID hardware (pro-controller jog wheels).
@@ -245,9 +255,8 @@ abstraction; Ableton Link / MIDI-clock sync.
 2. ✅ **MIDI-learn / mapping** (+ Akai profile) — done.
 3. ✅ **SQLite track DB + saved cues/loops** — done.
 4. ✅ **Headphone/cue monitoring** — done.
-5. 🔨 **Stem separation** — model decision made (offline stems · `ort` · htdemucs ·
-   optional-download); S1 offline pipeline + resampling done. Next: optional-download, engine
-   integration, and per-deck stem UI. See "Decisions made (2026-06-20)".
+5. ❌ ~~**Stem separation**~~ — **removed 2026-06-24** (no AI/ML; see Phase 5). The `ort`/htdemucs
+   work and all stem code were deleted.
 6. 🔶 **Performance layer** — beat-jump + quantize + loop-roll (slip) + sampler/pads done; more
    beat-synced FX, full slip mode, harmonic-mixing assist, MIDI-mapped pads still open.
 7. ⬜ **Typed control bus** — the extensibility enabler (see the deep-dive backlog); unlocks FX
@@ -280,7 +289,7 @@ benchmarks, or small code changes.
    from the post-master mix by default.
 5. 🔶 **Master/headphone/record routing model** — mixer taps are now grouped under explicit
    `OutputRouting` buses for record, cue/headphones, and booth. Remaining: user-selectable record
-   source/policy and a fuller bus matrix for future mic/aux/stems routing.
+   source/policy and a fuller bus matrix for future mic/aux routing.
 6. 🔶 **Latency compensation** — latency-aware play-head telemetry exists; cue/headphone and booth
    streams now publish measured device latency plus their prime-buffer latency through
    `engine_status`. Remaining: recording alignment and applying secondary-output offsets to UI/user
@@ -288,7 +297,7 @@ benchmarks, or small code changes.
 7. ✅ **No-drop guarantee for current old buffers** — retired deck/sample `Arc<DeckBuffer>` values
    now go through the reclaim ring or bounded RT-side parking when the ring is full; tests force
    deck and sampler replacement under reclaim pressure. Remaining future work: apply the same
-   retire model to large graph/stem snapshot swaps.
+   retire model to large graph snapshot swaps.
 8. 🔶 **Controller mapping profiles** — sampler pads are now registered control-bus targets, and
    the bundled Akai MPK Mini MK3 / LPD8 starter profiles map factory pad notes to sampler triggers.
    Continue adding tested profiles (DDJ-SB3, Numark, Hercules, more Akai/Korg), plus hot-plug
@@ -358,8 +367,8 @@ or docs updated in the same patch.
 6. ⬜ **Modular deck graph refactor** — incrementally move `DeckPlayer::next_frame` into the
    documented stages: source, playhead/resampler, keylock, pregain/ReplayGain, EQ/filter, FX,
    fader, and buses.
-7. ⬜ **No-drop graph/stem snapshot retirement** — route future large graph snapshots, stem buffers,
-   and model state through the same reclaim/parking model now used for old `Arc<DeckBuffer>` values.
+7. ⬜ **No-drop graph snapshot retirement** — route future large graph snapshots and model state
+   through the same reclaim/parking model now used for old `Arc<DeckBuffer>` values.
 
 ---
 
@@ -374,8 +383,8 @@ Status: ✅ have · 🔶 partial · ⬜ planned. The controller list lives in `d
 - ✅ **DJ controller support** (engine + loader + scripting host wiring); 🔶 **MIDI** profiles to author,
   ⬜ **HID** input layer (`hidapi`) for jog/displays
 - 🔨 **effects** (echo/reverb/flanger/bitcrusher in a reorderable chain + meta-knob; ⬜ phaser, FX units UI)
-- 🔨 **stem separation** (S1 offline pipeline + resampling done; optional-download + engine/UI pending)
-- ✅ master recording · ⬜ **microphone & aux inputs** · ⬜ controller **LED/output feedback**
+- ❌ ~~stem separation~~ (**removed 2026-06-24 — no AI/ML**; see Phase 5)
+- ✅ master recording · ✅ **microphone & aux inputs** · ✅ controller **LED/output feedback**
 - ✅ library: crates/playlists, search/sort, BPM/key; 🔶 AutoDJ (planner + queue done; ⬜ unattended chaining)
 - ⬜ **vinyl / timecode control** (DVS) · ⬜ reverse / censor
 - ⬜ **external library import** — your local files ✅; ⬜ import from other DJ apps + media libraries
@@ -422,24 +431,14 @@ RT-safe WSOLA stretcher and our own analysis), so they add no third-party DSP de
 **Patent note:** MP3 patents have expired. AAC patents may still apply to the *codec*; symphonia's
 AAC/ALAC coverage is also partial — another reason the FFmpeg fallback decision is documented.
 
-## Decisions made (2026-06-20) — stem separation
+## Decisions made (2026-06-20) — stem separation **[REVERSED 2026-06-24]**
 
-- **Mode: offline pre-computed stems, not true real-time.** On load/on-demand, run the model
-  once on the existing analysis worker thread and produce 4 stem buffers (drums/bass/other/vocals);
-  a deck then holds `[Arc<DeckBuffer>; 4]` and the audio callback mixes 4 frames with 4 per-stem
-  gains. Zero model inference on the RT thread — fits the in-RAM play-head model and adds no new
-  RT hazard. Live stem control = per-stem gain/mute. True real-time (causal in-path) separation is
-  **deferred indefinitely** (GPU/latency cost, worse quality-per-effort).
-- **Runtime: `ort` (ONNX Runtime).** A quarantined native dependency, justified the same way as
-  the FFmpeg fallback: pure-Rust everywhere except one well-contained, well-supported native lib.
-  Chosen over pure-Rust `candle`/`tract` for best model fidelity (runs htdemucs as-is) and the only
-  path to DirectML/CoreML/CUDA acceleration (Demucs on plain CPU is ~slower than realtime). Lives in
-  a dedicated **`compas-stems`** crate so the native dep stays out of the core engine crates and CI.
-- **Model: htdemucs** (Meta, MIT) — hybrid-transformer 4-stem, state-of-the-art quality.
-- **Distribution: optional-download.** Installer ships without the ~hundreds-of-MB model + the
-  onnxruntime lib; both are fetched (checksum-verified) into the app-data dir on first stem use.
-  Keeps the installer lean and makes stems opt-in. (Bundle/defer rejected.)
-- **Licensing: clear.** htdemucs, ONNX Runtime all MIT/Apache — no blocker (unlike streaming).
+> **This decision was reversed.** The stem-separation feature (offline pre-computed stems via `ort`
+> / ONNX Runtime + htdemucs, in a `compas-stems` crate with an optional model download) was fully
+> built and then **removed on 2026-06-24**: the upstream Demucs project is archived, and the project
+> direction is **no AI/ML dependency for now**. All stem code/deps/IPC/UI were deleted (see Phase 5
+> and `CHANGELOG.md`). The original decision is kept below only as a historical record; it is **not**
+> the current plan. If stems are ever revisited it will be with a non-archived, non-AI approach.
 
 ## Decisions made (2026-06-17)
 
