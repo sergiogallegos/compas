@@ -1,6 +1,9 @@
-import { memo, useEffect, useRef, useState, type ReactElement } from "react";
+import { memo, useEffect, useRef, useState, type DragEvent, type ReactElement } from "react";
 import type { DeckController, DeckState } from "../hooks/useDeck";
-import { bandColor } from "../lib/ipc";
+import { bandColor, loadTrack } from "../lib/ipc";
+
+// drag-and-drop MIME carrying a track path from the library onto a deck
+const TRACK_DND = "application/x-compas-track";
 import { Fader } from "./Fader";
 import { Knob } from "./Knob";
 import { Icon } from "./icons";
@@ -107,6 +110,21 @@ export function Deck({
   const platterRef = useRef<HTMLDivElement>(null);
   const [scratching, setScratching] = useState(false);
   const [dragAngle, setDragAngle] = useState(0);
+  // Library → deck drag-and-drop: highlight while a track hovers, load it on drop.
+  const [dropActive, setDropActive] = useState(false);
+  const onTrackDragOver = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes(TRACK_DND)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDropActive(true);
+  };
+  const onTrackDrop = (e: DragEvent) => {
+    if (!e.dataTransfer.types.includes(TRACK_DND)) return;
+    e.preventDefault();
+    setDropActive(false);
+    const path = e.dataTransfer.getData(TRACK_DND);
+    if (path) loadTrack(ctrl.deck, path).catch(() => {});
+  };
   const jog = useRef({
     active: false,
     rafId: 0,
@@ -203,7 +221,16 @@ export function Deck({
   }, []);
 
   return (
-    <section className={`deck${mirror ? " deck--mirror" : ""}`} style={{ borderTopColor: color }}>
+    <section
+      className={`deck${mirror ? " deck--mirror" : ""}`}
+      style={{
+        borderTopColor: color,
+        ...(dropActive ? { outline: `2px dashed ${color}`, outlineOffset: "-4px", background: `${color}10` } : null),
+      }}
+      onDragOver={onTrackDragOver}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={onTrackDrop}
+    >
       {/* header */}
       <div className="deck-header">
         {slots && (

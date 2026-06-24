@@ -325,9 +325,14 @@ export const Library = forwardRef<
                   key={t.path}
                   className="tl-row tl-grid"
                   style={loadedAs ? { borderLeftColor: loadedAs.color, background: `${loadedAs.color}12` } : undefined}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("application/x-compas-track", t.path);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   onDoubleClick={() => loadTrack(0, t.path).catch(() => {})}
                   onContextMenu={(e) => { e.preventDefault(); lib.remove(t.path); }}
-                  title="Double-click → Deck A · right-click → remove"
+                  title="Drag → deck · double-click → Deck A · right-click → remove"
                 >
                   <span className="tl-tag" style={loadedAs ? { color: loadedAs.color } : undefined}>
                     {loadedAs ? loadedAs.letter : "♪"}
