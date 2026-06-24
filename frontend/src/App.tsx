@@ -28,10 +28,13 @@ const DECK_LETTERS = ["A", "B", "C", "D"];
 export function App() {
   // Four local/full-DSP decks; only two deck panels are shown at a time (switching slots),
   // while the mixer exposes all four channel strips.
-  const deckA = useDeck(0, true);
-  const deckB = useDeck(1, true);
-  const deckC = useDeck(2, true);
-  const deckD = useDeck(3, true);
+  // The internal master clock is a global tempo source decks can follow (INT) and beat-synced FX
+  // track; created before the decks so each useDeck can read its tempo.
+  const internalClock = useInternalClock();
+  const deckA = useDeck(0, true, internalClock);
+  const deckB = useDeck(1, true, internalClock);
+  const deckC = useDeck(2, true, internalClock);
+  const deckD = useDeck(3, true, internalClock);
   const decks = [deckA, deckB, deckC, deckD];
 
   const [sampleRate, setSampleRate] = useState<number | null>(null);
@@ -60,7 +63,6 @@ export function App() {
   const cue = useCue();
   const booth = useBooth();
   const aux = useAux();
-  const internalClock = useInternalClock();
   const sampler = useSampler();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);

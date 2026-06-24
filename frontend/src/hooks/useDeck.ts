@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   deckPause,
@@ -211,7 +211,7 @@ function filterParams(x: number): { mode: FilterMode; cutoff: number; resonance:
   return { mode: "highpass", cutoff: 20 * Math.pow(4000 / 20, x), resonance: 0.9 + x };
 }
 
-export function useDeck(deck: number, dsp = true) {
+export function useDeck(deck: number, dsp = true, clock?: { active: boolean; bpm: number }) {
   const [meta, setMeta] = useState<DeckLoaded | null>(null);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -265,6 +265,45 @@ export function useDeck(deck: number, dsp = true) {
   flangerRef.current = flanger;
   const crusherRef = useRef(crusher);
   crusherRef.current = crusher;
+
+  // Beat-synced FX derive their beat length from the deck's analyzed grid — UNLESS the deck follows
+  // the internal master clock, in which case the engine rate-matches the deck to the clock, so the
+  // deck's audio beats at the clock tempo and the FX must track that instead.
+  const fxBeatSec =
+    syncInternal && clock?.active && clock.bpm > 0
+      ? 60 / clock.bpm
+      : (meta?.beat_interval_sec ?? 0) > 0
+        ? meta!.beat_interval_sec
+        : NO_GRID_BEAT_SEC;
+
+  // Translate the UI echo (beat-synced time + single "depth") to engine params.
+  const applyEcho = useCallback(
+    (e: EchoState) => {
+      const timeSec = fxBeatSec * e.beats;
+      const feedback = 0.15 + e.depth * 0.7; // 0.15..0.85
+      const mix = e.active ? e.depth * 0.5 : 0; // up to half-wet
+      setDeckEcho(deck, e.active, timeSec, feedback, mix).catch(() => {});
+    },
+    [deck, fxBeatSec],
+  );
+  // Beat-synced flanger: the LFO period is `beats` long; depth drives sweep + resonance.
+  const applyFlanger = useCallback(
+    (f: FlangerState) => {
+      const period = fxBeatSec * f.beats;
+      const rateHz = period > 0 ? 1 / period : 0.3;
+      const feedback = 0.35 + f.depth * 0.5; // 0.35..0.85
+      const mix = f.active ? 0.5 : 0; // classic 50/50 flange
+      setDeckFlanger(deck, f.active, rateHz, f.depth, feedback, mix).catch(() => {});
+    },
+    [deck, fxBeatSec],
+  );
+  // Re-push active beat-synced FX when the effective tempo source changes (clock BPM edit, INT
+  // toggle, or a new grid on load) so the audible delay/LFO keeps tracking without a chip re-toggle.
+  useEffect(() => {
+    if (!dsp) return;
+    if (echoRef.current.active) applyEcho(echoRef.current);
+    if (flangerRef.current.active) applyFlanger(flangerRef.current);
+  }, [dsp, applyEcho, applyFlanger]);
   // Path of the loaded track + a once-per-load guard for recording a play.
   const pathRef = useRef<string | null>(null);
   const playedRef = useRef(false);
@@ -441,25 +480,12 @@ export function useDeck(deck: number, dsp = true) {
         dbRecordPlay(path as string).catch(swallow);
       }
     };
-    // Translate the UI echo (beat-synced time + single "depth") to engine params.
-    const pushEcho = (e: EchoState) => {
-      const beatSec = (meta?.beat_interval_sec ?? 0) > 0 ? meta!.beat_interval_sec : NO_GRID_BEAT_SEC;
-      const timeSec = beatSec * e.beats;
-      const feedback = 0.15 + e.depth * 0.7; // 0.15..0.85
-      const mix = e.active ? e.depth * 0.5 : 0; // up to half-wet
-      setDeckEcho(deck, e.active, timeSec, feedback, mix).catch(swallow);
-    };
+    // Beat-synced echo/flanger pushes are defined at component scope (they track the internal
+    // clock via `fxBeatSec` and re-push on tempo change); alias them here for the setters below.
+    const pushEcho = applyEcho;
+    const pushFlanger = applyFlanger;
     const pushReverb = (r: ReverbState) => {
       setDeckReverb(deck, r.active, r.size, r.active ? r.mix : 0).catch(swallow);
-    };
-    // Beat-synced flanger: the LFO period is `beats` long; depth drives sweep + resonance.
-    const pushFlanger = (f: FlangerState) => {
-      const beatSec = (meta?.beat_interval_sec ?? 0) > 0 ? meta!.beat_interval_sec : NO_GRID_BEAT_SEC;
-      const period = beatSec * f.beats;
-      const rateHz = period > 0 ? 1 / period : 0.3;
-      const feedback = 0.35 + f.depth * 0.5; // 0.35..0.85
-      const mix = f.active ? 0.5 : 0; // classic 50/50 flange
-      setDeckFlanger(deck, f.active, rateHz, f.depth, feedback, mix).catch(swallow);
     };
     // Bitcrusher: crush 0..1 → 16..2 bits; down 0..1 → 1..32× sample-and-hold. Full wet.
     const pushCrusher = (c: CrusherState) => {
@@ -810,7 +836,7 @@ export function useDeck(deck: number, dsp = true) {
         );
       },
     };
-  }, [deck, playing, tempo, meta, isLeader, syncLive, syncInternal]);
+  }, [deck, playing, tempo, meta, isLeader, syncLive, syncInternal, applyEcho, applyFlanger]);
 
   const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, syncLive, syncInternal, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
   return { state, actions, deck };
