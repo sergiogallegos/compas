@@ -13,9 +13,10 @@
 > on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
 > **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual
 > leader~~ **DONE** (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE** (echo/flanger beat
-> times track the clock when a deck is on INT); remaining: stems shared-grain key-lock; INT CLK row
-> styling polish (deferred — `styles.css` left to Codex); audio-device-thread items (cue/booth
-> auto-reopen, user-selectable record source) — do when NOT mid-test. **Coordination:**
+> times track the clock when a deck is on INT); ~~stems shared-grain key-lock~~ **DONE** (`558fcdf`,
+> `StemStretch`); remaining: INT CLK row styling polish (deferred — `styles.css` left to Codex);
+> audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT
+> mid-test. **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
 > own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
 
@@ -558,8 +559,10 @@ Next, from the ROADMAP backlog:
      `<app-data>/models/htdemucs.onnx`; missing → clear error.
      **Remaining S2:** (1) disk + SQLite cache of the 4 stem WAVs so reload is instant (separation is
      minutes-slow); (2) in-app checksum'd model download into `<app-data>/models/`; then S3 UI.
-     **Known limitation:** under key-lock the 4 stems stretch independently (own WSOLA each), so
-     inter-stem transient phase coherence isn't guaranteed — a shared-grain follow-up is noted.
+     **Shared-grain key-lock — DONE (`558fcdf`).** The independent per-stem WSOLA was replaced by
+     `compas_dsp::StemStretch<N>`: one similarity search on the mix places each grain for all four
+     stems, so inter-stem transients stay phase-coherent (`Σ OLA(stemᵢ,pos) = OLA(Σ stemᵢ,pos)`).
+     Cheaper too (one search, not four). 2 DSP teeth tests; all engine tests + clippy/fmt clean.
    - **S3 — UI. ✅ DONE (2026-06-22).** Each local deck has a STEMS control: a separate button (with
      a live progress strip), DRUMS/BASS/OTHER/VOX level knobs with per-stem mute, and a one-click
      revert to the full mix. Disabled w/ explanatory tooltip when the build lacks stem support or the
