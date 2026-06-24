@@ -341,6 +341,9 @@
 .settings-section-head h4 { margin: 0; font-family: var(--font-display); font-size: 12px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
 .settings-rescan { flex: none; padding: 4px 10px; font-size: 9px; }
 .settings-device-list { display: flex; flex-direction: column; gap: 6px; }
+.settings-io-list { display: flex; flex-direction: column; gap: 2px; }
+/* The relocated mixer I/O rows (.phones) sit flush inside Settings — drop their mixer divider. */
+.settings-io-list .phones { border-top: none; margin-top: 0; padding-top: 2px; }
 .settings-device-row { display: grid; grid-template-columns: 126px minmax(0, 1fr) 76px; align-items: center; gap: 8px; color: var(--text-secondary); }
 .settings-device-title { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; font-weight: 600; }
 .settings-device-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,13 +1,16 @@
 import type { AuxApi } from "../hooks/useAux";
 import type { BoothApi } from "../hooks/useBooth";
 import type { CueApi } from "../hooks/useCue";
+import type { InternalClockApi } from "../hooks/useInternalClock";
 import type { KeyNotation } from "../lib/ipc";
+import { Aux, Booth, InternalClock } from "./Mixer";
 import { Icon } from "./icons";
 
 export function SettingsPanel({
   aux,
   booth,
   cue,
+  clock,
   contrast,
   onToggleContrast,
   keyNotation,
@@ -21,6 +24,7 @@ export function SettingsPanel({
   aux: AuxApi;
   booth: BoothApi;
   cue: CueApi;
+  clock: InternalClockApi;
   contrast: boolean;
   onToggleContrast: () => void;
   keyNotation: KeyNotation;
@@ -83,6 +87,16 @@ export function SettingsPanel({
               status={aux.enabled ? `On: ${aux.connectedName ?? "selected input"}` : "Off"}
               onChange={aux.setDevice}
             />
+          </div>
+        </section>
+        <section className="settings-audio" aria-labelledby="settings-io-heading">
+          <div className="settings-section-head">
+            <h4 id="settings-io-heading">Input &amp; monitoring</h4>
+          </div>
+          <div className="settings-io-list">
+            <Booth booth={booth} />
+            <Aux aux={aux} />
+            <InternalClock clock={clock} />
           </div>
         </section>
         <div className="settings-grid">

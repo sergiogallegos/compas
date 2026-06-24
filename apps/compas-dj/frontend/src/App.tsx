@@ -330,9 +330,6 @@ export function App() {
               onFxMacro={applyFxMacro}
               auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
               cue={cue}
-              booth={booth}
-              aux={aux}
-              clock={internalClock}
             />
             <Deck
               ctrl={rightDeck}
@@ -360,6 +357,7 @@ export function App() {
           aux={aux}
           booth={booth}
           cue={cue}
+          clock={internalClock}
           contrast={contrast}
           onToggleContrast={() => setContrast((v) => !v)}
           keyNotation={keyNotation}

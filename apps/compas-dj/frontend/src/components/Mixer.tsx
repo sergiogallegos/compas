@@ -37,9 +37,6 @@ export function Mixer({
   onFxMacro,
   auto,
   cue,
-  booth,
-  aux,
-  clock,
 }: {
   channels: Channel[];
   crossfader: number;
@@ -48,9 +45,6 @@ export function Mixer({
   onFxMacro?: (deck: number, v: number) => void;
   auto?: AutoMixProps;
   cue?: CueApi;
-  booth?: BoothApi;
-  aux?: AuxApi;
-  clock?: InternalClockApi;
 }) {
   return (
     <section className="mixer">
@@ -97,16 +91,13 @@ export function Mixer({
       </div>
       {xfader && <XfaderConfigRow {...xfader} />}
       {cue && <Phones cue={cue} />}
-      {booth && <Booth booth={booth} />}
-      {aux && <Aux aux={aux} />}
-      {clock && <InternalClock clock={clock} />}
     </section>
   );
 }
 
 /** Internal master clock: a free-running metronome offered as a virtual sync leader (the deck INT
  *  chips lock to it), so decks can ride a global tempo with nothing playing. */
-function InternalClock({ clock }: { clock: InternalClockApi }) {
+export function InternalClock({ clock }: { clock: InternalClockApi }) {
   return (
     <div className="phones int-clock">
       <Icon name="link" size={14} />
@@ -136,7 +127,7 @@ function InternalClock({ clock }: { clock: InternalClockApi }) {
 }
 
 /** Aux / microphone input: on/off and input level (summed into the master). */
-function Aux({ aux }: { aux: AuxApi }) {
+export function Aux({ aux }: { aux: AuxApi }) {
   return (
     <div className="phones aux">
       <Icon name="mic" size={14} />
@@ -217,7 +208,7 @@ function Phones({ cue }: { cue: CueApi }) {
 }
 
 /** Booth monitor controls: on/off and post-master monitor level. */
-function Booth({ booth }: { booth: BoothApi }) {
+export function Booth({ booth }: { booth: BoothApi }) {
   return (
     <div className="phones booth">
       <Icon name="sliders" size={14} />
