@@ -28,9 +28,6 @@ const ROLLS: { v: number; label: string }[] = [
   { v: 0.5, label: "½" },
 ];
 
-/// Stem labels, in htdemucs output order (drums, bass, other, vocals).
-const STEM_LABELS = ["DRUMS", "BASS", "OTHER", "VOX"];
-
 // Per-slot hot-cue colors (Serato-style 8-color palette). Hex so an alpha suffix (`${c}30`) is
 // valid CSS — a CSS var like `var(--accent)` can't take an appended alpha.
 const CUE_COLORS = ["#ff5b4c", "#ff8c1a", "#ffcf3a", "#3ddc97", "#28e0ff", "#2ea6ff", "#9b6bff", "#ff5bbf"];
@@ -73,11 +70,6 @@ export function Deck({
   const rate = meta?.source_rate ?? 1;
   const frames = meta?.frames ?? 0;
   const noGrid = !meta || (meta.beat_interval_sec ?? 0) <= 0;
-  // Stems: with the feature built but no model on disk, offer a download instead of Separate.
-  const sm = state.stemsModel;
-  const needModel = sm?.feature_enabled === true && !sm.available;
-  const dl = state.modelDownload;
-  const dlPct = dl.total > 0 ? Math.round((dl.received / dl.total) * 100) : 0;
 
   // Loop-roll is momentary: held while the pad is pressed, released on pointer up/leave.
   const [rollBeats, setRollBeats] = useState<number | null>(null);
@@ -525,89 +517,6 @@ export function Deck({
                   <span className="overline fx-label">CRUSH</span>
                   <Knob value={state.crusher.crush} min={0} max={1} onChange={actions.setCrusherCrush} label="BITS" color={color} size={34} />
                   <Knob value={state.crusher.down} min={0} max={1} onChange={actions.setCrusherDown} label="RATE" color={color} size={34} />
-                </div>
-              )}
-
-              {/* Stems: separate the track, then mute/solo/level drums/bass/other/vocals. */}
-              <div className="chip-row">
-                {state.stems.status === "none" && dl.active && (
-                  <div className="stem-progress" title="Downloading the stem model…">
-                    <div className="stem-progress-bar" style={{ width: `${dlPct}%`, background: color }} />
-                    <span className="stem-progress-label">
-                      MODEL {dl.total > 0 ? `${dlPct}%` : `${Math.round(dl.received / 1e6)} MB`}
-                    </span>
-                  </div>
-                )}
-                {state.stems.status === "none" && !dl.active && needModel && (
-                  <button
-                    className="chip"
-                    onClick={actions.downloadModel}
-                    disabled={!meta}
-                    title="Download the htdemucs stem model (~300 MB) into the app-data folder"
-                  >
-                    GET MODEL
-                  </button>
-                )}
-                {state.stems.status === "none" && !dl.active && !needModel && (
-                  <button
-                    className="chip"
-                    onClick={actions.separateStems}
-                    disabled={!meta || state.stemsModel?.feature_enabled === false}
-                    title={
-                      state.stemsModel?.feature_enabled === false
-                        ? "This build has no stem support (rebuild with --features stems)"
-                        : "Separate this track into drums / bass / other / vocals"
-                    }
-                  >
-                    STEMS
-                  </button>
-                )}
-                {state.stems.status === "separating" && (
-                  <div className="stem-progress" title="Separating stems…">
-                    <div
-                      className="stem-progress-bar"
-                      style={{ width: `${Math.round(state.stems.progress * 100)}%`, background: color }}
-                    />
-                    <span className="stem-progress-label">
-                      SEPARATING {Math.round(state.stems.progress * 100)}%
-                    </span>
-                  </div>
-                )}
-                {state.stems.status === "ready" && (
-                  <button
-                    className="chip chip--on"
-                    onClick={actions.clearStems}
-                    title="Remove stems — back to the full mix"
-                  >
-                    STEMS ✕
-                  </button>
-                )}
-              </div>
-              {(state.stems.error || dl.error) && (
-                <p className="stem-error">{state.stems.error || dl.error}</p>
-              )}
-              {state.stems.status === "ready" && (
-                <div className="fx-detail stems-detail">
-                  {STEM_LABELS.map((label, i) => (
-                    <div className="stem-col" key={label}>
-                      <Knob
-                        value={state.stems.gains[i]}
-                        min={0}
-                        max={1}
-                        onChange={(v) => actions.setStemGain(i, v)}
-                        label={label}
-                        color={state.stems.muted[i] ? "#555" : color}
-                        size={32}
-                      />
-                      <button
-                        className={`chip stem-mute ${state.stems.muted[i] ? "" : "chip--on"}`}
-                        onClick={() => actions.toggleStemMute(i)}
-                        title={`${state.stems.muted[i] ? "Unmute" : "Mute"} ${label}`}
-                      >
-                        {state.stems.muted[i] ? "OFF" : "ON"}
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
             </>

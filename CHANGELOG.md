@@ -5,6 +5,14 @@ All notable changes to compas are documented here. Format follows
 
 ## [Unreleased]
 
+### Removed
+- **Stem separation (Demucs/htdemucs) removed entirely.** The upstream Demucs project is archived
+  and the project is dropping AI for now, so the whole feature was deleted: the `compas-stems`
+  crate, the `stems` cargo feature, the `ort`/onnxruntime + `ureq`/`sha2` model-download
+  dependencies, every stem/model IPC command, the engine's per-deck stem overlay and the
+  shared-grain `StemStretch` WSOLA stretcher, and the STEMS deck-panel UI. Decks read the mix
+  buffer only; the default build is lighter and links no native AI runtime.
+
 ### Fixed
 - **Title-bar update check:** before the first published release feed exists, clicking the version
   chip now reports "up to date" instead of surfacing a raw JSON/404 parsing error.

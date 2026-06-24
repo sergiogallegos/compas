@@ -5,7 +5,6 @@ members = [
     "crates/compas-dsp",
     "crates/compas-audio",
     "crates/compas-sources",
-    "crates/compas-stems",
     "crates/compas-script",
     "src-tauri",
 ]
@@ -33,7 +32,6 @@ compas-core = { path = "crates/compas-core" }
 compas-dsp = { path = "crates/compas-dsp" }
 compas-audio = { path = "crates/compas-audio" }
 compas-sources = { path = "crates/compas-sources" }
-compas-stems = { path = "crates/compas-stems" }
 compas-script = { path = "crates/compas-script" }
 
 # Shared third-party deps (single source of truth for versions)

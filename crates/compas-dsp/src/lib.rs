@@ -21,5 +21,5 @@ pub use live::{LiveEstimate, LiveTracker};
 
 pub use rt::{
     meta_map, Biquad, BiquadCoeffs, Bitcrusher, Crossfader, Delay, Flanger, GainSmoother, LinkType,
-    Reverb, StemStretch, Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
+    Reverb, Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };

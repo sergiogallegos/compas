@@ -6,15 +6,22 @@
 > pushed to `origin/main`** (through `adab4a4`). See `ROADMAP.md` for the full plan + **competitive
 > feature backlog**, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
 >
-> **▶ RESUME POINTER (start here next session):** working tree clean, all pushed. Remaining work,
-> in rough priority: (1) **release signing key** — the only true release blocker; your one-time
-> secret (`npx tauri signer generate`, paste pubkey into `tauri.conf.json`, add GitHub secrets;
-> `CONTRIBUTING.md`). (2) **Live stem verification** — a real separation run needs the 301 MB model
-> on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
-> **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual
-> leader~~ **DONE** (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE** (echo/flanger beat
-> times track the clock when a deck is on INT); ~~stems shared-grain key-lock~~ **DONE** (`558fcdf`,
-> `StemStretch`); remaining: INT CLK row styling polish (deferred — `styles.css` left to Codex);
+> **⚠ STEM SEPARATION REMOVED (2026-06-24).** The Demucs/htdemucs AI stem-separation feature was
+> deleted entirely — the upstream Demucs project is archived and we're dropping AI for now. Gone:
+> the `compas-stems` crate, the `stems` cargo feature, `ureq`/`sha2`/`ort`/onnxruntime deps, all
+> `*_stems`/`*_stem_gain`/model-download IPC, the engine's per-deck stem overlay + `StemStretch`
+> shared-grain WSOLA, and the STEMS UI panel. Decks read the mix buffer only. (Dead `.stem-*` CSS
+> rules remain in `styles.css` — left for Codex to prune.) See `CHANGELOG.md`.
+>
+> **▶ RESUME POINTER (start here next session):** **Big re-architecture in flight** — splitting into
+> a product family: **compas-dj** (the current DJ app) + a future **compas-studio** DAW, sharing the
+> Rust engine crates. Monorepo layout `crates/` (shared core) + `apps/` (per-product Tauri shells);
+> see `docs/ARCHITECTURE-PRODUCTS.md` (the plan). Remaining standalone work: (1) **release signing
+> key** — the only true release blocker; your one-time secret (`npx tauri signer generate`, paste
+> pubkey into `tauri.conf.json`, add GitHub secrets; `CONTRIBUTING.md`). (2) **Deferred polish:**
+> ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
+> (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~
+> **REMOVED with the stem feature**; remaining: INT CLK row styling polish (`styles.css`, Codex);
 > audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT
 > mid-test. **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your

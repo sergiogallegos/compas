@@ -608,61 +608,6 @@ export const setInternalClock = (active: boolean, bpm: number) =>
 export const setDeckSyncInternal = (deck: number, active: boolean) =>
   invoke("set_deck_sync_internal", { deck, active });
 
-// ---- Stem separation --------------------------------------------------------------
-
-export interface StemsModelStatus {
-  /** The htdemucs model file is present and usable. */
-  available: boolean;
-  /** This build was compiled with the `stems` feature (the native ONNX runtime). */
-  feature_enabled: boolean;
-  /** Resolved model path (empty when not found). */
-  path: string;
-}
-/** Whether stem separation can run: build feature + model presence. */
-export const stemsModelStatus = () => invoke<StemsModelStatus>("stems_model_status");
-/** Decode + separate `path` into 4 stems on `deck` (worker thread; emits `stems:*` events). */
-export const separateStems = (deck: number, path: string) =>
-  invoke("separate_stems", { deck, path });
-/** Remove a deck's stems, reverting it to the full mix. */
-export const clearDeckStems = (deck: number) => invoke("clear_deck_stems", { deck });
-/** Set one stem's gain (mute/solo). `stem` indexes `[drums, bass, other, vocals]`. */
-export const setDeckStemGain = (deck: number, stem: number, gain: number) =>
-  invoke("set_deck_stem_gain", { deck, stem, gain });
-
-export interface StemsProgress {
-  deck: number;
-  /** Separation progress 0..1. */
-  progress: number;
-}
-export interface StemsReady {
-  deck: number;
-  path: string;
-}
-export interface StemsError {
-  deck: number;
-  message: string;
-}
-export const onStemsProgress = (cb: (e: StemsProgress) => void): Promise<UnlistenFn> =>
-  listen<StemsProgress>("stems:progress", (e) => cb(e.payload));
-export const onStemsReady = (cb: (e: StemsReady) => void): Promise<UnlistenFn> =>
-  listen<StemsReady>("stems:ready", (e) => cb(e.payload));
-export const onStemsError = (cb: (e: StemsError) => void): Promise<UnlistenFn> =>
-  listen<StemsError>("stems:error", (e) => cb(e.payload));
-
-/** Download the htdemucs model into the app-data dir (worker thread; emits `stems:model-*`). */
-export const downloadStemsModel = () => invoke("download_stems_model");
-export interface ModelProgress {
-  received: number;
-  /** Total bytes (Content-Length), or 0 when unknown. */
-  total: number;
-}
-export const onStemsModelProgress = (cb: (e: ModelProgress) => void): Promise<UnlistenFn> =>
-  listen<ModelProgress>("stems:model-progress", (e) => cb(e.payload));
-export const onStemsModelReady = (cb: () => void): Promise<UnlistenFn> =>
-  listen("stems:model-ready", () => cb());
-export const onStemsModelError = (cb: (message: string) => void): Promise<UnlistenFn> =>
-  listen<{ message: string }>("stems:model-error", (e) => cb(e.payload.message));
-
 // ---- Event subscriptions ----------------------------------------------------------
 
 export interface DeckLoading {

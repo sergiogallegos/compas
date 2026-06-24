@@ -21,8 +21,8 @@ impl Default for EngineConfig {
     fn default() -> Self {
         EngineConfig {
             command_capacity: 256,
-            // Sized to absorb stem-sized swaps: a deck reload retires its mix plus four stems.
-            reclaim_capacity: 48,
+            // Sized to absorb a burst of deck reloads each retiring their mix buffer, with headroom.
+            reclaim_capacity: 16,
         }
     }
 }

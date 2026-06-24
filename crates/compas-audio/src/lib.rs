@@ -30,7 +30,7 @@ pub use cue::{
 pub use engine::{AudioEngine, EngineConfig};
 pub use input::{input_device_names, open_aux_input, AuxInput};
 pub use live::{run_live_analysis, LiveBeatClock, LiveBeatSnapshot};
-pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS, NUM_STEMS};
+pub use mixer::{AudioCommand, DeckTelemetry, FilterMode, NUM_DECKS};
 pub use sampler::NUM_PADS as NUM_SAMPLER_PADS;
 pub use waveform::compute_peaks;
 

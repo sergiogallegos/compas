@@ -125,12 +125,10 @@ dedicated structs; the playhead/source read is the remaining inline block.
 
 Extracted stage structs (each tested in isolation, behavior-preserving):
 
-- **`KeylockStage`** (stage 3) — the key-lock toggle, the WSOLA mix stretcher, the **shared-grain
-  stem stretcher** (`StemStretch`: one similarity search on the mix places each grain for all four
-  stems, so their transients stay phase-coherent when summed), and the `engaged` re-prime flag.
-  `begin_frame(scratching)` computes whether stretched
-  reading is active and re-primes on the engage edge; `mark_jumped()` flags a play-head jump
-  (seek / loop / scratch release / stem swap); `set_active()` drives the toggle.
+- **`KeylockStage`** (stage 3) — the key-lock toggle, the WSOLA mix stretcher, and the `engaged`
+  re-prime flag. `begin_frame(scratching)` computes whether stretched reading is active and
+  re-primes on the engage edge; `mark_jumped()` flags a play-head jump (seek / loop / scratch
+  release); `set_active()` drives the toggle.
 - **`PregainStage`** (stage 4) — loudness normalization (ReplayGain) applied *before* the tone/FX
   stages, so EQ/filter and the nonlinear bitcrusher see a predictable input level. `apply(l, r)`,
   `set(factor)`; static factor for now (the frontend sets it on load).
@@ -146,9 +144,8 @@ Extracted stage structs (each tested in isolation, behavior-preserving):
 Source read + play-head advance (stages 1–2) are extracted as **methods** on `DeckPlayer`, not
 separate structs:
 
-- **`read_source_frame(engaged)`** (stages 1–2 read) — samples the source at the current play-head:
-  sums the stems (each at its smoothed gain) when loaded, otherwise reads the mix buffer, through
-  `KeylockStage` when engaged or direct cubic-Hermite interpolation otherwise.
+- **`read_source_frame(engaged)`** (stages 1–2 read) — samples the mix buffer at the current
+  play-head, through `KeylockStage` when engaged or direct cubic-Hermite interpolation otherwise.
 - **`advance_playhead(max)`** (stage 2 transport) — moves the play-head one frame: scratch rate, or
   sync (PLL) / user tempo, plus the loop-roll shadow play-head and beat-loop wrap.
 
