@@ -349,6 +349,9 @@ export function App() {
       {showControllers && <ControllerMap onClose={() => setShowControllers(false)} />}
       {showSettings && (
         <SettingsPanel
+          aux={aux}
+          booth={booth}
+          cue={cue}
           contrast={contrast}
           onToggleContrast={() => setContrast((v) => !v)}
           onOpenKeys={() => openPanel(setShowKeys)}

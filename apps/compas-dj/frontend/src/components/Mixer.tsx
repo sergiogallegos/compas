@@ -135,23 +135,11 @@ function InternalClock({ clock }: { clock: InternalClockApi }) {
   );
 }
 
-/** Aux / microphone input: capture device, on/off, and input level (summed into the master). */
+/** Aux / microphone input: on/off and input level (summed into the master). */
 function Aux({ aux }: { aux: AuxApi }) {
   return (
     <div className="phones aux">
       <Icon name="mic" size={14} />
-      <select
-        className="phones-dev"
-        value={aux.device ?? ""}
-        onChange={(e) => aux.setDevice(e.target.value || null)}
-        disabled={aux.enabled}
-        title="Aux / microphone input device"
-      >
-        <option value="">Default input</option>
-        {aux.devices.map((d) => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
       <button
         className={`chip phones-on ${aux.enabled ? "chip--on" : ""}`}
         onClick={aux.toggle}
@@ -210,23 +198,11 @@ function XfaderConfigRow({ curve, additive, reverse, onChange }: XfaderConfig) {
   );
 }
 
-/** Headphone cue master controls: output device, on/off, cue↔master blend, level. */
+/** Headphone cue master controls: on/off, cue↔master blend, level. */
 function Phones({ cue }: { cue: CueApi }) {
   return (
     <div className="phones">
       <Icon name="headphones" size={14} />
-      <select
-        className="phones-dev"
-        value={cue.device ?? ""}
-        onChange={(e) => cue.setDevice(e.target.value || null)}
-        disabled={cue.enabled}
-        title="Headphone output device"
-      >
-        <option value="">Default output</option>
-        {cue.devices.map((d) => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
       <button
         className={`chip phones-on ${cue.enabled ? "chip--on" : ""}`}
         onClick={cue.toggle}
@@ -240,23 +216,11 @@ function Phones({ cue }: { cue: CueApi }) {
   );
 }
 
-/** Booth monitor controls: post-master output on a separate device with its own level. */
+/** Booth monitor controls: on/off and post-master monitor level. */
 function Booth({ booth }: { booth: BoothApi }) {
   return (
     <div className="phones booth">
       <Icon name="sliders" size={14} />
-      <select
-        className="phones-dev"
-        value={booth.device ?? ""}
-        onChange={(e) => booth.setDevice(e.target.value || null)}
-        disabled={booth.enabled}
-        title="Booth output device"
-      >
-        <option value="">Default output</option>
-        {booth.devices.map((d) => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
       <button
         className={`chip phones-on ${booth.enabled ? "chip--on" : ""}`}
         onClick={booth.toggle}
