@@ -11,10 +11,12 @@
 > secret (`npx tauri signer generate`, paste pubkey into `tauri.conf.json`, add GitHub secrets;
 > `CONTRIBUTING.md`). (2) **Live stem verification** — a real separation run needs the 301 MB model
 > on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
-> **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`, `notify` dep on top of the
-> scan-based watched folders); FX internal-clock virtual leader; stems shared-grain key-lock;
-> audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT
-> mid-test. **Coordination:**
+> **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual
+> leader~~ **DONE** (`556b88d`); remaining: stems shared-grain key-lock; FX beat-sync to the
+> internal clock (the deck-sync half landed; wiring the echo/flanger beat times to the global clock
+> is a follow-up); INT CLK row styling polish (deferred — `styles.css` left to Codex); audio-device-
+> thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT mid-test.
+> **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
 > own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
 
@@ -119,6 +121,20 @@ no collision with Codex's jog-wheel work). **Skipped:** controller profiles (won
 MIDI maps). **Remaining polish:** the stem shared-grain key-lock, FX internal-clock virtual leader,
 and audio-device-thread items (cue/booth auto-reopen, record-source select) best done when not
 mid-test.
+
+**G. Internal-clock virtual leader — DONE (`556b88d`).** A free-running internal master clock
+(metronome) the sync engine offers as a virtual leader, so decks have a tempo + phase source with
+nothing playing. Engine: `InternalClock { active, bpm, phase }` advanced one frame per `update_sync`
+(always "locked"); a per-deck `sync_internal` flag rate/phase-matches it with the same bounded ±bend
+as deck-to-deck sync, **mutually exclusive** with deck-leader and live (mic/aux) sync (engaging one
+clears the others, both ways). `AudioCommand`s `SetInternalClock`/`SetDeckSyncInternal`; Full mode
+phase-locks, TempoOnly matches BPM. IPC `set_internal_clock`/`set_deck_sync_internal`; `useDeck`
+gains `syncInternal` + `toggleSyncInternal`; each deck has an **INT** chip by SYNC/MIC; a
+`useInternalClock` hook drives an **INT CLK** row in the mixer (ON/OFF + BPM input). 3 new tests
+(tempo-match + hold-when-inactive, Full-mode phase bend, mutual-exclusion command path); 55
+compas-audio tests pass. clippy `-D warnings` (engine+app) + fmt + tsc/vite clean. **Follow-ups:**
+wire the echo/flanger beat times to the global clock (deck-sync half done); INT CLK row styling
+(`styles.css` left to Codex). **Not yet exercised live** (needs a running app).
 
 **F. Live OS file-watch — DONE (`500b291`).** Watched folders now auto-import on real filesystem
 events, not just scan-on-launch/add. Added `notify = "8"`; a `FolderWatch` managed state holds a
