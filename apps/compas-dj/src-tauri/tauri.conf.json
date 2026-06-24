@@ -45,7 +45,7 @@
       "endpoints": [
         "https://github.com/sergiogallegos/compas/releases/latest/download/latest.json"
       ],
-      "pubkey": "REPLACE_BEFORE_RELEASE_dW50cnVzdGVkIGNvbXBhcyBwbGFjZWhvbGRlciBwdWJrZXk="
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZCOERBNkIwRDU5RDkyRTQKUldUa2twM1ZzS2FOK3c0VCtFK3NsZjZjK0RuQ2JmWFR4SC84NGpwOEhITnpaZ1FPT0REd0tXcG0K"
     }
   }
 }
