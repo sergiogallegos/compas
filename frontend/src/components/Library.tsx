@@ -2,11 +2,17 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import {
   dbAddToCrate,
   dbCrateTracks,
+  addWatchFolder,
   dbAddTag,
   dbCreateCrate,
   dbCreateSmartCrate,
   dbListCrates,
   dbRemoveTag,
+  listWatchFolders,
+  onLibraryChanged,
+  pickFolder,
+  removeWatchFolder,
+  rescanWatchFolders,
   dbPlanNext,
   dbSearch,
   inTauri,
@@ -143,6 +149,53 @@ export const Library = forwardRef<
     dbRemoveTag(path, tag).then(reloadView).catch(() => {});
   };
 
+  // Watched folders (auto-import).
+  const [folders, setFolders] = useState<string[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const refreshFolders = useCallback(() => {
+    if (!inTauri()) return;
+    listWatchFolders().then(setFolders).catch(() => {});
+  }, []);
+  useEffect(() => refreshFolders(), [refreshFolders]);
+  // A background scan (on launch or add) imported tracks → refresh the library + folder list.
+  useEffect(() => {
+    if (!inTauri()) return;
+    const un = onLibraryChanged(() => {
+      lib.refresh();
+      refreshFolders();
+    });
+    return () => {
+      un.then((u) => u());
+    };
+  }, [lib, refreshFolders]);
+  const addFolder = async () => {
+    const dir = await pickFolder().catch(() => null);
+    if (!dir) return;
+    setScanning(true);
+    try {
+      await addWatchFolder(dir);
+      refreshFolders();
+      lib.refresh();
+      reloadView();
+    } finally {
+      setScanning(false);
+    }
+  };
+  const rescanFolders = async () => {
+    setScanning(true);
+    try {
+      await rescanWatchFolders();
+      lib.refresh();
+      reloadView();
+    } finally {
+      setScanning(false);
+    }
+  };
+  const dropFolder = (dir: string) => {
+    removeWatchFolder(dir).then(refreshFolders).catch(() => {});
+  };
+  const baseName = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
+
   const filtered = results ?? lib.tracks;
 
   useEffect(() => {
@@ -190,6 +243,24 @@ export const Library = forwardRef<
             <span className="src-dot" style={{ background: c.is_smart ? "var(--accent)" : c.is_playlist ? "var(--stream)" : "var(--status-warn)" }} />
             <span className="src-name">{c.name}</span>
             <span className="ctrl-tag">{c.is_smart ? "✨" : c.track_count}</span>
+          </div>
+        ))}
+
+        <div className="overline src-group src-group--crates">
+          FOLDERS
+          <span style={{ display: "flex", gap: 4 }}>
+            <button className="crate-add" onClick={rescanFolders} disabled={scanning || folders.length === 0} title="Re-scan watched folders for new files">⟳</button>
+            <button className="crate-add" onClick={addFolder} disabled={scanning} title="Watch a folder — auto-imports its audio files">＋</button>
+          </span>
+        </div>
+        {folders.length === 0 && (
+          <div className="src-row src-row--muted"><span className="src-name">{scanning ? "Scanning…" : "No watched folders"}</span></div>
+        )}
+        {folders.map((f) => (
+          <div key={f} className="src-row" title={f}>
+            <span className="src-dot" style={{ background: "var(--status-ok)" }} />
+            <span className="src-name">{baseName(f)}</span>
+            <button className="crate-add" onClick={() => dropFolder(f)} title="Stop watching this folder">✕</button>
           </div>
         ))}
       </aside>

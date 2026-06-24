@@ -924,6 +924,92 @@ fn probe_track(path: String) -> Result<ProbedTrack, String> {
 }
 
 // ----------------------------------------------------------------------------------
+// Watched folders: auto-import audio files from registered folders (on add + on launch).
+// ----------------------------------------------------------------------------------
+
+/// File extensions a folder scan imports.
+const AUDIO_EXTS: &[&str] = &[
+    "mp3", "flac", "wav", "m4a", "aac", "ogg", "oga", "aiff", "aif",
+];
+
+fn is_audio_file(p: &std::path::Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| AUDIO_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+/// Recursively import audio files under `folder` that aren't already in the library; returns how
+/// many were newly imported. The DB lock is taken only per-file (probing runs unlocked), and
+/// recursion depth is bounded to avoid symlink loops. Unreadable entries are skipped.
+fn scan_folder(db: &State<'_, db::Db>, folder: &std::path::Path, depth: u32) -> usize {
+    if depth > 16 {
+        return 0;
+    }
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        return 0;
+    };
+    let mut added = 0usize;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(ft) = entry.file_type() else { continue };
+        if ft.is_dir() {
+            added += scan_folder(db, &path, depth + 1);
+        } else if ft.is_file() && is_audio_file(&path) {
+            let Some(p) = path.to_str() else { continue };
+            if with_db(db, |c| db::track_exists(c, p)).unwrap_or(false) {
+                continue;
+            }
+            use compas_sources::{AudioSource, LocalFileSource};
+            if let Ok(src) = LocalFileSource::open(p) {
+                let m = src.metadata();
+                let (title, artist) = (m.title.clone(), m.artist.clone());
+                let dur = m.duration_ms.unwrap_or(0) as i64;
+                if with_db(db, |c| db::add_track(c, p, &title, &artist, dur)).is_ok() {
+                    added += 1;
+                }
+            }
+        }
+    }
+    added
+}
+
+#[tauri::command]
+fn list_watch_folders(db: State<'_, db::Db>) -> Result<Vec<String>, String> {
+    with_db(&db, db::list_watch_folders)
+}
+
+/// Register a folder and import its audio files now; returns the count newly imported.
+#[tauri::command]
+fn add_watch_folder(app: AppHandle, db: State<'_, db::Db>, path: String) -> Result<usize, String> {
+    with_db(&db, |c| db::add_watch_folder(c, &path))?;
+    let n = scan_folder(&db, std::path::Path::new(&path), 0);
+    if n > 0 {
+        let _ = app.emit("library:changed", ());
+    }
+    Ok(n)
+}
+
+#[tauri::command]
+fn remove_watch_folder(db: State<'_, db::Db>, path: String) -> Result<(), String> {
+    with_db(&db, |c| db::remove_watch_folder(c, &path))
+}
+
+/// Re-scan every watched folder for files added since; returns the total newly imported.
+#[tauri::command]
+fn rescan_watch_folders(app: AppHandle, db: State<'_, db::Db>) -> Result<usize, String> {
+    let folders = with_db(&db, db::list_watch_folders)?;
+    let mut total = 0;
+    for f in folders {
+        total += scan_folder(&db, std::path::Path::new(&f), 0);
+    }
+    if total > 0 {
+        let _ = app.emit("library:changed", ());
+    }
+    Ok(total)
+}
+
+// ----------------------------------------------------------------------------------
 // Stem separation (S2): decode → htdemucs (worker thread) → install 4 stems on a deck
 // ----------------------------------------------------------------------------------
 
@@ -2742,6 +2828,21 @@ pub fn run() {
                     match db::open(dir.join("compas.db")) {
                         Ok(database) => {
                             app.manage(database);
+                            // Re-scan watched folders on launch to pick up files added while
+                            // closed, off the main thread; the UI refreshes on `library:changed`.
+                            let handle = app.handle().clone();
+                            thread::spawn(move || {
+                                let db = handle.state::<db::Db>();
+                                let folders =
+                                    with_db(&db, db::list_watch_folders).unwrap_or_default();
+                                let mut total = 0;
+                                for f in folders {
+                                    total += scan_folder(&db, std::path::Path::new(&f), 0);
+                                }
+                                if total > 0 {
+                                    let _ = handle.emit("library:changed", ());
+                                }
+                            });
                         }
                         Err(e) => tracing::error!("library DB open failed: {e}"),
                     }
@@ -2759,6 +2860,10 @@ pub fn run() {
             db_remove_track,
             db_add_tag,
             db_remove_tag,
+            list_watch_folders,
+            add_watch_folder,
+            remove_watch_folder,
+            rescan_watch_folders,
             db_track_state,
             db_upsert_analysis,
             db_set_cue,

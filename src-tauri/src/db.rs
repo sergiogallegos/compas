@@ -88,6 +88,11 @@ CREATE TABLE IF NOT EXISTS track_tags (
     tag        TEXT NOT NULL,
     PRIMARY KEY (track_path, tag)
 );
+
+CREATE TABLE IF NOT EXISTS watch_folders (
+    path     TEXT PRIMARY KEY,
+    added_at INTEGER NOT NULL
+);
 ";
 
 /// SQL fragment selecting a comma-joined `tags` column for a track. `path_expr` is how the track's
@@ -240,6 +245,37 @@ pub fn remove_tag(c: &Connection, path: &str, tag: &str) -> rusqlite::Result<()>
         params![path, clean_tag(tag)],
     )?;
     Ok(())
+}
+
+/// Whether a track path is already in the library (so a folder scan can skip re-probing it).
+pub fn track_exists(c: &Connection, path: &str) -> rusqlite::Result<bool> {
+    c.query_row(
+        "SELECT 1 FROM tracks WHERE path = ?1",
+        params![path],
+        |_| Ok(()),
+    )
+    .optional()
+    .map(|o| o.is_some())
+}
+
+/// Register a folder to auto-import from (idempotent).
+pub fn add_watch_folder(c: &Connection, path: &str) -> rusqlite::Result<()> {
+    c.execute(
+        "INSERT OR IGNORE INTO watch_folders (path, added_at) VALUES (?1, ?2)",
+        params![path, now()],
+    )?;
+    Ok(())
+}
+
+pub fn remove_watch_folder(c: &Connection, path: &str) -> rusqlite::Result<()> {
+    c.execute("DELETE FROM watch_folders WHERE path = ?1", params![path])?;
+    Ok(())
+}
+
+pub fn list_watch_folders(c: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = c.prepare("SELECT path FROM watch_folders ORDER BY path ASC")?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    rows.collect()
 }
 
 pub fn remove_track(c: &Connection, path: &str) -> rusqlite::Result<()> {
@@ -879,5 +915,29 @@ mod tests {
         // Deleting a track cascades its tags.
         remove_track(&c, "/b.mp3").unwrap();
         assert!(search_tracks(&c, "tag:peak").unwrap().is_empty());
+    }
+
+    #[test]
+    fn watch_folders_crud_and_track_exists() {
+        let c = mem();
+        assert!(list_watch_folders(&c).unwrap().is_empty());
+        add_watch_folder(&c, "/music/house").unwrap();
+        add_watch_folder(&c, "/music/house").unwrap(); // idempotent
+        add_watch_folder(&c, "/music/techno").unwrap();
+        let f = list_watch_folders(&c).unwrap();
+        assert_eq!(
+            f,
+            vec!["/music/house".to_string(), "/music/techno".to_string()]
+        );
+
+        add_track(&c, "/music/house/a.mp3", "A", "Ar", 1).unwrap();
+        assert!(track_exists(&c, "/music/house/a.mp3").unwrap());
+        assert!(!track_exists(&c, "/music/house/missing.mp3").unwrap());
+
+        remove_watch_folder(&c, "/music/house").unwrap();
+        assert_eq!(
+            list_watch_folders(&c).unwrap(),
+            vec!["/music/techno".to_string()]
+        );
     }
 }

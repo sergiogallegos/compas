@@ -186,6 +186,12 @@ export async function pickAudioFiles(): Promise<string[]> {
   return typeof selected === "string" ? [selected] : [];
 }
 
+/** Open a native folder picker; returns the chosen directory or null. */
+export async function pickFolder(): Promise<string | null> {
+  const selected = await open({ multiple: false, directory: true });
+  return typeof selected === "string" ? selected : null;
+}
+
 export interface ProbedTrack {
   path: string;
   title: string;
@@ -244,6 +250,17 @@ export const dbRemoveTrack = (path: string) => invoke("db_remove_track", { path 
 /** Tag a track (lowercased, idempotent). */
 export const dbAddTag = (path: string, tag: string) => invoke("db_add_tag", { path, tag });
 export const dbRemoveTag = (path: string, tag: string) => invoke("db_remove_tag", { path, tag });
+
+// ---- Watched folders (auto-import) ----
+export const listWatchFolders = () => invoke<string[]>("list_watch_folders");
+/** Register a folder + import its audio files now; returns the count newly imported. */
+export const addWatchFolder = (path: string) => invoke<number>("add_watch_folder", { path });
+export const removeWatchFolder = (path: string) => invoke("remove_watch_folder", { path });
+/** Re-scan all watched folders for new files; returns the total newly imported. */
+export const rescanWatchFolders = () => invoke<number>("rescan_watch_folders");
+/** Fires after a watched-folder scan imports tracks — refresh the library view. */
+export const onLibraryChanged = (cb: () => void): Promise<UnlistenFn> =>
+  listen("library:changed", () => cb());
 export const dbTrackState = (path: string) => invoke<DbTrackState>("db_track_state", { path });
 export const dbSetCue = (path: string, slot: number, frame: number) =>
   invoke("db_set_cue", { path, slot, frame });
