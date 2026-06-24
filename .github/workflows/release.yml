@@ -81,7 +81,9 @@ jobs:
           # Azure Trusted Signing is the modern alternative — wire it via a separate signing step
           # before the tauri-action call. Leaving unset just ships an unsigned .msi/.nsis.
         with:
-          projectPath: apps/compas-dj/src-tauri
+          # The project root that CONTAINS src-tauri/ (not src-tauri itself); the Tauri CLI
+          # resolves src-tauri/tauri.conf.json from here, same as `cd apps/compas-dj && tauri build`.
+          projectPath: apps/compas-dj
           tagName: ${{ github.ref_name }}
           releaseName: "Compás DJ ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
