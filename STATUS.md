@@ -95,6 +95,18 @@ it's the capture path for live beat-tracking (slice 5).
 release readiness (updater signing keypair + secrets). The offline beat-tracking adoption-plan queue
 (slices 1–5) and the live-input follow-ups are complete.
 
+**E. Library polish round — DONE (all pushed).** (a) **OR search groups** (`c1a4dd1`) —
+`artist:daft OR artist:justice`, AND binds tighter than OR, `|` alias. (b) **Smart crates**
+(`3574b73`) — save a search as a crate that re-runs its query (✨). (c) **Track tags** (`b67194b`) —
+`track_tags` + `tag:` grammar; chips on rows (click-remove) + 🏷 inline add; compose with OR/smart
+crates. (d) **Watched folders** (`55a387d`) — auto-import audio from registered folders on add + on
+launch (recursive std-fs scan, per-file DB lock, `library:changed` refresh; FOLDERS rail section).
+All unit-tested (db tests now 15), clippy/fmt/tsc/vite clean, scoped commits (no `styles.css` →
+no collision with Codex's jog-wheel work). **Skipped:** controller profiles (won't fabricate device
+MIDI maps). **Remaining polish:** live OS file-watch (`notify` dep — a follow-up); the stem
+shared-grain key-lock, FX internal-clock virtual leader, and audio-device-thread items (cue/booth
+auto-reopen, record-source select) best done when not mid-test.
+
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
 **1. Modular per-deck graph refactor — DONE (`docs/DECK-GRAPH.md`).** All stages extracted,
