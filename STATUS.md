@@ -1,6 +1,7 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-23 (Pioneer-style UI + one-window
+> Checkpoint for picking work back up. Last updated: 2026-06-24 (UI/UX feature session — see the
+> "Resume here (2026-06-24)" section just below). Earlier 2026-06-23 work: Pioneer-style UI + one-window
 > layout, full live beat-tracking arc, mic/aux input, stem URL/checksum verified, and a library
 > polish round: OR search, smart crates, tags, watched folders). **Everything below is committed AND
 > pushed to `origin/main`** (through `adab4a4`). See `ROADMAP.md` for the full plan + **competitive
@@ -33,23 +34,20 @@
 > code-signed** (no paid Apple Developer ID / Windows cert yet) → first launch warns: Windows
 > SmartScreen "Run anyway"; macOS shows *"damaged"* → fix is `xattr -cr "/Applications/Compás DJ.app"`.
 > **Both installs maintainer-verified working from the release: Windows (Run anyway) and macOS M2
-> (after xattr).** Re-enable the `APPLE_*` block in `release.yml` when a Developer ID exists. Draft is
-> unpublished — maintainer publishes when ready.
+> (after xattr).** The v0.1.0 GitHub release is **published** (the maintainer published it manually —
+> it is no longer a draft). Code-signing is **deferred for now** (the SmartScreen / `xattr` warnings
+> are accepted); re-enable the `APPLE_*` block in `release.yml` if/when it's taken on.
 >
-> **▶ RESUME POINTER (start here next session — two ready workstreams):** keep focus on **Compás
-> DJ**; the DAW is plan-only (no code until its phases start deliberately).
-> - **(A) macOS code-signing — UNBLOCKED: the maintainer now has an Apple Developer ID.** Next
->   session: enable signing + notarization in `release.yml` — re-add the `APPLE_*` env block (the
->   commented one in the tauri-action step), have the maintainer add the repo secrets
->   (`APPLE_CERTIFICATE` base64 `.p12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` =
->   "Developer ID Application: …", `APPLE_ID`, `APPLE_PASSWORD` app-specific, `APPLE_TEAM_ID`), then
->   re-tag and confirm a notarized `.dmg` opens with no `xattr` step. See `CONTRIBUTING.md` §Release
->   setup. (Windows cert still pending; SmartScreen "Run anyway" remains until then.)
-> - **(B) Next feature: Key Shift (± semitones) + Key Sync (v0.1.1)** — reuses the WSOLA key-lock
->   engine (pitch ratio `2^(semitones/12)` on the grain step) + a per-deck KEY ± control + a Key Sync
->   button off the existing Camelot detection; see `ROADMAP.md` Tier 2.
->
-> Also pending: publish the v0.1.0 **draft** release (maintainer, GitHub UI) when ready.
+> **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
+> (no code until its phases start deliberately). The 2026-06-24 UI/UX feature session (below) is all
+> committed on local `main`. Good next features (v0.2.0 candidates):
+> - **Key Shift (± semitones) + Key Sync** — reuses the WSOLA key-lock engine (pitch ratio
+>   `2^(semitones/12)` on the grain step) + a per-deck KEY ± control + a Key Sync button off the
+>   existing Camelot detection; see `ROADMAP.md` Tier 2.
+> - **Package / export tools** (rekordbox-inspired, pure-Rust zip, no AI) — crate/playlist export
+>   with a cues+grids+key+tags manifest, controller profile packs, diagnostics bundle, backup/restore;
+>   see `ROADMAP.md` Tier 3.
+> - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
 > (2) **Deferred polish:**
 > ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
 > (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~
@@ -58,6 +56,42 @@
 > mid-test. **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
 > own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
+
+## ▶ Resume here (2026-06-24 — UI/UX feature session, committed on local `main`)
+
+A focused UI/UX + library round driven by maintainer feedback in the running app, plus a parallel
+Codex task. **All committed on `main`** (Codex's commit reviewed + merged first, then mine on top).
+Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `docs/codex-tasks/`).
+
+- **Waveform interaction** — the big deck lane is now a **vinyl grab-scrub** (press anchors, drag
+  moves the track under the fixed NOW needle; a click without drag still needle-drops), fixing the
+  old "jumps before release / can't drag" behavior. Added **wheel + Ctrl/⌘-click zoom** (2–64 s).
+- **Drag track → deck** — library rows are draggable onto decks to load. Required disabling Tauri's
+  native window drag-drop (`dragDropEnabled: false`) — it was swallowing in-webview HTML5 DnD.
+- **Analyze-on-import** — a single-flight background worker fills **BPM + key** for imported tracks
+  (on import + at launch), so the library columns populate without loading a track onto a deck.
+  Decode-failure writes a 0-BPM sentinel so a row is attempted once. New `db::list_unanalyzed` + test.
+- **Library columns + key notation** — dedicated **BPM / KEY** columns (no more overlap with the
+  Load buttons) and a **Camelot (8A) ⇄ Musical (C#m)** toggle in Settings (persisted), applied to
+  the library and each deck's KEY tile via a shared `formatKey()`.
+- **I/O moved to Settings** — device pickers (Codex, **CODEX-A**) plus the mic/booth/internal-clock
+  control rows now live in Settings ("Audio devices" + "Input & monitoring"); the mixer keeps only
+  the headphone CUE.
+- **2/4-deck layout** — a **Decks: 2/4** toggle in Settings (default 2). 4-deck mode is a stacked
+  layout (A/C · mixer · B/D) with 4 waveform lanes; decks render **compact** (jog platter + pad/loop/FX
+  column hidden — maintainer-approved) and the mixer strips lay out **2×2**. 2-deck mode now shows
+  only the 2 visible decks' strips.
+- **GAIN vs volume fix** — the GAIN knob and channel fader used to write the *same* engine gain.
+  Now **GAIN is an input trim** and the **fader is volume** (engine gain = trim × volume, independent;
+  external gain changes fold into volume). Channel knobs bigger (2-column, maintainer-chosen), fader
+  shorter.
+- **Docs** — `ROADMAP.md` stem-removal drift reconciled (no AI/ML; the 2026-06-20 ONNX/htdemucs
+  decision marked REVERSED) and a **Package/export tools** backlog item added.
+
+**Maintainer-verified in the running app:** scrub, zoom, drag-to-deck, auto-analyzed BPM/key, key
+notation flip, the I/O→Settings move, and the 2/4-deck toggle + compact 4-deck layout (2-column
+bigger knobs and hidden 4-deck controls were the maintainer's explicit choices). tsc + vite + cargo
+clippy/fmt clean throughout.
 
 ## ▶ Resume here (latest session — 2026-06-23, pushed to `main`)
 
