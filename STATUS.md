@@ -11,9 +11,10 @@
 > secret (`npx tauri signer generate`, paste pubkey into `tauri.conf.json`, add GitHub secrets;
 > `CONTRIBUTING.md`). (2) **Live stem verification** — a real separation run needs the 301 MB model
 > on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
-> **Deferred polish:** live OS file-watch (`notify` dep, on top of the shipped scan-based watched
-> folders); audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do
-> when NOT mid-test; stems shared-grain key-lock; FX internal-clock virtual leader. **Coordination:**
+> **Deferred polish:** ~~live OS file-watch~~ **DONE** (`500b291`, `notify` dep on top of the
+> scan-based watched folders); FX internal-clock virtual leader; stems shared-grain key-lock;
+> audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do when NOT
+> mid-test. **Coordination:**
 > Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
 > own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
 
@@ -115,9 +116,21 @@ crates. (d) **Watched folders** (`55a387d`) — auto-import audio from registere
 launch (recursive std-fs scan, per-file DB lock, `library:changed` refresh; FOLDERS rail section).
 All unit-tested (db tests now 15), clippy/fmt/tsc/vite clean, scoped commits (no `styles.css` →
 no collision with Codex's jog-wheel work). **Skipped:** controller profiles (won't fabricate device
-MIDI maps). **Remaining polish:** live OS file-watch (`notify` dep — a follow-up); the stem
-shared-grain key-lock, FX internal-clock virtual leader, and audio-device-thread items (cue/booth
-auto-reopen, record-source select) best done when not mid-test.
+MIDI maps). **Remaining polish:** the stem shared-grain key-lock, FX internal-clock virtual leader,
+and audio-device-thread items (cue/booth auto-reopen, record-source select) best done when not
+mid-test.
+
+**F. Live OS file-watch — DONE (`500b291`).** Watched folders now auto-import on real filesystem
+events, not just scan-on-launch/add. Added `notify = "8"`; a `FolderWatch` managed state holds a
+live `RecommendedWatcher` (managed unconditionally so the `State` params resolve even if the DB
+fails to open). `init_folder_watch` runs at launch (after the launch rescan) and recursively
+watches every registered folder; `spawn_folder_watch` debounces event bursts (800 ms quiet gap),
+runs the shared `rescan_all_watch_folders`, and emits `library:changed` only when something landed
+— exiting cleanly at shutdown when the watcher (and its event sender) drops. `add`/`remove_watch_folder`
+now `watch`/`unwatch` the live root. Access events filtered; per-file `track_exists` probe keeps
+redundant scans cheap. No frontend change (Tauri injects `State`). `cargo check` + clippy
+`--all-targets -D warnings` + `fmt --check` clean; no `unwrap`/`expect`/`panic`. **Not yet
+exercised live** (needs a running `tauri dev` to drop a file in and watch it import).
 
 ## ▶ Previous session (deck-graph refactor + local-only UI — pushed to `main`)
 
