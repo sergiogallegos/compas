@@ -31,9 +31,10 @@
 > secret). Fixes it took: tauri-action `projectPath: apps/compas-dj`; Linux `libasound2-dev` +
 > `libudev-dev` + `pkg-config`; removed empty `APPLE_*` secrets (codesign). **Builds are NOT
 > code-signed** (no paid Apple Developer ID / Windows cert yet) → first launch warns: Windows
-> SmartScreen "Run anyway"; macOS shows *"damaged"* → fix is `xattr -cr "/Applications/Compás DJ.app"`
-> (confirmed working on an M2). Re-enable the `APPLE_*` block in `release.yml` when a Developer ID
-> exists. Draft is unpublished — maintainer publishes when ready.
+> SmartScreen "Run anyway"; macOS shows *"damaged"* → fix is `xattr -cr "/Applications/Compás DJ.app"`.
+> **Both installs maintainer-verified working from the release: Windows (Run anyway) and macOS M2
+> (after xattr).** Re-enable the `APPLE_*` block in `release.yml` when a Developer ID exists. Draft is
+> unpublished — maintainer publishes when ready.
 >
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
 > (no code until its phases start deliberately). **Next feature: Key Shift (± semitones) + Key Sync
