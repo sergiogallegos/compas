@@ -108,7 +108,14 @@ export function TitleBar({
       </div>
       <div className="brand" data-tauri-drag-region>
         <Logo size={22} />
-        <span className="brand-word display">compas</span>
+        <span className="brand-word display">compás</span>
+        <span
+          className="display"
+          style={{ fontSize: 11, opacity: 0.55, letterSpacing: "0.14em", marginLeft: 2 }}
+          title="Compás DJ — the DJ/performance product in the Compás family"
+        >
+          DJ
+        </span>
       </div>
 
       <div className="master-cluster" data-tauri-drag-region>
@@ -204,7 +211,7 @@ export function TitleBar({
             className="mono build-chip"
             onClick={onCheckUpdate}
             disabled={updBusy}
-            title={`compas ${build.version} · ${build.sha}${
+            title={`Compás DJ ${build.version} · ${build.sha}${
               build.built_at ? ` · built ${new Date(Number(build.built_at) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC` : ""
             } · click to check for updates`}
           >

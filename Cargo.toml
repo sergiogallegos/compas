@@ -6,11 +6,12 @@ members = [
     "crates/compas-audio",
     "crates/compas-sources",
     "crates/compas-script",
-    "src-tauri",
+    "apps/compas-dj/src-tauri",
 ]
 # `cargo check` / `cargo test` operate on the pure-Rust engine crates by default.
-# The Tauri app crate (`src-tauri`) is built explicitly via the Tauri CLI / `cargo build -p compas`,
-# because it requires WebView2 (Windows) / WebKitGTK (Linux) system libraries and a built frontend.
+# The Tauri app crate (`apps/compas-dj/src-tauri`) is built explicitly via the Tauri CLI /
+# `cargo build -p compas-dj`, because it requires WebView2 (Windows) / WebKitGTK (Linux) system
+# libraries and a built frontend.
 default-members = [
     "crates/compas-core",
     "crates/compas-dsp",

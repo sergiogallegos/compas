@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: apps/compas-dj/frontend/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -50,7 +50,7 @@ jobs:
           shared-key: release
 
       - name: Install frontend deps
-        working-directory: frontend
+        working-directory: apps/compas-dj/frontend
         run: npm ci
 
       - uses: tauri-apps/tauri-action@v0
@@ -58,9 +58,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
           # ---- In-app auto-update signing (tauri-plugin-updater) -------------------
-          # Generate locally with: `cd frontend && npx tauri signer generate -w ~/.tauri/compas.key`
+          # Generate locally with: `cd apps/compas-dj/frontend && npx tauri signer generate -w ~/.tauri/compas.key`
           # then paste the *private* key into TAURI_SIGNING_PRIVATE_KEY and the *public* key
-          # into src-tauri/tauri.conf.json (plugins.updater.pubkey). With both set, tauri-action
+          # into apps/compas-dj/src-tauri/tauri.conf.json (plugins.updater.pubkey). With both set, tauri-action
           # produces a signed `latest.json` next to the installers — the updater verifies it.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -81,8 +81,9 @@ jobs:
           # Azure Trusted Signing is the modern alternative — wire it via a separate signing step
           # before the tauri-action call. Leaving unset just ships an unsigned .msi/.nsis.
         with:
+          projectPath: apps/compas-dj/src-tauri
           tagName: ${{ github.ref_name }}
-          releaseName: "compas ${{ github.ref_name }}"
+          releaseName: "Compás DJ ${{ github.ref_name }}"
           releaseBody: "See CHANGELOG.md for details."
           releaseDraft: true
           prerelease: false

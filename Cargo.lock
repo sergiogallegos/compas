@@ -491,7 +491,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "compas"
+name = "compas-audio"
+version = "0.1.0"
+dependencies = [
+ "compas-core",
+ "compas-dsp",
+ "cpal",
+ "rtrb",
+ "tracing",
+]
+
+[[package]]
+name = "compas-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "compas-dj"
 version = "0.1.0"
 dependencies = [
  "compas-audio",
@@ -513,26 +533,6 @@ dependencies = [
  "tauri-plugin-updater",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "compas-audio"
-version = "0.1.0"
-dependencies = [
- "compas-core",
- "compas-dsp",
- "cpal",
- "rtrb",
- "tracing",
-]
-
-[[package]]
-name = "compas-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.18",
 ]
 
 [[package]]

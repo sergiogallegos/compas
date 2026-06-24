@@ -693,18 +693,18 @@ DSP locked) · streaming auth = PKCE (no secret).
 
 ## Run / verify
 ```bash
-cargo test -p compas-dsp -p compas-audio              # engine unit tests
-cargo clippy --all-targets -- -D warnings             # engine lint
-cargo check --manifest-path src-tauri/Cargo.toml      # the Tauri app crate (separate from default-members)
-cd frontend && npm install && npx tsc --noEmit && npx vite build
-node scripts/make-test-audio.mjs                      # 120/128 BPM test WAVs -> samples/
+cargo test -p compas-dsp -p compas-audio                       # engine unit tests
+cargo clippy --all-targets -- -D warnings                      # engine lint
+cargo check --manifest-path apps/compas-dj/src-tauri/Cargo.toml # the Compás DJ app crate (separate from default-members)
+cd apps/compas-dj/frontend && npm install && npx tsc --noEmit && npx vite build
+node scripts/make-test-audio.mjs                               # 120/128 BPM test WAVs -> samples/
 ```
-**Launching the app (Windows, this machine):** `cargo tauri dev` is NOT installed; the working
-command is the local Tauri CLI **from the repo root** (so it finds `src-tauri/`, and its
+**Launching Compás DJ (Windows, this machine):** `cargo tauri dev` is NOT installed; run the local
+Tauri CLI **from the product dir** `apps/compas-dj/` (so it finds its `src-tauri/` sibling, and its
 `beforeDevCommand` runs Vite in `frontend/`):
 ```bash
-./frontend/node_modules/.bin/tauri dev
+cd apps/compas-dj && ./frontend/node_modules/.bin/tauri dev
 ```
 If it errors with "Port 5173 already in use", a previous Vite lingered — kill the PID listening on
-5173 (and any stray `compas.exe`) first. The legacy-PowerShell-profile `Set-PSReadLineOption` error
-that prints on npm/pwsh calls is harmless noise.
+5173 (and any stray `compas-dj.exe`) first. The legacy-PowerShell-profile `Set-PSReadLineOption`
+error that prints on npm/pwsh calls is harmless noise.

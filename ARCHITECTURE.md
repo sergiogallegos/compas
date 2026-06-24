@@ -45,18 +45,19 @@ A Cargo workspace. The pure-Rust engine crates are the core differentiator and a
 Tauri, UI, and I/O concerns so they stay testable and portable.
 
 ```
-compas/
-  Cargo.toml                 workspace; default-members = the four engine crates
-  crates/
-    compas-core/             domain types: TrackMetadata, SourceCapabilities, DeckId, errors
-    compas-dsp/              DSP: rt (real-time-safe biquads/EQ/crossfade) + analysis (offline BPM/key)
-    compas-audio/            real-time engine: cpal output, lock-free rings, command protocol, Mixer
-    compas-stems/            offline stem separation pipeline (feature-gated ONNX Runtime)
-    compas-sources/          AudioSource abstraction: LocalFileSource (symphonia), StreamingSource
-  src-tauri/                 Tauri 2 app crate (binary `compas` + lib `compas_lib`); IPC commands
-  frontend/                  React 19 + Vite + TS; WebGL waveforms (P1); streaming SDK host (P2)
-  scripts/                   tooling (icon generation, etc.)
-  docs/                      design assets and notes
+compas/                      product family on a shared Rust core (see docs/ARCHITECTURE-PRODUCTS.md)
+  Cargo.toml                 workspace; default-members = the shared-core + DJ engine crates
+  crates/                    shared core (product-agnostic) + the DJ engine
+    compas-core/             domain types: TrackMetadata, SourceCapabilities, DeckId, errors, control bus
+    compas-dsp/              DSP: rt (real-time-safe biquads/EQ/crossfade/stretch) + analysis (offline BPM/key)
+    compas-sources/          AudioSource abstraction: LocalFileSource (symphonia), decode/import
+    compas-script/           sandboxed JS controller-scripting runtime (QuickJS)
+    compas-audio/            Compás DJ engine: cpal output, lock-free rings, command protocol, Mixer
+  apps/
+    compas-dj/src-tauri/     Compás DJ Tauri 2 app (binary `compas-dj` + lib `compas_lib`); IPC commands
+    compas-dj/frontend/      Compás DJ UI: React 19 + Vite + TS; WebGL waveforms; performance UI
+  scripts/                   tooling (version check, test-audio, hooks)
+  docs/                      design notes; product/architecture plans
 ```
 
 `default-members` excludes `src-tauri` so `cargo check`/`test`/`clippy` run the engine crates
@@ -229,7 +230,7 @@ The next hardening pass should make these guarantees explicit:
   directly — it writes to atomics/rings that the control thread samples and forwards.
 - **Capability gating:** every deck exposes `SourceCapabilities` to the UI; controls bind their
   enabled-state to it, so streaming decks visibly disable DSP they can't do.
-- **Type sharing:** TS mirrors of core types live in `frontend/src/types`. A later step can
+- **Type sharing:** TS mirrors of core types live in `apps/compas-dj/frontend/src/types`. A later step can
   codegen them from Rust (`ts-rs`/`specta`) to prevent drift.
 
 ## 8. Real-time safety rules (enforced in review)

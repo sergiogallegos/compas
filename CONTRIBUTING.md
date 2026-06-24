@@ -13,7 +13,7 @@ The engine crates build/test without WebView2 or a frontend build:
 cargo fmt --all                              # format
 cargo clippy --all-targets -- -D warnings    # lint (engine crates / default-members)
 cargo test                                   # DSP / source / analysis tests
-cd frontend && npm run typecheck && npm run build
+cd apps/compas-dj/frontend && npm run typecheck && npm run build
 ```
 
 CI runs the same on Windows/macOS/Linux; keep it green.
@@ -31,8 +31,10 @@ CI runs the same on Windows/macOS/Linux; keep it green.
 - Tests for DSP/analysis units; document real-time assumptions on audio-thread code.
 
 ## Project map
-`crates/compas-{core,dsp,audio,sources}` (engine), `src-tauri` (Tauri app + IPC),
-`frontend` (React UI), `website` (landing page). See `AGENTS.md` for a fuller orientation.
+**Compás** is a product family on a shared Rust core. `crates/compas-{core,dsp,sources,script}` is
+the product-agnostic core; `crates/compas-audio` is the **Compás DJ** engine. The app lives in
+`apps/compas-dj/{src-tauri,frontend}`; `website` is the landing page. A **Compás Studio** DAW is
+planned (`docs/COMPAS-STUDIO-PLAN.md`). See `AGENTS.md` for a fuller orientation.
 
 ## Release setup (one-time, maintainer only)
 Tagging `v*` triggers `.github/workflows/release.yml`, which builds Windows + macOS installers
@@ -42,13 +44,13 @@ auto-updater consumes. To finish wiring a real release:
 1. **Generate the updater signing keypair** (once per project; keep the private key offline):
 
    ```bash
-   cd frontend
+   cd apps/compas-dj/frontend
    npx tauri signer generate -w ~/.tauri/compas.key
    ```
 
    This writes `~/.tauri/compas.key` (private) and `~/.tauri/compas.key.pub` (public).
 
-2. **Paste the public key** into `src-tauri/tauri.conf.json` at `plugins.updater.pubkey`
+2. **Paste the public key** into `apps/compas-dj/src-tauri/tauri.conf.json` at `plugins.updater.pubkey`
    (replacing the `REPLACE_BEFORE_RELEASE_…` placeholder).
 
 3. **Add repo secrets** (Settings → Secrets and variables → Actions):

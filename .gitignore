@@ -2,14 +2,13 @@
 /target
 **/*.rs.bk
 
-# Tauri generated
-/src-tauri/gen
-/src-tauri/target
+# Tauri generated (per-app shells under apps/<product>/src-tauri/)
+apps/*/src-tauri/gen/
+apps/*/src-tauri/target/
 
 # Node / frontend
 node_modules/
-frontend/dist/
-frontend/node_modules/
+apps/*/frontend/dist/
 *.tsbuildinfo
 
 # Env / secrets (streaming API keys land here in P2)

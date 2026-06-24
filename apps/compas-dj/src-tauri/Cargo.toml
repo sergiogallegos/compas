@@ -1,13 +1,13 @@
 [package]
-name = "compas"
+name = "compas-dj"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "compas — cross-platform real-time DJ application (Tauri 2 shell)."
-default-run = "compas"
+description = "Compás DJ — cross-platform real-time DJ application (Tauri 2 shell); part of the Compás product family."
+default-run = "compas-dj"
 
 # Tauri 2 layout: a lib (so the same code can target desktop + mobile later) plus a thin bin.
 [lib]

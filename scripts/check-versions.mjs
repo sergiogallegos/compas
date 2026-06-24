@@ -24,8 +24,12 @@ function cargoWorkspaceVersion() {
 
 const versions = {
   "Cargo.toml [workspace.package]": cargoWorkspaceVersion(),
-  "src-tauri/tauri.conf.json": JSON.parse(read("src-tauri/tauri.conf.json")).version,
-  "frontend/package.json": JSON.parse(read("frontend/package.json")).version,
+  "apps/compas-dj/src-tauri/tauri.conf.json": JSON.parse(
+    read("apps/compas-dj/src-tauri/tauri.conf.json"),
+  ).version,
+  "apps/compas-dj/frontend/package.json": JSON.parse(
+    read("apps/compas-dj/frontend/package.json"),
+  ).version,
 };
 
 const unique = new Set(Object.values(versions));

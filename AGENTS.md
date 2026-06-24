@@ -4,20 +4,25 @@ Read this before making changes. It's the fast path to being productive in compa
 the things that matter.
 
 ## What compas is
-A cross-platform, real-time professional DJ app. **Rust audio core + TypeScript UI in Tauri 2.**
-Windows is the primary target; macOS is first-class; Linux best-effort. Open-source under MIT.
+**Compás** is a product family sharing one Rust audio core. **Compás DJ** (`apps/compas-dj`) is the
+real-time professional DJ app and the current focus. **Compás Studio** (a DAW) is planned — see
+`docs/COMPAS-STUDIO-PLAN.md` and `docs/ARCHITECTURE-PRODUCTS.md`. **Rust audio core + TypeScript UI
+in Tauri 2.** Windows is the primary target; macOS is first-class; Linux best-effort. MIT.
 
 ## Repository map
 ```
-crates/compas-core      shared types (TrackMetadata, SourceCapabilities, DeckBuffer, errors)
-crates/compas-dsp       real-time-safe DSP (rt::) + offline analysis (analysis:: BPM/beatgrid/key)
-crates/compas-audio     cpal engine, lock-free rings, Mixer, telemetry, waveform peaks
-crates/compas-sources   AudioSource abstraction: LocalFileSource (PcmSource) + StreamingSource
-src-tauri               Tauri app: IPC commands, audio thread bridge, Spotify auth (spotify.rs)
-frontend                React + Vite + TS UI (components/, hooks/, lib/)
+crates/compas-core      shared core: types (TrackMetadata, SourceCapabilities, DeckBuffer), control bus, mapping
+crates/compas-dsp       shared core: real-time-safe DSP (rt::) + offline analysis (analysis:: BPM/beatgrid/key)
+crates/compas-sources   shared core: AudioSource abstraction — LocalFileSource (PcmSource) + decode/import
+crates/compas-script    shared core: sandboxed JS controller-scripting runtime (QuickJS)
+crates/compas-audio     Compás DJ engine: cpal engine, lock-free rings, Mixer (decks/crossfader/cue/booth), telemetry
+apps/compas-dj/src-tauri  Compás DJ Tauri app: IPC commands, audio-thread bridge
+apps/compas-dj/frontend   Compás DJ UI: React + Vite + TS (components/, hooks/, lib/)
 website                 static landing page (no build step)
-docs/                   design assets
+docs/                   design + product/architecture plans
 ```
+The `crates/compas-*` core (core/dsp/sources/script) is **product-agnostic** — Compás Studio will
+reuse it. `crates/compas-audio` is the **DJ-specific** engine; the DAW will bring its own engine.
 `Cargo.toml` `default-members` = the four engine crates, so `cargo check/test/clippy` skip the
 Tauri app (which needs WebView2/WebKitGTK + a built frontend).
 
@@ -28,11 +33,10 @@ cargo clippy --all-targets -- -D warnings    # lint engine crates
 cargo fmt --all
 cargo bench -p compas-dsp                    # DSP hot-path benchmarks
 node scripts/check-versions.mjs              # Cargo/Tauri/frontend version consistency
-cd frontend && npm install && npm run typecheck && npm run build
-cargo tauri dev                              # run the full app — from the repo root, NOT frontend/
-# no global CLI? use the local one (still from repo root):
-#   frontend/node_modules/.bin/tauri dev       (macOS/Linux)
-#   frontend\node_modules\.bin\tauri.cmd dev   (Windows)
+cd apps/compas-dj/frontend && npm install && npm run typecheck && npm run build
+# Run the full DJ app from the product dir (so the Tauri CLI finds its src-tauri sibling):
+#   cd apps/compas-dj && frontend/node_modules/.bin/tauri dev       (macOS/Linux)
+#   cd apps/compas-dj &&  frontend\node_modules\.bin\tauri.cmd dev  (Windows)
 node scripts/make-test-audio.mjs             # synth 120/128 BPM test WAVs into samples/
 pwsh scripts/install-hooks.ps1               # opt in to local pre-commit checks
 ```
@@ -54,7 +58,8 @@ pwsh scripts/install-hooks.ps1               # opt in to local pre-commit checks
   unless the task is explicitly dependency maintenance.
 - Copy the closest existing test pattern before inventing a new one. For DSP/audio changes, include
   a deterministic unit test or benchmark when behavior or hot-path cost can regress.
-- Keep `Cargo.toml`, `src-tauri/tauri.conf.json`, and `frontend/package.json` versions in sync.
+- Keep `Cargo.toml`, `apps/compas-dj/src-tauri/tauri.conf.json`, and
+  `apps/compas-dj/frontend/package.json` versions in sync.
 
 ## Architecture cheatsheet
 - Decks hold the **fully-decoded track in RAM** (`Arc<DeckBuffer>`); the audio thread reads with a

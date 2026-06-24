@@ -2,19 +2,23 @@
   <img src="docs/assets/logo.png" width="92" alt="compas — Needle &amp; Rose mark" />
 </p>
 
-<h1 align="center">compas</h1>
+<h1 align="center">Compás DJ</h1>
+
+<p align="center"><em>The DJ/performance app in the <strong>Compás</strong> family — a shared Rust audio
+core, focused products on top. A <strong>Compás Studio</strong> DAW is planned.</em></p>
 
 A cross-platform, real-time professional DJ application. Rust audio core + TypeScript UI in a
 **Tauri 2** shell. Windows is the primary target; **macOS is first-class**; Linux is best-effort.
 
-> **Scope & honesty.** compas does **true DSP mixing on local DRM-free files** — that is the real
+> **Scope & honesty.** Compás DJ does **true DSP mixing on local DRM-free files** — that is the real
 > DJ engine, and the focus of the app today. Optional streaming-service control decks are on the
 > roadmap; since services expose **playback control, not decoded audio**, any such deck would be
 > control-only by design and the UI would disable the DSP it can't perform. See `ARCHITECTURE.md` §1.
 
 Status: **active development.** The local DJ engine is functionally complete and self-reported
-working in the app; work now is on stem separation, a richer performance/library layer, and a
-signed public release. See `ROADMAP.md` for the full plan and `STATUS.md` for the live resume point.
+working in the app; work now is on a richer performance/library layer and a signed public release,
+plus planning **Compás Studio** (the DAW). See `ROADMAP.md` for the full plan, `STATUS.md` for the
+live resume point, and `docs/COMPAS-STUDIO-PLAN.md` for the DAW roadmap.
 
 ### What it does today
 
@@ -30,8 +34,11 @@ signed public release. See `ROADMAP.md` for the full plan and `STATUS.md` for th
 - **Library:** local SQLite track DB (cues/loops/grid/gain/play-history persisted), search, A/B/C/D load.
 - **Release:** in-app auto-update + a manual "check for updates" version chip.
 
-> Coming next: real-time **stem separation** (offline htdemucs via ONNX Runtime), playlists/crates,
-> harmonic-mixing assist, and an expanded FX/controller-scripting layer. See `ROADMAP.md`.
+> Coming next: playlists/crates depth, harmonic-mixing assist, an expanded FX/controller-scripting
+> layer, and the **Compás Studio** DAW on the shared core. See `ROADMAP.md`.
+>
+> _Note: AI stem separation (Demucs/htdemucs) was removed — the upstream project is archived and
+> we're not shipping AI for now._
 
 ## Download
 
@@ -84,29 +91,31 @@ cargo clippy           # lint
 
 ## Run the full app (desktop)
 
+Compás DJ lives in `apps/compas-dj/` (`src-tauri/` + `frontend/`). Run the Tauri CLI **from that
+product directory** so it finds its `src-tauri/` sibling:
+
 ```bash
 # 1) install frontend deps (once)
-cd frontend && npm install && cd ..
+cd apps/compas-dj/frontend && npm install && cd ../../..
 
-# 2) dev mode (hot-reload UI + native rebuilds) — run from the repo root
-cargo tauri dev
-#   ...or, without the global CLI, use the one in frontend/node_modules:
+# 2) dev mode (hot-reload UI + native rebuilds) — run from apps/compas-dj/
+cd apps/compas-dj
 frontend/node_modules/.bin/tauri dev          # macOS/Linux
 frontend\node_modules\.bin\tauri.cmd dev      # Windows
+#   ...or, with a global CLI: cargo tauri dev
 ```
 
-Run these from the **repo root**, not from `frontend/`: the Tauri CLI locates `src-tauri/tauri.conf.json`
-by searching subfolders of the current directory. `cargo tauri dev` runs the Vite dev server
-(`http://localhost:5173`) and the native shell together.
+`tauri dev` runs the Vite dev server (`http://localhost:5173`) and the native shell together.
 
 ## Build a release bundle
 
 ```bash
-cargo tauri build      # produces installers under target/release/bundle/
+cd apps/compas-dj && cargo tauri build   # installers under target/release/bundle/
 ```
 
 App icons are generated from the "Needle & Rose" brand mark via `npm run icons` (in
-`frontend/`, requires `sharp`), which rasterizes the SVG to `src-tauri/icons/*`.
+`apps/compas-dj/frontend/`, requires `sharp`), which rasterizes the SVG to
+`apps/compas-dj/src-tauri/icons/*`.
 
 ## Notes for contributors
 
