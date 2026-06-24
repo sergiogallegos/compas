@@ -348,7 +348,7 @@ export function App() {
                   <Deck {...fourDeckProps(deckA)} mirror />
                   <Deck {...fourDeckProps(deckC)} mirror />
                 </div>
-                <Mixer channels={decks.map(channelOf)} {...mixerCommon} />
+                <Mixer channels={decks.map(channelOf)} {...mixerCommon} quad />
                 <div className="deck-col">
                   <Deck {...fourDeckProps(deckB)} />
                   <Deck {...fourDeckProps(deckD)} />

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DeckController } from "../hooks/useDeck";
 import type { CueApi } from "../hooks/useCue";
 import type { BoothApi } from "../hooks/useBooth";
@@ -37,6 +37,7 @@ export function Mixer({
   onFxMacro,
   auto,
   cue,
+  quad = false,
 }: {
   channels: Channel[];
   crossfader: number;
@@ -45,6 +46,8 @@ export function Mixer({
   onFxMacro?: (deck: number, v: number) => void;
   auto?: AutoMixProps;
   cue?: CueApi;
+  /** 4-deck layout: lay the strips out 2×2 and render them compact. */
+  quad?: boolean;
 }) {
   return (
     <section className="mixer">
@@ -70,9 +73,9 @@ export function Mixer({
           </div>
         )}
       </div>
-      <div className="mixer-strips">
+      <div className={`mixer-strips ${quad ? "mixer-strips--quad" : ""}`}>
         {channels.map((c) => (
-          <ChannelStrip key={c.letter} {...c} cue={cue} onFxMacro={onFxMacro} />
+          <ChannelStrip key={c.letter} {...c} cue={cue} onFxMacro={onFxMacro} compact={quad} />
         ))}
       </div>
       <div className="xfader">
@@ -232,13 +235,32 @@ function ChannelStrip({
   color,
   cue,
   onFxMacro,
-}: Channel & { cue?: CueApi; onFxMacro?: (deck: number, v: number) => void }) {
+  compact = false,
+}: Channel & { cue?: CueApi; onFxMacro?: (deck: number, v: number) => void; compact?: boolean }) {
   const { state, actions } = ctrl;
   const dsp = state.dsp;
   const cued = !!cue?.cued.has(ctrl.deck);
   const [fxMacro, setFxMacro] = useState(0);
-  // GAIN trim × channel fader both scale the single engine gain.
-  const setVol = (trim: number, fader: number) => actions.setGain(trim * fader);
+  // GAIN is an input trim; the channel fader is the performance VOLUME. They drive the engine gain
+  // as trim × volume and are tracked separately so they move independently (previously both wrote
+  // the same gain, so they looked identical). An external gain change (track load / ReplayGain /
+  // MIDI) folds into the volume, leaving the user's trim untouched.
+  const [trim, setTrim] = useState(1);
+  const [vol, setVol] = useState(state.gain);
+  const trimRef = useRef(trim);
+  trimRef.current = trim;
+  const lastWrite = useRef(state.gain);
+  useEffect(() => {
+    if (Math.abs(state.gain - lastWrite.current) > 1e-4) {
+      setVol(trimRef.current > 1e-4 ? state.gain / trimRef.current : state.gain);
+      lastWrite.current = state.gain;
+    }
+  }, [state.gain]);
+  const writeGain = (t: number, v: number) => {
+    lastWrite.current = t * v;
+    actions.setGain(t * v);
+  };
+  const ks = compact ? 18 : 25;
 
   return (
     <div className="strip">
@@ -257,19 +279,19 @@ function ChannelStrip({
         ))}
       </div>
 
-      <div className={`knob-stack ${dsp ? "" : "knob-stack--locked"}`}>
-        <Knob label="GAIN" value={state.gain} min={0} max={1.5} size={22} color={color} disabled={!dsp}
-          onChange={(v) => actions.setGain(v)} />
-        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={22} color={color} disabled={!dsp}
+      <div className={`knob-stack ${compact ? "knob-stack--compact" : ""} ${dsp ? "" : "knob-stack--locked"}`}>
+        <Knob label="GAIN" value={trim} min={0} max={1.5} size={ks} color={color} disabled={!dsp}
+          onChange={(v) => { setTrim(v); writeGain(v, vol); }} />
+        <Knob label="HI" value={state.eq.hi} min={-26} max={6} size={ks} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, hi: v })} />
-        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={22} color={color} disabled={!dsp}
+        <Knob label="MID" value={state.eq.mid} min={-26} max={6} size={ks} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, mid: v })} />
-        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={22} color={color} disabled={!dsp}
+        <Knob label="LOW" value={state.eq.low} min={-26} max={6} size={ks} color={color} disabled={!dsp}
           onChange={(v) => actions.setEq({ ...state.eq, low: v })} />
-        <Knob label="FILTER" value={state.filter} min={-1} max={1} size={22} color={color} disabled={!dsp}
+        <Knob label="FILTER" value={state.filter} min={-1} max={1} size={ks} color={color} disabled={!dsp}
           onChange={(v) => actions.setFilter(v)} />
         {onFxMacro && (
-          <Knob label="FX" value={fxMacro} min={0} max={1} size={22} color={color} disabled={!dsp}
+          <Knob label="FX" value={fxMacro} min={0} max={1} size={ks} color={color} disabled={!dsp}
             onChange={(v) => { setFxMacro(v); onFxMacro(ctrl.deck, v); }} />
         )}
         {!dsp && <span className="eq-na">EQ N/A</span>}
@@ -277,8 +299,8 @@ function ChannelStrip({
 
       <div className="strip-meterfader">
         <Meter level={state.level} streaming={!dsp} />
-        <Fader value={state.gain} min={0} max={1.5} fill color={color}
-          onChange={(v) => setVol(1, v)} />
+        <Fader value={vol} min={0} max={1.5} fill color={color}
+          onChange={(v) => { setVol(v); writeGain(trim, v); }} />
       </div>
 
       <button

@@ -619,7 +619,7 @@ export function Deck({
             value={dsp ? pct : 0}
             min={-8}
             max={8}
-            length={130}
+            length={compact ? 88 : 130}
             center
             color={color}
             disabled={!dsp || !meta}

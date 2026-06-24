@@ -113,10 +113,14 @@
 .deck-row--quad { align-items: stretch; }
 .deck-col { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
 .deck-col .deck { flex: 1; min-height: 0; }
-.deck--compact { padding: 7px; gap: 4px; }
+/* Compact deck (4-deck mode): drop the jog platter and the heavy pad/loop/FX controls column so
+   four decks fit one window. Transport (CUE/PLAY), tempo, SYNC, and the readouts stay. */
+.deck--compact { padding: 6px; gap: 4px; }
 .deck--compact .platter { display: none; }
+.deck--compact .controls-col { display: none; }
 .deck--compact .platter-col { flex-direction: row; gap: 6px; align-items: center; }
-.deck--compact .deck-body { gap: 7px; }
+.deck--compact .deck-body { gap: 10px; align-items: flex-start; }
+.deck--compact .mic-sync, .deck--compact .int-sync, .deck--compact .sync-opts, .deck--compact .nudge { display: none; }
 .deck { flex: 1; min-width: 0; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-top: 2px solid; border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 10px; display: flex; flex-direction: column; gap: 7px; }
 
 .deck-header { display: flex; align-items: center; gap: 10px; }
@@ -316,6 +320,10 @@
 .pkey-b { position: absolute; top: 0; height: 60%; background: linear-gradient(180deg, #2a2a33, #0e0e12); border: 1px solid #000; border-radius: 0 0 4px 4px; z-index: 2; }
 .pkey-b:active { background: linear-gradient(180deg, #45454f, #1a1a20); }
 .mixer-strips { flex: 1; display: flex; gap: 12px; justify-content: center; min-height: 0; overflow: hidden; }
+/* 4-deck mixer: strips laid out 2×2 (A B / C D) to match the deck grid instead of 4-in-a-row. */
+.mixer-strips--quad { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; align-content: stretch; }
+.mixer-strips--quad .strip { min-height: 0; }
+.knob-stack--compact { gap: 2px 3px; }
 .xf-assign { display: flex; gap: 2px; }
 .xf-seg { width: 16px; height: 16px; border-radius: 4px; background: var(--surface-control); border: 1px solid var(--border-hairline); color: var(--text-tertiary); font-size: 9px; font-weight: 700; line-height: 1; padding: 0; }
 .xf-seg--on { background: rgba(255,255,255,.06); }
@@ -324,7 +332,7 @@
 .knob-stack { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 4px; align-items: center; justify-items: center; position: relative; }
 .knob-stack--locked { opacity: 0.4; }
 .eq-na { position: absolute; inset: 0; margin: auto; height: max-content; width: max-content; font-size: 9px; color: var(--stream); border: 1px solid rgba(40, 224, 255, 0.5); border-radius: 4px; padding: 2px 5px; background: var(--bg-window); align-self: center; }
-.strip-meterfader { flex: 1; min-height: 46px; display: flex; gap: 10px; align-items: stretch; justify-content: center; }
+.strip-meterfader { flex: none; height: 92px; display: flex; gap: 10px; align-items: stretch; justify-content: center; }
 .cue-btn { width: 30px; height: 26px; flex: none; border-radius: var(--r-pad); background: var(--surface-control); border: 1px solid var(--border-hairline-strong); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; }
 .cue-btn:disabled { opacity: 0.5; }
 .cue-btn--on { color: var(--cue); border-color: var(--cue); background: rgba(var(--cue-rgb), 0.14); }
