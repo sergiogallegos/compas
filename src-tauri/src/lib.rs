@@ -215,6 +215,14 @@ enum EngineMsg {
         deck: usize,
         active: bool,
     },
+    SetInternalClock {
+        active: bool,
+        bpm: f32,
+    },
+    SetDeckSyncInternal {
+        deck: usize,
+        active: bool,
+    },
     NoteOn {
         note: u8,
         velocity: u8,
@@ -612,6 +620,12 @@ fn spawn_engine() -> EngineHandle {
                     EngineMsg::SetLiveClock(clock) => AudioCommand::SetLiveClock(clock),
                     EngineMsg::SetDeckSyncLive { deck, active } => {
                         AudioCommand::SetDeckSyncLive { deck, active }
+                    }
+                    EngineMsg::SetInternalClock { active, bpm } => {
+                        AudioCommand::SetInternalClock { active, bpm }
+                    }
+                    EngineMsg::SetDeckSyncInternal { deck, active } => {
+                        AudioCommand::SetDeckSyncInternal { deck, active }
                     }
                     EngineMsg::NoteOn { note, velocity } => AudioCommand::NoteOn { note, velocity },
                     EngineMsg::NoteOff { note } => AudioCommand::NoteOff { note },
@@ -2501,6 +2515,28 @@ fn set_deck_sync_live(
     state.send(EngineMsg::SetDeckSyncLive { deck, active })
 }
 
+/// Set the internal master clock's tempo and whether it runs as a virtual sync leader — a
+/// free-running metronome decks can lock to with nothing playing.
+#[tauri::command]
+fn set_internal_clock(
+    state: State<'_, EngineHandle>,
+    active: bool,
+    bpm: f32,
+) -> Result<(), String> {
+    state.send(EngineMsg::SetInternalClock { active, bpm })
+}
+
+/// Make a deck tempo/phase-match the internal master clock, or stop. Mutually exclusive with
+/// deck-leader and live (mic/aux) sync.
+#[tauri::command]
+fn set_deck_sync_internal(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    active: bool,
+) -> Result<(), String> {
+    state.send(EngineMsg::SetDeckSyncInternal { deck, active })
+}
+
 /// Current live beat-tracker readout (tempo/phase/confidence/lock of the aux input). Poll this
 /// while aux capture is on for a live BPM display.
 #[tauri::command]
@@ -3046,6 +3082,8 @@ pub fn run() {
             set_aux_gain,
             live_beat_clock,
             set_deck_sync_live,
+            set_internal_clock,
+            set_deck_sync_internal,
             note_on,
             note_off,
             all_notes_off,

@@ -331,6 +331,17 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
     },
+    /// Set the internal master clock's tempo and whether it runs as a virtual sync leader.
+    SetInternalClock {
+        active: bool,
+        bpm: f32,
+    },
+    /// Make `deck` follow the internal master clock, or stop. Mutually exclusive with deck-leader
+    /// and live sync.
+    SetDeckSyncInternal {
+        deck: usize,
+        active: bool,
+    },
     /// Set a follower's sync mode (0 = full tempo+phase, 1 = tempo-only).
     SetDeckSyncMode {
         deck: usize,
@@ -827,6 +838,9 @@ struct DeckPlayer {
     sync_mode: SyncMode,
     /// When set, this deck tempo-matches the live beat clock (mic/aux) instead of a leader deck.
     sync_live: bool,
+    /// When set, this deck tempo/phase-matches the internal master clock (mutually exclusive with
+    /// deck-leader and live sync).
+    sync_internal: bool,
     /// Whether this deck is the explicit (pinned) sync leader — preferred by the auto-picker.
     sync_explicit_leader: bool,
     /// Main cue point in source frames, and the configurable CUE button behavior.
@@ -868,6 +882,7 @@ impl DeckPlayer {
             beat_interval: 0.0,
             sync_master: None,
             sync_live: false,
+            sync_internal: false,
             sync_tempo: None,
             sync_mode: SyncMode::Full,
             sync_explicit_leader: false,
@@ -1152,6 +1167,47 @@ impl OutputRouting {
 }
 
 /// The audio-thread mixer: N decks → crossfader → master gain → output.
+/// A free-running internal master clock (metronome) that can act as a **virtual sync leader** when
+/// no deck is a suitable leader — so decks (and, in a later slice, beat-synced FX) have a tempo +
+/// phase source even with nothing playing. Advanced exactly one frame per `update_sync`; it's
+/// always "locked", so a following deck rate/phase-matches it just like a deck leader.
+struct InternalClock {
+    /// Whether the clock is running and offered as a leader.
+    active: bool,
+    /// Tempo in BPM.
+    bpm: f64,
+    /// Accumulated phase in beats; the fractional part is the current beat phase.
+    phase: f64,
+}
+
+impl InternalClock {
+    fn new() -> Self {
+        InternalClock {
+            active: false,
+            bpm: 120.0,
+            phase: 0.0,
+        }
+    }
+
+    /// Advance the clock one output frame. RT-SAFE. Phase is kept bounded so f64 precision never
+    /// degrades over a long session.
+    #[inline]
+    fn advance(&mut self, device_rate: f32) {
+        if self.active && self.bpm > 0.0 && device_rate > 0.0 {
+            self.phase += self.bpm / (60.0 * device_rate as f64);
+            if self.phase >= 1.0e9 {
+                self.phase -= 1.0e9;
+            }
+        }
+    }
+
+    /// Current beat phase in [0, 1).
+    #[inline]
+    fn beat_phase(&self) -> f64 {
+        self.phase - self.phase.floor()
+    }
+}
+
 pub struct Mixer {
     decks: [DeckPlayer; NUM_DECKS],
     crossfader: Crossfader,
@@ -1180,6 +1236,8 @@ pub struct Mixer {
     aux: AuxRouting,
     /// Live beat clock (aux/mic tracker) shared from the control side, so decks can tempo-match it.
     live_clock: Option<Arc<LiveBeatClock>>,
+    /// Free-running internal master clock offered as a virtual sync leader (see [`InternalClock`]).
+    internal_clock: InternalClock,
 }
 
 impl Mixer {
@@ -1222,6 +1280,7 @@ impl Mixer {
                 primed: false,
             },
             live_clock: None,
+            internal_clock: InternalClock::new(),
         }
     }
 
@@ -1339,12 +1398,40 @@ impl Mixer {
         }
         // Live beat clock snapshot (mic/aux). Taken once so the per-deck loop doesn't re-read it.
         let live = self.live_clock.as_ref().map(|c| c.snapshot());
+        // Internal master clock: advance one frame, then snapshot its (bpm, phase) for the loop.
+        // Active only — `None` holds following decks at their own tempo, like an unlocked live clock.
+        self.internal_clock.advance(self.device_rate);
+        let internal = (self.internal_clock.active && self.internal_clock.bpm > 0.0)
+            .then(|| (self.internal_clock.bpm, self.internal_clock.beat_phase()));
         for (i, d) in self.decks.iter_mut().enumerate() {
             // Live sync: rate-match the deck to the mic/aux beat clock when it's locked. In Full
             // mode also phase-lock — the clock's `beat_phase` is extrapolated to now (see
             // `LiveBeatClock::snapshot`), so we null the phase error with the same bounded bend as
             // deck-to-deck sync. TempoOnly matches BPM and lets the DJ hold the offset. An
             // unlocked/absent clock holds the deck's own tempo.
+            // Internal-clock sync: rate-match (and, in Full mode, phase-lock) to the free-running
+            // master clock. It's always "locked", so no `locked` guard — an inactive clock yields
+            // `None` and holds the deck's own tempo. Same bounded ±bend as deck-to-deck sync.
+            if d.sync_internal {
+                d.sync_tempo = match internal {
+                    Some((bpm, clock_phase)) if d.beat_interval > 0.0 && d.base_ratio > 0.0 => {
+                        let master_beat_rate = bpm / (60.0 * self.device_rate as f64);
+                        let base_adv = master_beat_rate * d.beat_interval; // follower frames/sample
+                        let bend = match d.sync_mode {
+                            SyncMode::TempoOnly => 0.0,
+                            SyncMode::Full => {
+                                let mut err = clock_phase
+                                    - beat_phase(d.playhead, d.beat_offset, d.beat_interval);
+                                err -= err.round(); // wrap to the nearest beat [−0.5, 0.5]
+                                (SYNC_PHASE_GAIN * err).clamp(-SYNC_MAX_BEND, SYNC_MAX_BEND)
+                            }
+                        };
+                        Some(base_adv * (1.0 + bend) / d.base_ratio)
+                    }
+                    _ => None,
+                };
+                continue;
+            }
             if d.sync_live {
                 d.sync_tempo = match live {
                     Some(s)
@@ -1658,7 +1745,26 @@ impl Mixer {
                         d.sync_live = active;
                         d.sync_tempo = None;
                         if active {
-                            d.sync_master = None; // live and deck-leader sync are mutually exclusive
+                            // Live, deck-leader, and internal-clock sync are mutually exclusive.
+                            d.sync_master = None;
+                            d.sync_internal = false;
+                        }
+                    }
+                }
+                AudioCommand::SetInternalClock { active, bpm } => {
+                    self.internal_clock.active = active;
+                    if bpm > 0.0 {
+                        self.internal_clock.bpm = bpm as f64;
+                    }
+                }
+                AudioCommand::SetDeckSyncInternal { deck, active } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.sync_internal = active;
+                        d.sync_tempo = None;
+                        if active {
+                            // Internal-clock, deck-leader, and live sync are mutually exclusive.
+                            d.sync_master = None;
+                            d.sync_live = false;
                         }
                     }
                 }
@@ -1667,7 +1773,9 @@ impl Mixer {
                         d.sync_master = master;
                         d.sync_tempo = None;
                         if master.is_some() {
-                            d.sync_live = false; // following a deck leader cancels live sync
+                            // Following a deck leader cancels live and internal-clock sync.
+                            d.sync_live = false;
+                            d.sync_internal = false;
                         }
                     }
                     // Break any A↔B cycle: if the new master was following this deck, stop it.
@@ -2432,6 +2540,112 @@ mod tests {
             behind < base,
             "deck should slow toward a behind phase: {behind} vs {base}"
         );
+    }
+
+    #[test]
+    fn internal_clock_sync_matches_tempo_and_holds_when_inactive() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        // Deck 0 has its own grid (0.5 s beats) and follows the internal clock, tempo-only so the
+        // rate-match is exact (no phase bend). No buffer needed — update_sync reads grid fields.
+        mixer.decks[0].beat_interval = 24_000.0;
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].sync_internal = true;
+        mixer.decks[0].sync_mode = SyncMode::TempoOnly;
+
+        // Active at 128 BPM → the follower rate-matches: frames/sample = (bpm/60/sr)·beat_interval.
+        mixer.internal_clock.active = true;
+        mixer.internal_clock.bpm = 128.0;
+        mixer.update_sync();
+        let expected = (128.0 / 60.0 / 48_000.0) * 24_000.0 / 1.0;
+        let got = mixer.decks[0]
+            .sync_tempo
+            .expect("internal tempo when active");
+        assert!(
+            (got - expected).abs() < 1e-9,
+            "got {got}, expected {expected}"
+        );
+
+        // Inactive → don't drive sync; the deck holds its own tempo.
+        mixer.internal_clock.active = false;
+        mixer.update_sync();
+        assert!(
+            mixer.decks[0].sync_tempo.is_none(),
+            "an inactive internal clock must not drive deck sync"
+        );
+    }
+
+    #[test]
+    fn internal_clock_full_mode_bends_toward_the_clock_phase() {
+        let (_tx, mut mixer) = mixer_with_commands();
+        // Deck 0 at playhead 0 → its beat phase is 0; Full sync should phase-lock to the clock.
+        mixer.decks[0].beat_interval = 24_000.0;
+        mixer.decks[0].base_ratio = 1.0;
+        mixer.decks[0].playhead = 0.0;
+        mixer.decks[0].beat_offset = 0.0;
+        mixer.decks[0].sync_internal = true;
+        mixer.decks[0].sync_mode = SyncMode::Full;
+        mixer.internal_clock.active = true;
+        mixer.internal_clock.bpm = 128.0;
+        let base = (128.0 / 60.0 / 48_000.0) * 24_000.0;
+
+        // Clock phase 0.25 beat *ahead* of the deck → the deck must speed up (bend > 0).
+        mixer.internal_clock.phase = 0.25;
+        mixer.update_sync();
+        let ahead = mixer.decks[0].sync_tempo.expect("internal tempo");
+        assert!(
+            ahead > base,
+            "deck should speed up toward an ahead phase: {ahead} vs {base}"
+        );
+
+        // Clock phase 0.25 beat *behind* (0.75 wraps to −0.25) → the deck must slow down (bend < 0).
+        mixer.internal_clock.phase = 0.75;
+        mixer.update_sync();
+        let behind = mixer.decks[0].sync_tempo.expect("internal tempo");
+        assert!(
+            behind < base,
+            "deck should slow toward a behind phase: {behind} vs {base}"
+        );
+    }
+
+    #[test]
+    fn internal_clock_sync_is_mutually_exclusive_with_deck_and_live_sync() {
+        let (mut tx, mut mixer) = mixer_with_commands();
+        // Pre-arm the deck as a leader follower and a live follower.
+        mixer.decks[1].sync_master = Some(0);
+        mixer.decks[1].sync_live = true;
+
+        // Engaging internal-clock sync clears both.
+        tx.push(AudioCommand::SetDeckSyncInternal {
+            deck: 1,
+            active: true,
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+        assert!(mixer.decks[1].sync_internal);
+        assert_eq!(mixer.decks[1].sync_master, None, "deck-leader sync cleared");
+        assert!(!mixer.decks[1].sync_live, "live sync cleared");
+
+        // Following a deck leader again cancels internal-clock sync.
+        tx.push(AudioCommand::SetDeckSync {
+            deck: 1,
+            master: Some(0),
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+        assert!(
+            !mixer.decks[1].sync_internal,
+            "deck-leader sync must cancel internal-clock sync"
+        );
+
+        // And the clock-tempo command updates the clock.
+        tx.push(AudioCommand::SetInternalClock {
+            active: true,
+            bpm: 140.0,
+        })
+        .expect("command ring has capacity");
+        mixer.drain_commands();
+        assert!(mixer.internal_clock.active);
+        assert!((mixer.internal_clock.bpm - 140.0).abs() < 1e-9);
     }
 
     #[test]

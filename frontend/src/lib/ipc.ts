@@ -601,6 +601,12 @@ export const liveBeatClock = () => invoke<LiveBeat>("live_beat_clock");
 /** Make a deck tempo-match the live beat clock (mic/aux), or stop. */
 export const setDeckSyncLive = (deck: number, active: boolean) =>
   invoke("set_deck_sync_live", { deck, active });
+/** Set the internal master clock's tempo and whether it runs as a virtual sync leader. */
+export const setInternalClock = (active: boolean, bpm: number) =>
+  invoke("set_internal_clock", { active, bpm });
+/** Make a deck tempo/phase-match the internal master clock, or stop. */
+export const setDeckSyncInternal = (deck: number, active: boolean) =>
+  invoke("set_deck_sync_internal", { deck, active });
 
 // ---- Stem separation --------------------------------------------------------------
 

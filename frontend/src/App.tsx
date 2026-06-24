@@ -16,6 +16,7 @@ import { useAutoMix } from "./hooks/useAutoMix";
 import { useCue } from "./hooks/useCue";
 import { useBooth } from "./hooks/useBooth";
 import { useAux } from "./hooks/useAux";
+import { useInternalClock } from "./hooks/useInternalClock";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
@@ -59,6 +60,7 @@ export function App() {
   const cue = useCue();
   const booth = useBooth();
   const aux = useAux();
+  const internalClock = useInternalClock();
   const sampler = useSampler();
   // Which deck each on-screen slot controls: left ∈ {A,C}, right ∈ {B,D}.
   const [leftSel, setLeftSel] = useState(0);
@@ -321,6 +323,7 @@ export function App() {
               cue={cue}
               booth={booth}
               aux={aux}
+              clock={internalClock}
             />
             <Deck
               ctrl={rightDeck}

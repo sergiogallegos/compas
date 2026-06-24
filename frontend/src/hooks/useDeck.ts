@@ -17,6 +17,7 @@ import {
   setBeatgrid,
   setDeckSync,
   setDeckSyncLive,
+  setDeckSyncInternal,
   setDeckXfaderAssign,
   setDeckEcho,
   setDeckReverb,
@@ -170,6 +171,8 @@ export interface DeckState {
   synced: boolean;
   /** Following the live mic/aux beat clock (tempo-match). Mutually exclusive with deck sync. */
   syncLive: boolean;
+  /** Following the internal master clock. Mutually exclusive with deck sync and live sync. */
+  syncInternal: boolean;
   /** Quantize: snap hot-cue jumps and beat-jumps to the beatgrid. */
   quantize: boolean;
   /** Main-cue behavior: 0 = CDJ, 1 = gated. */
@@ -223,6 +226,7 @@ export function useDeck(deck: number, dsp = true) {
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
   const [syncLive, setSyncLiveState] = useState(false);
+  const [syncInternal, setSyncInternalState] = useState(false);
   const [quantize, setQuantize] = useState(false);
   // Main-cue behavior (0 = CDJ, 1 = gated) and sync mode (0 = full, 1 = tempo-only) + leader pin.
   const [cueMode, setCueModeState] = useState(0);
@@ -538,15 +542,32 @@ export function useDeck(deck: number, dsp = true) {
       // Continuous beat-sync: follow `master` (deck index), or null to disengage.
       sync: (master: number | null) => {
         setSyncedState(master !== null);
-        if (master !== null) setSyncLiveState(false); // engine cancels live sync; mirror it
+        if (master !== null) {
+          // The engine cancels live and internal-clock sync; mirror it in the UI.
+          setSyncLiveState(false);
+          setSyncInternalState(false);
+        }
         setDeckSync(deck, master).catch(swallow);
       },
-      // Tempo-match the live mic/aux beat clock (mutually exclusive with deck sync).
+      // Tempo-match the live mic/aux beat clock (mutually exclusive with deck and internal sync).
       toggleSyncLive: () => {
         const next = !syncLive;
         setSyncLiveState(next);
-        if (next) setSyncedState(false);
+        if (next) {
+          setSyncedState(false);
+          setSyncInternalState(false);
+        }
         setDeckSyncLive(deck, next).catch(swallow);
+      },
+      // Tempo/phase-match the internal master clock (mutually exclusive with deck and live sync).
+      toggleSyncInternal: () => {
+        const next = !syncInternal;
+        setSyncInternalState(next);
+        if (next) {
+          setSyncedState(false);
+          setSyncLiveState(false);
+        }
+        setDeckSyncInternal(deck, next).catch(swallow);
       },
       // Crossfader routing (0 = A, 1 = thru, 2 = B).
       setXfaderAssign: (a: number) => {
@@ -789,9 +810,9 @@ export function useDeck(deck: number, dsp = true) {
         );
       },
     };
-  }, [deck, playing, tempo, meta, isLeader, syncLive]);
+  }, [deck, playing, tempo, meta, isLeader, syncLive, syncInternal]);
 
-  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, syncLive, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, syncLive, syncInternal, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp, stems, stemsModel, modelDownload };
   return { state, actions, deck };
 }
 

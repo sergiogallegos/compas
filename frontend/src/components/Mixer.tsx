@@ -3,6 +3,7 @@ import type { DeckController } from "../hooks/useDeck";
 import type { CueApi } from "../hooks/useCue";
 import type { BoothApi } from "../hooks/useBooth";
 import type { AuxApi } from "../hooks/useAux";
+import type { InternalClockApi } from "../hooks/useInternalClock";
 import { Knob } from "./Knob";
 import { Fader } from "./Fader";
 import { Meter } from "./Meter";
@@ -38,6 +39,7 @@ export function Mixer({
   cue,
   booth,
   aux,
+  clock,
 }: {
   channels: Channel[];
   crossfader: number;
@@ -48,6 +50,7 @@ export function Mixer({
   cue?: CueApi;
   booth?: BoothApi;
   aux?: AuxApi;
+  clock?: InternalClockApi;
 }) {
   return (
     <section className="mixer">
@@ -96,7 +99,39 @@ export function Mixer({
       {cue && <Phones cue={cue} />}
       {booth && <Booth booth={booth} />}
       {aux && <Aux aux={aux} />}
+      {clock && <InternalClock clock={clock} />}
     </section>
+  );
+}
+
+/** Internal master clock: a free-running metronome offered as a virtual sync leader (the deck INT
+ *  chips lock to it), so decks can ride a global tempo with nothing playing. */
+function InternalClock({ clock }: { clock: InternalClockApi }) {
+  return (
+    <div className="phones int-clock">
+      <Icon name="link" size={14} />
+      <span className="overline" style={{ flex: "none" }}>INT CLK</span>
+      <button
+        className={`chip phones-on ${clock.active ? "chip--on" : ""}`}
+        onClick={clock.toggle}
+        title={clock.active ? "Internal master clock running — decks on INT lock to it" : "Start the internal master clock"}
+      >
+        {clock.active ? "ON" : "OFF"}
+      </button>
+      <input
+        className="int-bpm mono"
+        type="number"
+        min={40}
+        max={220}
+        step={0.5}
+        value={clock.bpm}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (Number.isFinite(v)) clock.setBpm(v);
+        }}
+        title="Internal clock tempo (BPM)"
+      />
+    </div>
   );
 }
 

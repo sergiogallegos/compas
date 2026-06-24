@@ -642,6 +642,17 @@ export function Deck({
             </button>
           )}
           {dsp && (
+            <button
+              className={`chip int-sync ${state.syncInternal ? "chip--on" : ""}`}
+              style={{ flex: "none", width: "100%", padding: "3px 0", fontSize: 9 }}
+              onClick={actions.toggleSyncInternal}
+              disabled={!meta}
+              title="Beat-match this deck to the internal master clock. Turn INT CLK on first."
+            >
+              INT
+            </button>
+          )}
+          {dsp && (
             <div className="sync-opts">
               <button
                 className={`chip ${state.syncMode === 1 ? "chip--on" : ""}`}
