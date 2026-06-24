@@ -49,6 +49,7 @@ rtrb = { workspace = true }       # recording ring: master tap → WAV writer th
 midir = "0.10"                    # cross-platform MIDI input (controllers → synth)
 hidapi = "2"                      # raw HID input for non-class-compliant controllers (NI, etc.)
 rusqlite = { version = "0.32", features = ["bundled"] }  # library + per-track state (cues/loops/grid/history)
+notify = "8"                      # live OS filesystem watch over registered library folders (auto-import)
 
 [lints]
 workspace = true

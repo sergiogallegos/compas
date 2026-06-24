@@ -22,6 +22,7 @@ use compas_audio::{
     compute_peaks, AudioCommand, AudioEngine, DeckBuffer, DeckTelemetry, EngineConfig, FilterMode,
 };
 use midir::{MidiInput, MidiInputConnection};
+use notify::Watcher;
 use rtrb::{Consumer, Producer, RingBuffer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -927,6 +928,14 @@ fn probe_track(path: String) -> Result<ProbedTrack, String> {
 // Watched folders: auto-import audio files from registered folders (on add + on launch).
 // ----------------------------------------------------------------------------------
 
+/// Holds the live OS filesystem watcher over the registered folders. Dropping the watcher stops
+/// watching, so we keep it alive in app state and add/remove roots as folders are added/removed.
+/// A watcher-init failure leaves it `None`; scan-on-launch + scan-on-add still cover imports.
+#[derive(Default)]
+struct FolderWatch {
+    watcher: Mutex<Option<notify::RecommendedWatcher>>,
+}
+
 /// File extensions a folder scan imports.
 const AUDIO_EXTS: &[&str] = &[
     "mp3", "flac", "wav", "m4a", "aac", "ogg", "oga", "aiff", "aif",
@@ -979,10 +988,38 @@ fn list_watch_folders(db: State<'_, db::Db>) -> Result<Vec<String>, String> {
     with_db(&db, db::list_watch_folders)
 }
 
-/// Register a folder and import its audio files now; returns the count newly imported.
+/// Re-scan every registered watched folder for new audio files; returns the total imported.
+/// Shared by the launch rescan, the manual `rescan_watch_folders` command, and the live watcher.
+fn rescan_all_watch_folders(db: &State<'_, db::Db>) -> usize {
+    let folders = with_db(db, db::list_watch_folders).unwrap_or_default();
+    let mut total = 0;
+    for f in folders {
+        total += scan_folder(db, std::path::Path::new(&f), 0);
+    }
+    total
+}
+
+/// Register a folder, start live-watching it, and import its audio files now; returns the count
+/// newly imported.
 #[tauri::command]
-fn add_watch_folder(app: AppHandle, db: State<'_, db::Db>, path: String) -> Result<usize, String> {
+fn add_watch_folder(
+    app: AppHandle,
+    db: State<'_, db::Db>,
+    watch: State<'_, FolderWatch>,
+    path: String,
+) -> Result<usize, String> {
     with_db(&db, |c| db::add_watch_folder(c, &path))?;
+    // Begin live-watching the new root (best-effort; the scan below still runs regardless).
+    if let Ok(mut guard) = watch.watcher.lock() {
+        if let Some(w) = guard.as_mut() {
+            if let Err(e) = w.watch(
+                std::path::Path::new(&path),
+                notify::RecursiveMode::Recursive,
+            ) {
+                tracing::warn!("watch {path}: {e}");
+            }
+        }
+    }
     let n = scan_folder(&db, std::path::Path::new(&path), 0);
     if n > 0 {
         let _ = app.emit("library:changed", ());
@@ -991,22 +1028,96 @@ fn add_watch_folder(app: AppHandle, db: State<'_, db::Db>, path: String) -> Resu
 }
 
 #[tauri::command]
-fn remove_watch_folder(db: State<'_, db::Db>, path: String) -> Result<(), String> {
-    with_db(&db, |c| db::remove_watch_folder(c, &path))
+fn remove_watch_folder(
+    db: State<'_, db::Db>,
+    watch: State<'_, FolderWatch>,
+    path: String,
+) -> Result<(), String> {
+    with_db(&db, |c| db::remove_watch_folder(c, &path))?;
+    if let Ok(mut guard) = watch.watcher.lock() {
+        if let Some(w) = guard.as_mut() {
+            let _ = w.unwatch(std::path::Path::new(&path));
+        }
+    }
+    Ok(())
 }
 
 /// Re-scan every watched folder for files added since; returns the total newly imported.
 #[tauri::command]
 fn rescan_watch_folders(app: AppHandle, db: State<'_, db::Db>) -> Result<usize, String> {
-    let folders = with_db(&db, db::list_watch_folders)?;
-    let mut total = 0;
-    for f in folders {
-        total += scan_folder(&db, std::path::Path::new(&f), 0);
-    }
+    let total = rescan_all_watch_folders(&db);
     if total > 0 {
         let _ = app.emit("library:changed", ());
     }
     Ok(total)
+}
+
+/// Build the live filesystem watcher over the currently-registered folders and spawn the
+/// debounced import thread. Best-effort: a watcher-init failure logs and leaves the scan-based
+/// import paths intact. Must run after the DB and a default [`FolderWatch`] are managed.
+fn init_folder_watch(handle: &AppHandle) {
+    let (tx, rx) = channel::<notify::Result<notify::Event>>();
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            // Skip pure access events; any real change wakes the debounced rescan.
+            if let Ok(ev) = &res {
+                if matches!(ev.kind, notify::EventKind::Access(_)) {
+                    return;
+                }
+            }
+            let _ = tx.send(res);
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!("filesystem watcher init failed: {e}");
+                return;
+            }
+        };
+    let folders = {
+        let db = handle.state::<db::Db>();
+        with_db(&db, db::list_watch_folders).unwrap_or_default()
+    };
+    for f in &folders {
+        if let Err(e) = watcher.watch(std::path::Path::new(f), notify::RecursiveMode::Recursive) {
+            tracing::warn!("watch {f}: {e}");
+        }
+    }
+    if let Ok(mut guard) = handle.state::<FolderWatch>().watcher.lock() {
+        *guard = Some(watcher);
+    }
+    spawn_folder_watch(handle.clone(), rx);
+}
+
+/// Drain filesystem events, coalesce bursts (a file copy emits many events), and re-scan the
+/// watched folders once changes go quiet — emitting `library:changed` only when something landed.
+/// Returns when the watcher (and thus the event sender) is dropped at shutdown.
+fn spawn_folder_watch(
+    handle: AppHandle,
+    rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
+) {
+    /// Quiet gap after the last event before a rescan fires.
+    const DEBOUNCE: Duration = Duration::from_millis(800);
+    thread::spawn(move || loop {
+        // Block until something changes; bail out when the sender is dropped.
+        if rx.recv().is_err() {
+            return;
+        }
+        // Wait for the burst to settle before scanning.
+        loop {
+            match rx.recv_timeout(DEBOUNCE) {
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Timeout) => break,
+                Err(RecvTimeoutError::Disconnected) => return,
+            }
+        }
+        let total = {
+            let db = handle.state::<db::Db>();
+            rescan_all_watch_folders(&db)
+        };
+        if total > 0 {
+            let _ = handle.emit("library:changed", ());
+        }
+    });
 }
 
 // ----------------------------------------------------------------------------------
@@ -2816,6 +2927,7 @@ pub fn run() {
             clock: Arc::new(compas_audio::LiveBeatClock::default()),
         })
         .manage(hid::HidState::default())
+        .manage(FolderWatch::default())
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             // Controller engine: owns the script runtime + active mapping; emits controller:update.
@@ -2832,17 +2944,17 @@ pub fn run() {
                             // closed, off the main thread; the UI refreshes on `library:changed`.
                             let handle = app.handle().clone();
                             thread::spawn(move || {
-                                let db = handle.state::<db::Db>();
-                                let folders =
-                                    with_db(&db, db::list_watch_folders).unwrap_or_default();
-                                let mut total = 0;
-                                for f in folders {
-                                    total += scan_folder(&db, std::path::Path::new(&f), 0);
-                                }
+                                let total = {
+                                    let db = handle.state::<db::Db>();
+                                    rescan_all_watch_folders(&db)
+                                };
                                 if total > 0 {
                                     let _ = handle.emit("library:changed", ());
                                 }
                             });
+                            // Then keep watching them live so files dropped in while running
+                            // auto-import without a manual rescan.
+                            init_folder_watch(app.handle());
                         }
                         Err(e) => tracing::error!("library DB open failed: {e}"),
                     }
