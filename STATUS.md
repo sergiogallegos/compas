@@ -13,12 +13,22 @@
 > shared-grain WSOLA, and the STEMS UI panel. Decks read the mix buffer only. (Dead `.stem-*` CSS
 > rules remain in `styles.css` — left for Codex to prune.) See `CHANGELOG.md`.
 >
-> **▶ RESUME POINTER (start here next session):** **Big re-architecture in flight** — splitting into
-> a product family: **compas-dj** (the current DJ app) + a future **compas-studio** DAW, sharing the
-> Rust engine crates. Monorepo layout `crates/` (shared core) + `apps/` (per-product Tauri shells);
-> see `docs/ARCHITECTURE-PRODUCTS.md` (the plan). Remaining standalone work: (1) **release signing
+> **✅ PRODUCT-FAMILY RE-ARCHITECTURE DONE (2026-06-24, `e1962e9`).** Split into a product family on
+> a shared Rust core. The DJ app moved to **`apps/compas-dj/`** (`src-tauri` + `frontend`) and was
+> renamed **Compás DJ** (cargo `compas-dj`, productName/title/wordmark, `<title>`). `crates/` holds
+> the **shared core** (`compas-core`/`dsp`/`sources`/`script`) plus the **DJ engine** (`compas-audio`,
+> DJ-specific). Workspace member, CI paths, tauri-action `projectPath`, `check-versions`, `.gitignore`
+> (`apps/*/…`), and all build/run docs retargeted. Plans written: **`docs/ARCHITECTURE-PRODUCTS.md`**
+> (family architecture + dependency rules) and **`docs/COMPAS-STUDIO-PLAN.md`** (the phased DAW
+> roadmap vs Ableton/FL/Logic; study LMMS @ `C:\Users\sheco\projects\lmms` + Zrythm). Website +
+> README + AGENTS/ARCHITECTURE/CONTRIBUTING rebranded. **Build/run now from `apps/compas-dj/`** (see
+> Run/verify below). All checks green from the new layout.
+>
+> **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
+> (no code until its phases start deliberately). Remaining standalone work: (1) **release signing
 > key** — the only true release blocker; your one-time secret (`npx tauri signer generate`, paste
-> pubkey into `tauri.conf.json`, add GitHub secrets; `CONTRIBUTING.md`). (2) **Deferred polish:**
+> pubkey into `apps/compas-dj/src-tauri/tauri.conf.json`, add GitHub secrets; `CONTRIBUTING.md`).
+> (2) **Deferred polish:**
 > ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
 > (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~
 > **REMOVED with the stem feature**; remaining: INT CLK row styling polish (`styles.css`, Codex);
