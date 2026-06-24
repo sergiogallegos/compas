@@ -36,12 +36,20 @@
 > (after xattr).** Re-enable the `APPLE_*` block in `release.yml` when a Developer ID exists. Draft is
 > unpublished — maintainer publishes when ready.
 >
-> **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
-> (no code until its phases start deliberately). **Next feature: Key Shift (± semitones) + Key Sync
-> (v0.1.1)** — reuses the WSOLA key-lock engine (pitch ratio `2^(semitones/12)` on the grain step) +
-> a per-deck KEY ± control + a Key Sync button off the existing Camelot detection; see `ROADMAP.md`
-> Tier 2. Other standalone work: (1) **paid signing certs** — Apple Developer ID + Windows cert to
-> ship signed/notarized builds (the only thing between us and a clean public release).
+> **▶ RESUME POINTER (start here next session — two ready workstreams):** keep focus on **Compás
+> DJ**; the DAW is plan-only (no code until its phases start deliberately).
+> - **(A) macOS code-signing — UNBLOCKED: the maintainer now has an Apple Developer ID.** Next
+>   session: enable signing + notarization in `release.yml` — re-add the `APPLE_*` env block (the
+>   commented one in the tauri-action step), have the maintainer add the repo secrets
+>   (`APPLE_CERTIFICATE` base64 `.p12`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` =
+>   "Developer ID Application: …", `APPLE_ID`, `APPLE_PASSWORD` app-specific, `APPLE_TEAM_ID`), then
+>   re-tag and confirm a notarized `.dmg` opens with no `xattr` step. See `CONTRIBUTING.md` §Release
+>   setup. (Windows cert still pending; SmartScreen "Run anyway" remains until then.)
+> - **(B) Next feature: Key Shift (± semitones) + Key Sync (v0.1.1)** — reuses the WSOLA key-lock
+>   engine (pitch ratio `2^(semitones/12)` on the grain step) + a per-deck KEY ± control + a Key Sync
+>   button off the existing Camelot detection; see `ROADMAP.md` Tier 2.
+>
+> Also pending: publish the v0.1.0 **draft** release (maintainer, GitHub UI) when ready.
 > (2) **Deferred polish:**
 > ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
 > (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~
