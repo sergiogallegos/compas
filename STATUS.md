@@ -1,9 +1,21 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-23 (Pioneer-style UI pass + one-window
-> layout + beat-tracking sparse-intro weighting). **Everything below is committed AND pushed to
-> `origin/main`** (through `84e1a55`). See `ROADMAP.md` for the full plan + **competitive feature
-> backlog**, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-23 (Pioneer-style UI + one-window
+> layout, full live beat-tracking arc, mic/aux input, stem URL/checksum verified, and a library
+> polish round: OR search, smart crates, tags, watched folders). **Everything below is committed AND
+> pushed to `origin/main`** (through `adab4a4`). See `ROADMAP.md` for the full plan + **competitive
+> feature backlog**, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+>
+> **▶ RESUME POINTER (start here next session):** working tree clean, all pushed. Remaining work,
+> in rough priority: (1) **release signing key** — the only true release blocker; your one-time
+> secret (`npx tauri signer generate`, paste pubkey into `tauri.conf.json`, add GitHub secrets;
+> `CONTRIBUTING.md`). (2) **Live stem verification** — a real separation run needs the 301 MB model
+> on hardware with a `--features stems` build (URL + checksum already verified/enforced). (3)
+> **Deferred polish:** live OS file-watch (`notify` dep, on top of the shipped scan-based watched
+> folders); audio-device-thread items (cue/booth auto-reopen, user-selectable record source) — do
+> when NOT mid-test; stems shared-grain key-lock; FX internal-clock virtual leader. **Coordination:**
+> Codex is iterating the jog-wheel `.platter*` rules in `styles.css` — keep commits scoped to your
+> own files and have Codex rebase. Both UI/beat-tracking arcs and the library polish round are done.
 
 ## ▶ Resume here (latest session — 2026-06-23, pushed to `main`)
 
