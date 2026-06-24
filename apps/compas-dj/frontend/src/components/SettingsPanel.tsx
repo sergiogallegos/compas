@@ -15,6 +15,8 @@ export function SettingsPanel({
   onToggleContrast,
   keyNotation,
   onToggleKeyNotation,
+  deckCount,
+  onToggleDeckCount,
   onOpenKeys,
   onOpenMap,
   onOpenPads,
@@ -29,6 +31,8 @@ export function SettingsPanel({
   onToggleContrast: () => void;
   keyNotation: KeyNotation;
   onToggleKeyNotation: () => void;
+  deckCount: 2 | 4;
+  onToggleDeckCount: () => void;
   onOpenKeys: () => void;
   onOpenMap: () => void;
   onOpenPads: () => void;
@@ -107,6 +111,10 @@ export function SettingsPanel({
           <button className="settings-tile" onClick={onToggleKeyNotation}>
             <Icon name="music" size={18} />
             <span>Key: {keyNotation === "camelot" ? "Camelot (8A)" : "Musical (C#m)"}</span>
+          </button>
+          <button className="settings-tile" onClick={onToggleDeckCount}>
+            <Icon name="sliders" size={18} />
+            <span>Decks: {deckCount === 2 ? "2" : "4"}</span>
           </button>
           <button className="settings-tile" onClick={onOpenKeys}>
             <Icon name="music" size={18} />

@@ -62,6 +62,12 @@ export function App() {
   useEffect(() => {
     localStorage.setItem("compas.keyNotation", keyNotation);
   }, [keyNotation]);
+  const [deckCount, setDeckCount] = useState<2 | 4>(() =>
+    localStorage.getItem("compas.deckCount") === "4" ? 4 : 2,
+  );
+  useEffect(() => {
+    localStorage.setItem("compas.deckCount", String(deckCount));
+  }, [deckCount]);
   const [recording, setRecording] = useState(false);
   const [recBusy, setRecBusy] = useState(false);
   const [profileName, setProfileName] = useState(() => localStorage.getItem("compas.profileName") ?? "Main");
@@ -302,48 +308,86 @@ export function App() {
     onResetGrid: d.actions.resetGrid,
   });
 
+  const quad = deckCount === 4;
+  // In 4-deck mode each deck syncs to the other deck in its row (A↔B, C↔D; partner index = deck ^ 1).
+  const fourDeckProps = (d: DeckController) => {
+    const partner = decks[d.deck ^ 1];
+    const ready =
+      !!d.state.meta && !!partner.state.meta && d.state.meta.bpm > 0 && partner.state.meta.bpm > 0;
+    return {
+      ctrl: d,
+      color: DECK_COLORS[d.deck],
+      onSync: () => toggleSync(d, partner),
+      syncEnabled: ready,
+      syncActive: d.state.synced,
+      keyNotation,
+      compact: true,
+    };
+  };
+  // Mixer props shared by both layouts; only the visible channel set differs (2 strips vs 4).
+  const mixerCommon = {
+    crossfader: xfade,
+    onCrossfader: applyCrossfade,
+    xfader: { curve: xfCurve, additive: xfAdditive, reverse: xfReverse, onChange: applyXfConfig },
+    onFxMacro: applyFxMacro,
+    auto: { enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow },
+    cue,
+  };
+  const channelOf = (d: DeckController) => ({ ctrl: d, letter: DECK_LETTERS[d.deck], color: DECK_COLORS[d.deck] });
+
   return (
     <div className="app" data-contrast={contrast ? "high" : "standard"}>
       <TitleBar masterBpm={masterBpm} master={master} load={load} syncEnabled={pairReady} syncActive={rightDeck.state.synced} onSync={() => toggleSync(rightDeck, leftDeck)} keysOpen={showKeys} onToggleKeys={() => setShowKeys((v) => !v)} mapOpen={showMap} onToggleMap={() => setShowMap((v) => !v)} padsOpen={showPads} onTogglePads={() => setShowPads((v) => !v)} controllersOpen={showControllers} onToggleControllers={() => setShowControllers((v) => !v)} recording={recording} recBusy={recBusy} onToggleRecord={toggleRecord} onOpenSettings={() => setShowSettings(true)} onOpenProfile={() => setShowProfile(true)} profileInitial={profileInitial} contrast={contrast} onToggleContrast={() => setContrast((v) => !v)} />
       <div className="body">
         <div className="content">
-          <WaveformZone lanes={[slotLane(leftDeck), slotLane(rightDeck)]} />
-          <div className="deck-row">
-            <Deck
-              ctrl={leftDeck}
-              color={DECK_COLORS[leftDeck.deck]}
-              onSync={() => toggleSync(leftDeck, rightDeck)}
-              syncEnabled={pairReady}
-              syncActive={leftDeck.state.synced}
-              keyNotation={keyNotation}
-              mirror
-              slots={[
-                { label: "A", active: leftSel === 0, onSelect: () => setLeftSel(0) },
-                { label: "C", active: leftSel === 2, onSelect: () => setLeftSel(2) },
-              ]}
-            />
-            <Mixer
-              channels={decks.map((d) => ({ ctrl: d, letter: DECK_LETTERS[d.deck], color: DECK_COLORS[d.deck] }))}
-              crossfader={xfade}
-              onCrossfader={applyCrossfade}
-              xfader={{ curve: xfCurve, additive: xfAdditive, reverse: xfReverse, onChange: applyXfConfig }}
-              onFxMacro={applyFxMacro}
-              auto={{ enabled: auto.enabled, transitioning: auto.transitioning, onToggle: auto.toggle, onMixNow: auto.mixNow }}
-              cue={cue}
-            />
-            <Deck
-              ctrl={rightDeck}
-              color={DECK_COLORS[rightDeck.deck]}
-              onSync={() => toggleSync(rightDeck, leftDeck)}
-              syncEnabled={pairReady}
-              syncActive={rightDeck.state.synced}
-              keyNotation={keyNotation}
-              slots={[
-                { label: "B", active: rightSel === 1, onSelect: () => setRightSel(1) },
-                { label: "D", active: rightSel === 3, onSelect: () => setRightSel(3) },
-              ]}
-            />
-          </div>
+          {quad ? (
+            <>
+              <WaveformZone lanes={[slotLane(deckA), slotLane(deckB), slotLane(deckC), slotLane(deckD)]} />
+              <div className="deck-row deck-row--quad">
+                <div className="deck-col">
+                  <Deck {...fourDeckProps(deckA)} mirror />
+                  <Deck {...fourDeckProps(deckC)} mirror />
+                </div>
+                <Mixer channels={decks.map(channelOf)} {...mixerCommon} />
+                <div className="deck-col">
+                  <Deck {...fourDeckProps(deckB)} />
+                  <Deck {...fourDeckProps(deckD)} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <WaveformZone lanes={[slotLane(leftDeck), slotLane(rightDeck)]} />
+              <div className="deck-row">
+                <Deck
+                  ctrl={leftDeck}
+                  color={DECK_COLORS[leftDeck.deck]}
+                  onSync={() => toggleSync(leftDeck, rightDeck)}
+                  syncEnabled={pairReady}
+                  syncActive={leftDeck.state.synced}
+                  keyNotation={keyNotation}
+                  mirror
+                  slots={[
+                    { label: "A", active: leftSel === 0, onSelect: () => setLeftSel(0) },
+                    { label: "C", active: leftSel === 2, onSelect: () => setLeftSel(2) },
+                  ]}
+                />
+                <Mixer channels={[leftDeck, rightDeck].map(channelOf)} {...mixerCommon} />
+                <Deck
+                  ctrl={rightDeck}
+                  color={DECK_COLORS[rightDeck.deck]}
+                  onSync={() => toggleSync(rightDeck, leftDeck)}
+                  syncEnabled={pairReady}
+                  syncActive={rightDeck.state.synced}
+                  keyNotation={keyNotation}
+                  slots={[
+                    { label: "B", active: rightSel === 1, onSelect: () => setRightSel(1) },
+                    { label: "D", active: rightSel === 3, onSelect: () => setRightSel(3) },
+                  ]}
+                />
+              </div>
+            </>
+          )}
           <Library loadedPaths={loadedPaths} keyNotation={keyNotation} />
         </div>
       </div>
@@ -362,6 +406,8 @@ export function App() {
           onToggleContrast={() => setContrast((v) => !v)}
           keyNotation={keyNotation}
           onToggleKeyNotation={() => setKeyNotation((v) => (v === "camelot" ? "musical" : "camelot"))}
+          deckCount={deckCount}
+          onToggleDeckCount={() => setDeckCount((v) => (v === 2 ? 4 : 2))}
           onOpenKeys={() => openPanel(setShowKeys)}
           onOpenMap={() => openPanel(setShowMap)}
           onOpenPads={() => openPanel(setShowPads)}

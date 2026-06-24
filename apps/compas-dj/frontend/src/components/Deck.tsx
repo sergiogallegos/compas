@@ -56,6 +56,7 @@ export function Deck({
   syncEnabled = false,
   syncActive = false,
   keyNotation = "camelot",
+  compact = false,
   mirror = false,
   slots,
 }: {
@@ -66,6 +67,8 @@ export function Deck({
   syncActive?: boolean;
   /** Camelot (8A) vs musical (C#m) key display. */
   keyNotation?: KeyNotation;
+  /** Condensed variant for 4-deck mode (hides the jog platter, tightens spacing). */
+  compact?: boolean;
   /** Mirror the deck so the platter sits on the inner edge (next to the mixer). */
   mirror?: boolean;
   /** Deck-select tabs for this slot (e.g. A/C or B/D). */
@@ -225,7 +228,7 @@ export function Deck({
 
   return (
     <section
-      className={`deck${mirror ? " deck--mirror" : ""}`}
+      className={`deck${mirror ? " deck--mirror" : ""}${compact ? " deck--compact" : ""}`}
       style={{
         borderTopColor: color,
         ...(dropActive ? { outline: `2px dashed ${color}`, outlineOffset: "-4px", background: `${color}10` } : null),

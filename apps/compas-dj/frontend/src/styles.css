@@ -109,6 +109,14 @@
 /* ===== deck row ===== */
 .deck-row { flex: none; display: flex; gap: 8px; padding: 8px; }
 .deck-row--focus { animation: focusPulse 850ms ease-out; }
+/* 4-deck mode: two stacked deck columns (A/C | mixer | B/D), decks rendered compact to fit. */
+.deck-row--quad { align-items: stretch; }
+.deck-col { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.deck-col .deck { flex: 1; min-height: 0; }
+.deck--compact { padding: 7px; gap: 4px; }
+.deck--compact .platter { display: none; }
+.deck--compact .platter-col { flex-direction: row; gap: 6px; align-items: center; }
+.deck--compact .deck-body { gap: 7px; }
 .deck { flex: 1; min-width: 0; background: linear-gradient(180deg, var(--surface-1-top), var(--surface-1-bot)); border: 1px solid var(--border-hairline); border-top: 2px solid; border-radius: var(--r-panel); box-shadow: var(--shadow-panel); padding: 10px; display: flex; flex-direction: column; gap: 7px; }
 
 .deck-header { display: flex; align-items: center; gap: 10px; }
