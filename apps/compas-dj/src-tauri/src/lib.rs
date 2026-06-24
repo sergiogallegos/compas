@@ -994,6 +994,76 @@ fn rescan_all_watch_folders(db: &State<'_, db::Db>) -> usize {
     total
 }
 
+// ----------------------------------------------------------------------------------
+// Background analysis: fill in BPM/key for library tracks that were imported but never
+// loaded onto a deck. Single-flight worker thread; decode + DSP run unlocked, the DB lock
+// is taken only to read the work list and write each result.
+// ----------------------------------------------------------------------------------
+
+/// Guards the background analysis worker so at most one runs at a time. Repeated `kick`s while it's
+/// already draining the queue are no-ops; the worker re-queries each pass, so newly imported tracks
+/// are picked up by the in-flight run.
+#[derive(Default)]
+struct Analyzer {
+    running: AtomicBool,
+}
+
+/// Start the background analyzer if it isn't already running. Drains every un-analyzed track
+/// (BPM still NULL), decoding + analyzing off any lock and emitting `library:changed` per track so
+/// the list fills in live. A decode failure writes a 0 BPM sentinel so the row is never retried.
+fn kick_analysis(app: &AppHandle) {
+    let analyzer = app.state::<Analyzer>();
+    // Claim the single-flight slot; bail if a run already owns it.
+    if analyzer
+        .running
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    let app = app.clone();
+    thread::spawn(move || {
+        loop {
+            let paths = {
+                let db = app.state::<db::Db>();
+                with_db(&db, db::list_unanalyzed).unwrap_or_default()
+            };
+            if paths.is_empty() {
+                break;
+            }
+            for path in paths {
+                let (bpm, conf, first, interval, camelot, name) =
+                    match compas_sources::decode_full(&path) {
+                        Ok((buffer, _meta)) => {
+                            let (grid, key) = analyze_track(&buffer);
+                            (
+                                grid.bpm as f64,
+                                grid.confidence as f64,
+                                grid.first_beat_sec as f64,
+                                grid.beat_interval_sec as f64,
+                                key.camelot,
+                                key.name,
+                            )
+                        }
+                        // Couldn't decode (missing/corrupt/unsupported): write a 0 sentinel so the
+                        // row leaves the NULL work list and isn't retried forever.
+                        Err(_) => (0.0, 0.0, 0.0, 0.0, String::new(), String::new()),
+                    };
+                {
+                    let db = app.state::<db::Db>();
+                    let _ = with_db(&db, |c| {
+                        db::upsert_analysis(c, &path, bpm, conf, first, interval, &camelot, &name)
+                    });
+                }
+                let _ = app.emit("library:changed", ());
+            }
+        }
+        app.state::<Analyzer>()
+            .running
+            .store(false, Ordering::SeqCst);
+    });
+}
+
 /// Register a folder, start live-watching it, and import its audio files now; returns the count
 /// newly imported.
 #[tauri::command]
@@ -1018,6 +1088,7 @@ fn add_watch_folder(
     let n = scan_folder(&db, std::path::Path::new(&path), 0);
     if n > 0 {
         let _ = app.emit("library:changed", ());
+        kick_analysis(&app);
     }
     Ok(n)
 }
@@ -1043,6 +1114,7 @@ fn rescan_watch_folders(app: AppHandle, db: State<'_, db::Db>) -> Result<usize, 
     let total = rescan_all_watch_folders(&db);
     if total > 0 {
         let _ = app.emit("library:changed", ());
+        kick_analysis(&app);
     }
     Ok(total)
 }
@@ -1111,6 +1183,7 @@ fn spawn_folder_watch(
         };
         if total > 0 {
             let _ = handle.emit("library:changed", ());
+            kick_analysis(&handle);
         }
     });
 }
@@ -1135,9 +1208,13 @@ fn db_list_tracks(db: State<'_, db::Db>) -> Result<Vec<db::TrackRow>, String> {
 
 /// Probe a file's header, insert it into the library (no-op if already present), return its row.
 #[tauri::command]
-fn db_add_track(db: State<'_, db::Db>, path: String) -> Result<db::TrackRow, String> {
+fn db_add_track(
+    app: AppHandle,
+    db: State<'_, db::Db>,
+    path: String,
+) -> Result<db::TrackRow, String> {
     let probed = probe_track(path.clone())?;
-    with_db(&db, |c| {
+    let row = with_db(&db, |c| {
         db::add_track(
             c,
             &probed.path,
@@ -1145,7 +1222,9 @@ fn db_add_track(db: State<'_, db::Db>, path: String) -> Result<db::TrackRow, Str
             &probed.artist,
             probed.duration_ms as i64,
         )
-    })
+    })?;
+    kick_analysis(&app);
+    Ok(row)
 }
 
 #[tauri::command]
@@ -2559,6 +2638,7 @@ pub fn run() {
         })
         .manage(hid::HidState::default())
         .manage(FolderWatch::default())
+        .manage(Analyzer::default())
         .setup(move |app| {
             spawn_telemetry(app.handle().clone(), telemetry.clone());
             // Controller engine: owns the script runtime + active mapping; emits controller:update.
@@ -2582,6 +2662,9 @@ pub fn run() {
                                 if total > 0 {
                                     let _ = handle.emit("library:changed", ());
                                 }
+                                // Backfill BPM/key for imported-but-unanalyzed tracks — this
+                                // rescan's new files plus any backlog from a prior session.
+                                kick_analysis(&handle);
                             });
                             // Then keep watching them live so files dropped in while running
                             // auto-import without a manual rescan.

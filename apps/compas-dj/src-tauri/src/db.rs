@@ -313,6 +313,15 @@ pub fn upsert_analysis(
     Ok(())
 }
 
+/// Paths of library tracks that have never been analyzed (no BPM cached yet), newest first. The
+/// background analyzer drains this: on success it writes a real BPM, on decode failure a 0 sentinel,
+/// so a row goes NULL → non-NULL exactly once and is never reprocessed in a loop.
+pub fn list_unanalyzed(c: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut stmt = c.prepare("SELECT path FROM tracks WHERE bpm IS NULL ORDER BY added_at DESC")?;
+    let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+    rows.collect()
+}
+
 pub fn track_state(c: &Connection, path: &str) -> rusqlite::Result<TrackState> {
     let (grid_offset_sec, gain) = c
         .query_row(
@@ -939,5 +948,22 @@ mod tests {
             list_watch_folders(&c).unwrap(),
             vec!["/music/techno".to_string()]
         );
+    }
+
+    #[test]
+    fn list_unanalyzed_returns_only_tracks_without_bpm() {
+        let c = mem();
+        add_track(&c, "/a.mp3", "A", "Ar", 1).unwrap();
+        add_track(&c, "/b.mp3", "B", "Br", 1).unwrap();
+        // Both start un-analyzed (BPM NULL).
+        assert_eq!(list_unanalyzed(&c).unwrap().len(), 2);
+
+        // Caching analysis onto /a.mp3 drops it from the work list.
+        upsert_analysis(&c, "/a.mp3", 128.0, 0.9, 0.01, 0.468, "8A", "A minor").unwrap();
+        assert_eq!(list_unanalyzed(&c).unwrap(), vec!["/b.mp3".to_string()]);
+
+        // A 0-BPM sentinel (decode failure / no beat) still counts as attempted → not retried.
+        upsert_analysis(&c, "/b.mp3", 0.0, 0.0, 0.0, 0.0, "", "").unwrap();
+        assert!(list_unanalyzed(&c).unwrap().is_empty());
     }
 }
