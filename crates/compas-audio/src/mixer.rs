@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use compas_core::DeckBuffer;
 use compas_dsp::{
-    meta_map, Biquad, BiquadCoeffs, Crossfader, FxChain, GainSmoother, LinkType, Synth,
-    ThreeBandEq, TimeStretch, Waveform, XfaderMode,
+    meta_map, Biquad, BiquadCoeffs, Crossfader, FxChain, GainSmoother, LinkType, StemStretch,
+    Synth, ThreeBandEq, TimeStretch, Waveform, XfaderMode,
 };
 
 /// FX chain slot indices (the default deck chain order: echo → reverb → flanger → bitcrusher).
@@ -655,8 +655,9 @@ struct KeylockStage {
     active: bool,
     engaged: bool,
     stretch: TimeStretch,
-    /// Per-stem WSOLA stretchers, so key-lock applies to each stem independently.
-    stem_stretch: [TimeStretch; NUM_STEMS],
+    /// Shared-grain WSOLA stretcher for the stems: one similarity search (on the mix) places each
+    /// grain for all four stems, so their transients stay phase-coherent under key-lock.
+    stem_stretch: StemStretch<NUM_STEMS>,
 }
 
 impl KeylockStage {
@@ -665,7 +666,7 @@ impl KeylockStage {
             active: false,
             engaged: false,
             stretch: TimeStretch::new(),
-            stem_stretch: std::array::from_fn(|_| TimeStretch::new()),
+            stem_stretch: StemStretch::new(),
         }
     }
 
@@ -690,9 +691,7 @@ impl KeylockStage {
         let engaged = self.active && !scratching;
         if engaged && !self.engaged {
             self.stretch.reset();
-            for s in self.stem_stretch.iter_mut() {
-                s.reset();
-            }
+            self.stem_stretch.reset();
         }
         self.engaged = engaged;
         engaged
@@ -711,17 +710,22 @@ impl KeylockStage {
             .next_frame(samples, frames, base_ratio, playhead)
     }
 
-    /// Stretch one frame of stem `i` at `playhead`. RT-SAFE.
+    /// Stretch one frame of all stems at `playhead`, sharing one grain schedule (searched on the
+    /// `ref_*` mix) so the stems stay phase-coherent. Writes `NUM_STEMS` stereo frames to `out`.
+    /// RT-SAFE.
     #[inline]
-    fn stretch_stem(
+    #[allow(clippy::too_many_arguments)]
+    fn stretch_stems(
         &mut self,
-        i: usize,
-        samples: &[f32],
-        frames: usize,
+        ref_samples: &[f32],
+        ref_frames: usize,
+        stems: &[(&[f32], usize); NUM_STEMS],
         base_ratio: f64,
         playhead: f64,
-    ) -> (f32, f32) {
-        self.stem_stretch[i].next_frame(samples, frames, base_ratio, playhead)
+        out: &mut [(f32, f32); NUM_STEMS],
+    ) {
+        self.stem_stretch
+            .next_frame(ref_samples, ref_frames, stems, base_ratio, playhead, out);
     }
 }
 
@@ -1012,33 +1016,50 @@ impl DeckPlayer {
     fn read_source_frame(&mut self, engaged: bool) -> (f32, f32) {
         if let Some(stems) = self.stems.as_ref() {
             // Stems overlay: read each separated buffer at the same play-head and sum by its
-            // smoothed gain. Key-lock stretches each stem independently. The mix `buffer` still
-            // governs frames/advance, so play-head math is unchanged.
+            // smoothed gain. The mix `buffer` still governs frames/advance, so play-head math is
+            // unchanged.
             let mut sl = 0.0f32;
             let mut sr = 0.0f32;
-            for (i, stem) in stems.iter().enumerate() {
-                let g = self.stem_gains[i].next_gain();
-                let sframes = stem.frames();
-                if sframes == 0 {
-                    continue;
+            if engaged {
+                // Key-lock: stretch all stems through ONE shared grain schedule (searched on the
+                // full mix), so their transients stay phase-coherent when summed. The mix buffer is
+                // the search reference; if it's somehow absent, fall back to the first stem.
+                let (ref_samples, ref_frames) = match self.buffer.as_ref() {
+                    Some(b) => (b.samples.as_slice(), b.frames()),
+                    None => (stems[0].samples.as_slice(), stems[0].frames()),
+                };
+                let stem_refs: [(&[f32], usize); NUM_STEMS] =
+                    std::array::from_fn(|i| (stems[i].samples.as_slice(), stems[i].frames()));
+                let mut out = [(0.0f32, 0.0f32); NUM_STEMS];
+                self.keylock.stretch_stems(
+                    ref_samples,
+                    ref_frames,
+                    &stem_refs,
+                    self.base_ratio,
+                    self.playhead,
+                    &mut out,
+                );
+                for (i, (xl, xr)) in out.iter().enumerate() {
+                    let g = self.stem_gains[i].next_gain();
+                    sl += xl * g;
+                    sr += xr * g;
                 }
-                let (xl, xr) = if engaged {
-                    self.keylock.stretch_stem(
-                        i,
-                        &stem.samples,
-                        sframes,
-                        self.base_ratio,
-                        self.playhead,
-                    )
-                } else {
-                    interp_stereo(
+            } else {
+                // Direct (varispeed) read: each stem at the shared play-head.
+                for (i, stem) in stems.iter().enumerate() {
+                    let g = self.stem_gains[i].next_gain();
+                    let sframes = stem.frames();
+                    if sframes == 0 {
+                        continue;
+                    }
+                    let (xl, xr) = interp_stereo(
                         &stem.samples,
                         sframes,
                         self.playhead.clamp(0.0, sframes as f64 - 1.0),
-                    )
-                };
-                sl += xl * g;
-                sr += xr * g;
+                    );
+                    sl += xl * g;
+                    sr += xr * g;
+                }
             }
             (sl, sr)
         } else if let Some(buf) = self.buffer.as_ref() {

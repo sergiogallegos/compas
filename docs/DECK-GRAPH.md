@@ -125,8 +125,10 @@ dedicated structs; the playhead/source read is the remaining inline block.
 
 Extracted stage structs (each tested in isolation, behavior-preserving):
 
-- **`KeylockStage`** (stage 3) — the key-lock toggle, the WSOLA mix stretcher, the per-stem
-  stretchers, and the `engaged` re-prime flag. `begin_frame(scratching)` computes whether stretched
+- **`KeylockStage`** (stage 3) — the key-lock toggle, the WSOLA mix stretcher, the **shared-grain
+  stem stretcher** (`StemStretch`: one similarity search on the mix places each grain for all four
+  stems, so their transients stay phase-coherent when summed), and the `engaged` re-prime flag.
+  `begin_frame(scratching)` computes whether stretched
   reading is active and re-primes on the engage edge; `mark_jumped()` flags a play-head jump
   (seek / loop / scratch release / stem swap); `set_active()` drives the toggle.
 - **`PregainStage`** (stage 4) — loudness normalization (ReplayGain) applied *before* the tone/FX
