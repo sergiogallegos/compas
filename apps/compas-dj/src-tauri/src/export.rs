@@ -10,6 +10,9 @@
 //! Like [`crate::db`], everything here is plain blocking `rusqlite` behind the library `Mutex`,
 //! called only from Tauri commands — never on the audio path.
 
+use std::collections::HashMap;
+use std::io::{Read, Seek, Write};
+
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
@@ -260,6 +263,138 @@ pub fn from_json(json: &str) -> serde_json::Result<CrateManifest> {
     serde_json::from_str(json)
 }
 
+// ---------------------------------------------------------------------------------
+// Zip packaging — manifest + bundled audio. A package is a `.zip` containing
+// `manifest.json` plus one `audio/<file>` entry per track, where `<file>` is the
+// track's assigned bundle filename. Read/write are generic over the byte stream so
+// the round-trip is testable fully in memory (no filesystem).
+// ---------------------------------------------------------------------------------
+
+const MANIFEST_ENTRY: &str = "manifest.json";
+const AUDIO_DIR: &str = "audio";
+
+/// Reduce a string to a safe single path component (alphanumerics, `.`, `-`, `_`; everything else
+/// becomes `_`). Used for archive entry names and the on-import extraction folder.
+pub fn sanitize_component(s: &str) -> String {
+    let out: String = s
+        .chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if out.is_empty() {
+        "track".to_string()
+    } else {
+        out
+    }
+}
+
+/// Insert `-n` before the extension (or at the end if none) to disambiguate a duplicate filename.
+fn dedup_name(name: &str, n: u32) -> String {
+    match name.rsplit_once('.') {
+        Some((stem, ext)) => format!("{stem}-{n}.{ext}"),
+        None => format!("{name}-{n}"),
+    }
+}
+
+/// Assign each track a unique archive filename (under `audio/`) derived from its source path's
+/// basename, deduping collisions. Mutates the manifest's `file` fields in place — call this before
+/// [`write_package`] when bundling audio.
+pub fn assign_bundle_files(manifest: &mut CrateManifest) {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for t in &mut manifest.tracks {
+        let base = std::path::Path::new(&t.path)
+            .file_name()
+            .map(|s| sanitize_component(&s.to_string_lossy()))
+            .unwrap_or_else(|| "track".to_string());
+        let file = match counts.get_mut(&base) {
+            Some(n) => {
+                *n += 1;
+                dedup_name(&base, *n)
+            }
+            None => {
+                counts.insert(base.clone(), 0);
+                base
+            }
+        };
+        t.file = Some(file);
+    }
+}
+
+/// Write a `.zip` package: `manifest.json` (with bundle filenames already assigned) plus an
+/// `audio/<file>` entry for every track that has a `file`. `open_audio(path)` yields a reader for a
+/// track's source audio, streamed into the archive (so files aren't all held in memory at once).
+pub fn write_package<W, F>(
+    writer: W,
+    manifest: &CrateManifest,
+    mut open_audio: F,
+) -> std::io::Result<()>
+where
+    W: Write + Seek,
+    F: FnMut(&str) -> std::io::Result<Box<dyn Read>>,
+{
+    let mut zip = zip::ZipWriter::new(writer);
+    // Stored (no compression): audio files are already compressed, and Stored keeps the dependency
+    // free of a deflate backend. The tiny manifest.json isn't worth a backend either.
+    let opts =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+    let json = to_json(manifest).map_err(std::io::Error::other)?;
+    zip.start_file(MANIFEST_ENTRY, opts)
+        .map_err(std::io::Error::other)?;
+    zip.write_all(json.as_bytes())?;
+
+    for t in &manifest.tracks {
+        let Some(file) = &t.file else { continue };
+        let mut reader = open_audio(&t.path)?;
+        zip.start_file(format!("{AUDIO_DIR}/{file}"), opts)
+            .map_err(std::io::Error::other)?;
+        std::io::copy(&mut reader, &mut zip)?;
+    }
+
+    zip.finish().map_err(std::io::Error::other)?;
+    Ok(())
+}
+
+/// Read a package's manifest plus every `audio/<file>` payload into memory, keyed by the archive
+/// filename (matching each track's `file`). Audio is loaded eagerly — fine for a one-shot import.
+pub fn read_package<R: Read + Seek>(
+    reader: R,
+) -> std::io::Result<(CrateManifest, HashMap<String, Vec<u8>>)> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(std::io::Error::other)?;
+    let mut manifest_json = String::new();
+    let mut audio: HashMap<String, Vec<u8>> = HashMap::new();
+    let prefix = format!("{AUDIO_DIR}/");
+
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(std::io::Error::other)?;
+        let name = entry.name().to_string();
+        if name == MANIFEST_ENTRY {
+            entry.read_to_string(&mut manifest_json)?;
+        } else if let Some(file) = name.strip_prefix(&prefix) {
+            if file.is_empty() {
+                continue; // the directory entry itself
+            }
+            let mut buf = Vec::with_capacity(entry.size() as usize);
+            entry.read_to_end(&mut buf)?;
+            audio.insert(file.to_string(), buf);
+        }
+    }
+
+    if manifest_json.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "package has no manifest.json",
+        ));
+    }
+    let manifest = from_json(&manifest_json).map_err(std::io::Error::other)?;
+    Ok((manifest, audio))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,6 +496,76 @@ mod tests {
         let recreated = gather_crate(&dst, summary.crate_id.unwrap()).unwrap();
         assert_eq!(recreated.smart_query, None);
         assert_eq!(recreated.tracks.len(), 2);
+    }
+
+    #[test]
+    fn package_round_trips_manifest_and_audio_in_memory() {
+        let src = mem();
+        seed_track(&src, "/music/a.mp3", "Track A");
+        seed_track(&src, "/music/b.mp3", "Track B");
+        let id = crate::db::create_crate(&src, "Set", true).unwrap();
+        crate::db::add_to_crate(&src, id, "/music/a.mp3").unwrap();
+        crate::db::add_to_crate(&src, id, "/music/b.mp3").unwrap();
+
+        let mut manifest = gather_crate(&src, id).unwrap();
+        assign_bundle_files(&mut manifest);
+        assert!(manifest.tracks.iter().all(|t| t.file.is_some()));
+
+        // Synthetic audio bytes keyed by source path.
+        let bytes: HashMap<&str, Vec<u8>> = HashMap::from([
+            ("/music/a.mp3", b"AAAA".to_vec()),
+            ("/music/b.mp3", b"BBBBBB".to_vec()),
+        ]);
+
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_package(&mut buf, &manifest, |path| {
+            Ok(Box::new(std::io::Cursor::new(bytes[path].clone())))
+        })
+        .unwrap();
+
+        buf.set_position(0);
+        let (parsed, audio) = read_package(buf).unwrap();
+        assert_eq!(parsed, manifest); // manifest survives the zip unchanged
+        for t in &manifest.tracks {
+            let file = t.file.as_ref().unwrap();
+            assert_eq!(&audio[file], &bytes[t.path.as_str()]);
+        }
+    }
+
+    #[test]
+    fn bundle_filenames_are_unique_for_colliding_basenames() {
+        let src = mem();
+        // Same basename in two different folders.
+        seed_track(&src, "/music/live/set.mp3", "A");
+        seed_track(&src, "/music/studio/set.mp3", "B");
+        let id = crate::db::create_crate(&src, "Dupes", false).unwrap();
+        crate::db::add_to_crate(&src, id, "/music/live/set.mp3").unwrap();
+        crate::db::add_to_crate(&src, id, "/music/studio/set.mp3").unwrap();
+
+        let mut manifest = gather_crate(&src, id).unwrap();
+        assign_bundle_files(&mut manifest);
+        let files: Vec<&String> = manifest
+            .tracks
+            .iter()
+            .filter_map(|t| t.file.as_ref())
+            .collect();
+        assert_eq!(files.len(), 2);
+        assert_ne!(files[0], files[1]); // deduped
+        assert!(files.iter().all(|f| f.ends_with(".mp3")));
+    }
+
+    #[test]
+    fn read_package_rejects_a_zip_without_a_manifest() {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            zip.start_file("audio/orphan.mp3", zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(b"x").unwrap();
+            zip.finish().unwrap();
+        }
+        buf.set_position(0);
+        assert!(read_package(buf).is_err());
     }
 
     #[test]

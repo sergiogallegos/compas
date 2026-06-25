@@ -37,6 +37,7 @@ midir = "0.10"                    # cross-platform MIDI input (controllers → s
 hidapi = "2"                      # raw HID input for non-class-compliant controllers (NI, etc.)
 rusqlite = { version = "0.32", features = ["bundled"] }  # library + per-track state (cues/loops/grid/history)
 notify = "8"                      # live OS filesystem watch over registered library folders (auto-import)
+zip = { version = "4", default-features = false }  # pure-Rust crate packaging (export/import); Stored entries (audio is already compressed)
 
 [lints]
 workspace = true

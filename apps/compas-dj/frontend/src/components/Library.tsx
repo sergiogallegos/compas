@@ -249,7 +249,7 @@ export const Library = forwardRef<
             {q.trim() && (
               <button className="crate-add" onClick={saveSearchAsCrate} title={`Save this search as a smart crate: ${q.trim()}`}>✨</button>
             )}
-            <button className="crate-add" onClick={importCrateFile} title="Import a crate package (.compas-crate.json)">⤓</button>
+            <button className="crate-add" onClick={importCrateFile} title="Import a crate package (.zip with audio, or .json manifest)">⤓</button>
             <button className="crate-add" onClick={createCrate} title="New crate">＋</button>
           </span>
         </div>

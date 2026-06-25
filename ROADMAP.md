@@ -174,13 +174,15 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ⬜ Auto-gain / loudness normalization on analysis.
 - 🔨 **Package / export tools** (rekordbox-inspired; pure-Rust ZIP/deflate, no AI) — bundle data
   into portable archives:
-  - 🔨 **Crate/playlist export** — *manifest slice DONE.* The `src-tauri/src/export.rs` module
-    builds a portable JSON manifest from a crate (resolved track list + each track's cues, saved
-    loops, beatgrid/grid-offset, BPM/key, gain, and tags) and re-imports it back into the library DB
-    (recreating the crate). IPC `export_crate`/`import_crate`; ⤒ per-crate export + ⤓ CRATES-header
-    import buttons. 4 round-trip tests. **Remaining: bundle the audio files into a `.zip`** (the
-    manifest already carries a per-track `file` slot + path-relink design) so a set moves between
-    machines without the originals.
+  - ✅ **Crate/playlist export** — *DONE.* The `src-tauri/src/export.rs` module builds a portable
+    manifest from a crate (resolved track list + each track's cues, saved loops, beatgrid/grid-offset,
+    BPM/key, gain, and tags) and re-imports it back into the library DB (recreating the crate). Two
+    forms: a `.compas-crate.json` manifest, or a **`.compas-crate.zip` package that bundles the audio
+    files** (`zip` crate, Stored entries — audio is already compressed) so a set moves between
+    machines without the originals; on import the audio extracts to `<app_data>/imported/<crate>/`
+    and each track relinks to its extracted copy. IPC `export_crate`/`export_crate_package`/
+    `import_crate` (auto-detects `.zip` vs `.json`); ⤒ per-crate export + ⤓ CRATES-header import
+    buttons. 7 round-trip tests (manifest + in-memory zip round-trip + dedup + bad-zip).
   - **Controller profile packs** — export/import one or more `ControllerProfile`s (mappings +
     optional script) as a shareable pack, for distributing device maps.
   - **Diagnostics bundle** — one click gathers logs, app/build info, engine status/RT telemetry,

@@ -41,14 +41,12 @@
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
 > (no code until its phases start deliberately). The 2026-06-24 session (below) is **all committed AND
 > pushed** to `origin/main` (through `5704639`). **Key Shift + Key Sync are DONE this session.**
-> **KEY readout follows the shift is also DONE** (`c2304d0`, see the session note below). **Package /
-> export tools — crate manifest slice is DONE** (committed locally; see the session note below).
+> **KEY readout follows the shift is also DONE** (`c2304d0`). **Package / export tools — crate export
+> is DONE** (manifest `33a43ae` + audio-bundling zip this session; see the session notes below).
 > Good next features (v0.2.0 candidates):
-> - **Package / export tools — finish the remaining parts.** The crate→JSON-manifest export/import
->   round-trip is in (`export.rs` + IPC + UI). Remaining: **(a) audio bundling** — zip the crate's
->   audio files alongside the manifest (the `ManifestTrack.file` slot + path-relink are already
->   designed for this; needs a pure-Rust `zip` dep and the importer to extract + rewrite `path`);
->   **(b) controller profile packs; (c) diagnostics bundle; (d) backup/restore.** See `ROADMAP.md` Tier 3.
+> - **Package / export tools — remaining sub-parts.** Crate export/import (both `.compas-crate.json`
+>   manifest and `.compas-crate.zip` with bundled audio) is complete. Remaining: **(a) controller
+>   profile packs; (b) diagnostics bundle; (c) backup/restore.** See `ROADMAP.md` Tier 3.
 > - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
 >
 > **NOT yet exercised live:** Key Shift / Key Sync were committed + all checks green (52 compas-audio
@@ -126,6 +124,20 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   lib tests pass, clippy `-D warnings` + fmt + tsc/vite clean. **Not yet exercised in the running
   app.** Remaining export sub-parts: audio-bundling zip, controller profile packs, diagnostics
   bundle, backup/restore.
+- **Package / export — audio-bundling zip (export complete).** `export.rs` gained the packaging
+  layer over the `zip` crate (added as a direct dep — already in the lock via tauri-plugin-updater,
+  **zero new crates**; **Stored entries**, no deflate backend — audio is already compressed, and it
+  sidesteps a flate2/zlib-rs resolution break). `assign_bundle_files()` gives each track a unique
+  `audio/<file>` name (basename, deduped); `write_package()`/`read_package()` are generic over the
+  byte stream so the round-trip is tested **fully in memory** (no temp files). New IPC
+  `export_crate_package` (gather → assign → stream files into the zip) and `import_crate` now
+  auto-detects `.zip` (extracts audio to `<app_data>/imported/<crate>/`, relinks each track's
+  `path`, applies) vs `.json` (manifest-only, as before). Frontend `exportCrate` now writes a
+  `.compas-crate.zip`; `importCrate` accepts `.zip`/`.json`. 3 new zip tests (round-trip, dedup,
+  bad-zip-rejected) → **23 compas-dj lib tests**; clippy `-D warnings` + fmt + tsc/vite clean.
+  **Not yet exercised in the running app.** *(Note: import loads all audio into memory at once — a
+  one-shot action, fine for now; stream-to-disk if huge crates become a problem.)* Remaining export
+  sub-parts: controller profile packs, diagnostics bundle, backup/restore.
 - **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
   **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
   briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**

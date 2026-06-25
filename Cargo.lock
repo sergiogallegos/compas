@@ -533,6 +533,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tracing",
  "tracing-subscriber",
+ "zip",
 ]
 
 [[package]]

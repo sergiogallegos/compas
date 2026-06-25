@@ -1386,13 +1386,57 @@ fn export_crate(db: State<'_, db::Db>, crate_id: i64, dest_path: String) -> Resu
     std::fs::write(&dest_path, json).map_err(|e| e.to_string())
 }
 
-/// Import a crate manifest written by [`export_crate`], reading its performance data back into the
-/// library and recreating the crate. Returns a summary of what was written.
+/// Export a crate to a portable `.zip` package: `manifest.json` plus the crate's audio files, so a
+/// set moves between machines without the originals. The importer extracts the audio and relinks
+/// each track to its extracted copy.
 #[tauri::command]
-fn import_crate(db: State<'_, db::Db>, src_path: String) -> Result<export::ImportSummary, String> {
-    let json = std::fs::read_to_string(&src_path).map_err(|e| e.to_string())?;
-    let manifest = export::from_json(&json).map_err(|e| e.to_string())?;
-    with_db(&db, |c| export::apply_manifest(c, &manifest, true))
+fn export_crate_package(
+    db: State<'_, db::Db>,
+    crate_id: i64,
+    dest_path: String,
+) -> Result<(), String> {
+    let mut manifest = with_db(&db, |c| export::gather_crate(c, crate_id))?;
+    export::assign_bundle_files(&mut manifest);
+    let file = File::create(&dest_path).map_err(|e| e.to_string())?;
+    export::write_package(file, &manifest, |path| Ok(Box::new(File::open(path)?)))
+        .map_err(|e| e.to_string())
+}
+
+/// Import a crate written by [`export_crate`] (a `.json` manifest) or [`export_crate_package`] (a
+/// `.zip` with bundled audio), reading its performance data back into the library and recreating
+/// the crate. For a `.zip`, the audio is extracted under `<app_data>/imported/<crate>/` and each
+/// track is relinked to its extracted copy. Returns a summary of what was written.
+#[tauri::command]
+fn import_crate(
+    app: AppHandle,
+    db: State<'_, db::Db>,
+    src_path: String,
+) -> Result<export::ImportSummary, String> {
+    if src_path.to_ascii_lowercase().ends_with(".zip") {
+        let file = File::open(&src_path).map_err(|e| e.to_string())?;
+        let (mut manifest, audio) = export::read_package(file).map_err(|e| e.to_string())?;
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("imported")
+            .join(export::sanitize_component(&manifest.name));
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        for t in &mut manifest.tracks {
+            let Some(file) = &t.file else { continue };
+            let Some(bytes) = audio.get(file) else {
+                continue;
+            };
+            let dest = dir.join(file);
+            std::fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+            t.path = dest.to_string_lossy().to_string();
+        }
+        with_db(&db, |c| export::apply_manifest(c, &manifest, true))
+    } else {
+        let json = std::fs::read_to_string(&src_path).map_err(|e| e.to_string())?;
+        let manifest = export::from_json(&json).map_err(|e| e.to_string())?;
+        with_db(&db, |c| export::apply_manifest(c, &manifest, true))
+    }
 }
 
 /// Suggest the next tracks to mix after `current_path`, ranked by harmonic + tempo compatibility
@@ -2747,6 +2791,7 @@ pub fn run() {
             db_crate_tracks,
             db_plan_next,
             export_crate,
+            export_crate_package,
             import_crate,
             load_track,
             deck_play,

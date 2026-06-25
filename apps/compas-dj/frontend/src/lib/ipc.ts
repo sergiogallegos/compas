@@ -385,28 +385,28 @@ export interface ImportSummary {
   crate_id: number | null;
 }
 
-const CRATE_EXT = "compas-crate.json";
-
-/** Export a crate to a portable JSON manifest (tracks + cues/loops/grids/key/tags). Opens a save
+/** Export a crate to a portable `.zip` package — the manifest (tracks + cues/loops/grids/key/tags)
+ *  plus the crate's audio files, so a set moves between machines without the originals. Opens a save
  *  dialog; resolves true when written, false if the user cancelled. */
 export async function exportCrate(crateId: number, crateName: string): Promise<boolean> {
   const safe = crateName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "crate";
   const dest = await save({
-    defaultPath: `${safe}.${CRATE_EXT}`,
-    filters: [{ name: "Compás crate", extensions: [CRATE_EXT] }],
+    defaultPath: `${safe}.compas-crate.zip`,
+    filters: [{ name: "Compás crate package", extensions: ["zip"] }],
   });
   if (!dest) return false;
-  await invoke("export_crate", { crateId, destPath: dest });
+  await invoke("export_crate_package", { crateId, destPath: dest });
   return true;
 }
 
-/** Import a crate manifest written by `exportCrate`, reading its performance data back into the
- *  library and recreating the crate. Opens a file picker; resolves the summary, or null if
+/** Import a crate written by `exportCrate` — a `.zip` package (audio extracted + relinked) or a
+ *  `.json` manifest (tracks relinked by their stored path) — reading its performance data back into
+ *  the library and recreating the crate. Opens a file picker; resolves the summary, or null if
  *  cancelled. */
 export async function importCrate(): Promise<ImportSummary | null> {
   const selected = await open({
     multiple: false,
-    filters: [{ name: "Compás crate", extensions: [CRATE_EXT, "json"] }],
+    filters: [{ name: "Compás crate", extensions: ["zip", "json"] }],
   });
   if (typeof selected !== "string") return null;
   return invoke<ImportSummary>("import_crate", { srcPath: selected });
