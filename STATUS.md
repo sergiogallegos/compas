@@ -39,15 +39,22 @@
 > are accepted); re-enable the `APPLE_*` block in `release.yml` if/when it's taken on.
 >
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
-> (no code until its phases start deliberately). The 2026-06-24 UI/UX feature session (below) is all
-> committed on local `main`. Good next features (v0.2.0 candidates):
-> - **Key Shift (± semitones) + Key Sync** — reuses the WSOLA key-lock engine (pitch ratio
->   `2^(semitones/12)` on the grain step) + a per-deck KEY ± control + a Key Sync button off the
->   existing Camelot detection; see `ROADMAP.md` Tier 2.
+> (no code until its phases start deliberately). The 2026-06-24 session (below) is **all committed AND
+> pushed** to `origin/main` (through `5704639`). **Key Shift + Key Sync are DONE this session.**
+> Good next features (v0.2.0 candidates):
+> - **KEY readout follows the shift (small follow-up to Key Shift).** The deck KEY tile + library KEY
+>   column still show the *detected* (original) key, not the post-shift key. Transposing the
+>   Camelot/name display needs the pitch-class→Camelot map that lives in Rust (`analysis.rs`
+>   `CAMELOT_MAJOR/MINOR`, `PITCH_NAMES`) — either expose it to the frontend or compute the effective
+>   key in the engine and send it. Frontend already has `pitchClassOf()` in `ipc.ts`.
 > - **Package / export tools** (rekordbox-inspired, pure-Rust zip, no AI) — crate/playlist export
 >   with a cues+grids+key+tags manifest, controller profile packs, diagnostics bundle, backup/restore;
 >   see `ROADMAP.md` Tier 3.
 > - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
+>
+> **NOT yet exercised live:** Key Shift / Key Sync were committed + all checks green (52 compas-audio
+> tests, clippy/fmt, tsc/vite) but the maintainer had not finished an in-app listen at session end —
+> verify the pitch shift sounds right (tempo unchanged) and KEY⇄ matches keys on the next run.
 > (2) **Deferred polish:**
 > ~~live OS file-watch~~ **DONE** (`500b291`); ~~FX/sync internal-clock virtual leader~~ **DONE**
 > (`556b88d`); ~~FX beat-sync to the internal clock~~ **DONE**; ~~stems shared-grain key-lock~~
@@ -87,6 +94,20 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   shorter.
 - **Docs** — `ROADMAP.md` stem-removal drift reconciled (no AI/ML; the 2026-06-20 ONNX/htdemucs
   decision marked REVERSED) and a **Package/export tools** backlog item added.
+
+- **Key Shift + Key Sync (v0.2.0 headline)** — per-deck **KEY ±** semitone stepper transposes pitch
+  *without changing tempo*, reusing the WSOLA key-lock stretcher: `KeylockStage` gained a `pitch`
+  factor (`2^(semitones/12)`) that scales the grain read step while the play-head keeps advancing at
+  the tempo rate (a non-zero shift engages the stretcher like key-lock; resets to 0 on load/unload).
+  `AudioCommand::SetDeckPitchShift` + the full IPC chain + `useDeck` state/action. **KEY⇄ (Key Sync)**
+  picks the nearest ±6-semitone shift to harmonically match the row-partner deck (off the detected
+  key via `pitchClassOf`, accounting for the partner's own shift). RT-safe; 1 new engine test
+  (`pitch_shift_engages_stretch_and_scales_grain_step`), 52 compas-audio tests pass.
+- **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
+  **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
+  briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**
+  section; CONTRIBUTING.md gained an **AI-assisted contributions** policy (mark AI PRs, Evidence
+  section, self-review first).
 
 **Maintainer-verified in the running app:** scrub, zoom, drag-to-deck, auto-analyzed BPM/key, key
 notation flip, the I/O→Settings move, and the 2/4-deck toggle + compact 4-deck layout (2-column
