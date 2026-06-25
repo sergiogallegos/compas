@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, type DragEvent, type ReactElement } from "react";
 import type { DeckController, DeckState } from "../hooks/useDeck";
-import { bandColor, formatKey, loadTrack, type KeyNotation } from "../lib/ipc";
+import { bandColor, formatKey, loadTrack, transposeKey, type KeyNotation } from "../lib/ipc";
 
 // drag-and-drop MIME carrying a track path from the library onto a deck
 const TRACK_DND = "application/x-compas-track";
@@ -297,9 +297,22 @@ export function Deck({
         </div>
         <div className="tile">
           <span className="overline">KEY</span>
-          <span className="mono tile-val" style={{ color }} title={meta?.key_name}>
-            {meta?.key_camelot ? formatKey(meta.key_camelot, meta.key_name, keyNotation) : "—"}
-          </span>
+          {(() => {
+            if (!meta?.key_camelot) return <span className="mono tile-val" style={{ color }}>—</span>;
+            const shifted = transposeKey(meta.key_camelot, meta.key_name, state.pitchShift);
+            const eff = formatKey(shifted.camelot, shifted.name, keyNotation);
+            // When pitch-shifted the readout follows the shift; the tooltip shows the original
+            // detected key it was transposed from (and by how much).
+            const title =
+              state.pitchShift !== 0
+                ? `${formatKey(meta.key_camelot, meta.key_name, keyNotation)} → ${eff} (${state.pitchShift > 0 ? "+" : ""}${state.pitchShift})`
+                : meta.key_name ?? undefined;
+            return (
+              <span className="mono tile-val" style={{ color }} title={title}>
+                {eff}
+              </span>
+            );
+          })()}
         </div>
         <div className="tile">
           <span className="overline">TIME</span>

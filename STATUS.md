@@ -41,12 +41,8 @@
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
 > (no code until its phases start deliberately). The 2026-06-24 session (below) is **all committed AND
 > pushed** to `origin/main` (through `5704639`). **Key Shift + Key Sync are DONE this session.**
+> **KEY readout follows the shift is also DONE** (committed locally, see the session note below).
 > Good next features (v0.2.0 candidates):
-> - **KEY readout follows the shift (small follow-up to Key Shift).** The deck KEY tile + library KEY
->   column still show the *detected* (original) key, not the post-shift key. Transposing the
->   Camelot/name display needs the pitch-class→Camelot map that lives in Rust (`analysis.rs`
->   `CAMELOT_MAJOR/MINOR`, `PITCH_NAMES`) — either expose it to the frontend or compute the effective
->   key in the engine and send it. Frontend already has `pitchClassOf()` in `ipc.ts`.
 > - **Package / export tools** (rekordbox-inspired, pure-Rust zip, no AI) — crate/playlist export
 >   with a cues+grids+key+tags manifest, controller profile packs, diagnostics bundle, backup/restore;
 >   see `ROADMAP.md` Tier 3.
@@ -103,6 +99,14 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   picks the nearest ±6-semitone shift to harmonically match the row-partner deck (off the detected
   key via `pitchClassOf`, accounting for the partner's own shift). RT-safe; 1 new engine test
   (`pitch_shift_engages_stretch_and_scales_grain_step`), 52 compas-audio tests pass.
+- **KEY readout follows the shift (Key Shift follow-up).** The deck KEY tile now displays the
+  *effective* key for the current `pitchShift` (in the active Camelot/musical notation), with the
+  tooltip showing `original → effective (+N)`. Frontend-only/display-only — the engine already
+  applies the real pitch shift. New `transposeKey()` in `ipc.ts` plus reverse pitch-class→notation
+  tables (`PITCH_NAMES`/`CAMELOT_MAJOR`/`CAMELOT_MINOR`) mirroring `analysis.rs`; resolves pitch
+  class + mode (name first, Camelot fallback), transposes mod-12, preserves major/minor. The
+  **library KEY column stays on the detected key on purpose** (library tracks aren't loaded/shifted;
+  only a deck carries a shift). tsc + vite build clean. *Not yet eyeballed in the running app.*
 - **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
   **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
   briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**

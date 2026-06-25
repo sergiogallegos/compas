@@ -66,6 +66,46 @@ export const pitchClassOf = (keyName: string | null | undefined): number | null 
   return note in PITCH_CLASS ? PITCH_CLASS[note] : null;
 };
 
+// Pitch-class → notation tables, mirroring the DSP side (`analysis.rs`: PITCH_NAMES /
+// CAMELOT_MAJOR / CAMELOT_MINOR). Indexed by pitch class (C=0 .. B=11). Kept in lockstep so a
+// transposed key reads exactly as the engine would have detected the shifted pitch.
+const PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
+const CAMELOT_MAJOR = ["8B", "3B", "10B", "5B", "12B", "7B", "2B", "9B", "4B", "11B", "6B", "1B"] as const;
+const CAMELOT_MINOR = ["5A", "12A", "7A", "2A", "9A", "4A", "11A", "6A", "1A", "8A", "3A", "10A"] as const;
+
+/** Resolve a detected key to its pitch class (0–11) and mode, preferring the musical name and
+ *  falling back to the Camelot code. Null when neither is recognized. */
+const resolveKey = (
+  camelot: string | null | undefined,
+  name: string | null | undefined,
+): { pc: number; minor: boolean } | null => {
+  const namePc = pitchClassOf(name);
+  if (namePc !== null) return { pc: namePc, minor: !!name && name.endsWith("m") };
+  if (camelot) {
+    const minor = camelot.endsWith("A");
+    const pc = (minor ? CAMELOT_MINOR : CAMELOT_MAJOR).indexOf(camelot as never);
+    if (pc >= 0) return { pc, minor };
+  }
+  return null;
+};
+
+/** Transpose a detected key by `semitones` (may be negative), returning the effective Camelot
+ *  code and musical name — what the engine's pitch shift makes the deck sound like. Returns the
+ *  key unchanged when the shift is 0 or the key is unknown. Mode (major/minor) is preserved. */
+export const transposeKey = (
+  camelot: string | null | undefined,
+  name: string | null | undefined,
+  semitones: number,
+): { camelot: string | null; name: string | null } => {
+  if (!semitones) return { camelot: camelot ?? null, name: name ?? null };
+  const resolved = resolveKey(camelot, name);
+  if (!resolved) return { camelot: camelot ?? null, name: name ?? null };
+  const next = (((resolved.pc + semitones) % 12) + 12) % 12;
+  return resolved.minor
+    ? { camelot: CAMELOT_MINOR[next], name: `${PITCH_NAMES[next]}m` }
+    : { camelot: CAMELOT_MAJOR[next], name: PITCH_NAMES[next] };
+};
+
 export interface DeckPosition {
   deck: number;
   frame: number;
