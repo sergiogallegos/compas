@@ -20,7 +20,7 @@ import { useInternalClock } from "./hooks/useInternalClock";
 import { useMidi } from "./hooks/useMidi";
 import { useMidiMap } from "./hooks/useMidiMap";
 import { useSampler } from "./hooks/useSampler";
-import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type EngineStatus, type KeyNotation, type MasterMeter } from "./lib/ipc";
+import { controllerFeedback, engineStatus, inTauri, onControllerUpdate, onEngineLoad, onMasterMeter, pickRecordingPath, pitchClassOf, setCrossfader, setCrossfaderConfig, setDeckFxMacro, setMasterGain, startRecording, stopRecording, type ControllerUpdate, type EngineLoad, type EngineStatus, type KeyNotation, type MasterMeter } from "./lib/ipc";
 
 const DECK_COLORS = ["var(--deck-a)", "var(--deck-b)", "var(--deck-c)", "var(--deck-d)"];
 const DECK_LETTERS = ["A", "B", "C", "D"];
@@ -199,6 +199,19 @@ export function App() {
     target.actions.sync(source.deck);
   };
 
+  // Key Sync: key-shift `target` so its sounding tonic matches the `source` deck (incl. the
+  // source's own current shift). Picks the nearest transposition in ±6 semitones.
+  const keySyncReady = (target: DeckController, source: DeckController) =>
+    pitchClassOf(target.state.meta?.key_name) != null && pitchClassOf(source.state.meta?.key_name) != null;
+  const keySync = (target: DeckController, source: DeckController) => {
+    const tpc = pitchClassOf(target.state.meta?.key_name);
+    const spc = pitchClassOf(source.state.meta?.key_name);
+    if (tpc == null || spc == null) return;
+    let d = (((spc + source.state.pitchShift - tpc) % 12) + 12) % 12;
+    if (d > 6) d -= 12;
+    target.actions.setPitchShift(d);
+  };
+
   // MIDI SYNC binds per deck index; only the two on-screen decks have a defined partner.
   const syncDeckByIndex = (i: number) => {
     if (i === leftSel) toggleSync(leftDeck, rightDeck);
@@ -320,6 +333,8 @@ export function App() {
       onSync: () => toggleSync(d, partner),
       syncEnabled: ready,
       syncActive: d.state.synced,
+      onKeySync: () => keySync(d, partner),
+      keySyncEnabled: keySyncReady(d, partner),
       keyNotation,
       compact: true,
     };
@@ -365,6 +380,8 @@ export function App() {
                   onSync={() => toggleSync(leftDeck, rightDeck)}
                   syncEnabled={pairReady}
                   syncActive={leftDeck.state.synced}
+                  onKeySync={() => keySync(leftDeck, rightDeck)}
+                  keySyncEnabled={keySyncReady(leftDeck, rightDeck)}
                   keyNotation={keyNotation}
                   mirror
                   slots={[
@@ -379,6 +396,8 @@ export function App() {
                   onSync={() => toggleSync(rightDeck, leftDeck)}
                   syncEnabled={pairReady}
                   syncActive={rightDeck.state.synced}
+                  onKeySync={() => keySync(rightDeck, leftDeck)}
+                  keySyncEnabled={keySyncReady(rightDeck, leftDeck)}
                   keyNotation={keyNotation}
                   slots={[
                     { label: "B", active: rightSel === 1, onSelect: () => setRightSel(1) },

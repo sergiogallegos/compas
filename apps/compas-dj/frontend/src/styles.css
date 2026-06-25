@@ -120,7 +120,8 @@
 .deck--compact .controls-col { display: none; }
 .deck--compact .platter-col { flex-direction: row; gap: 6px; align-items: center; }
 .deck--compact .deck-body { gap: 10px; align-items: flex-start; }
-.deck--compact .mic-sync, .deck--compact .int-sync, .deck--compact .sync-opts, .deck--compact .nudge, .deck--compact .key-shift { display: none; }
+.deck--compact .mic-sync, .deck--compact .int-sync, .deck--compact .sync-opts, .deck--compact .nudge, .deck--compact .key-shift, .deck--compact .key-sync-btn { display: none; }
+.key-sync-btn { width: 100%; flex: none; padding: 3px 0; font-size: 9px; }
 /* Key-shift (± semitone) stepper under the tempo column. */
 .key-shift { display: flex; align-items: center; gap: 3px; width: 100%; justify-content: center; }
 .key-shift button { width: 18px; height: 18px; border-radius: 4px; background: var(--surface-control); border: 1px solid var(--border-hairline); color: var(--text-secondary); font-size: 13px; line-height: 1; }

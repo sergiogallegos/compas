@@ -54,6 +54,18 @@ export const formatKey = (
   notation: KeyNotation,
 ): string => (notation === "musical" ? name || camelot || "—" : camelot || "—");
 
+const PITCH_CLASS: Record<string, number> = {
+  C: 0, "C#": 1, D: 2, "D#": 3, E: 4, F: 5, "F#": 6, G: 7, "G#": 8, A: 9, "A#": 10, B: 11,
+};
+
+/** Pitch class (0–11) of a detected key name like "C#m" or "G" (mode suffix ignored); null if
+ *  unknown. Matches the DSP `estimate_key` note names (sharps). */
+export const pitchClassOf = (keyName: string | null | undefined): number | null => {
+  if (!keyName) return null;
+  const note = keyName.endsWith("m") ? keyName.slice(0, -1) : keyName;
+  return note in PITCH_CLASS ? PITCH_CLASS[note] : null;
+};
+
 export interface DeckPosition {
   deck: number;
   frame: number;

@@ -55,6 +55,8 @@ export function Deck({
   onSync,
   syncEnabled = false,
   syncActive = false,
+  onKeySync,
+  keySyncEnabled = false,
   keyNotation = "camelot",
   compact = false,
   mirror = false,
@@ -65,6 +67,9 @@ export function Deck({
   onSync?: () => void;
   syncEnabled?: boolean;
   syncActive?: boolean;
+  /** Key Sync: transpose this deck to match the other deck's key. */
+  onKeySync?: () => void;
+  keySyncEnabled?: boolean;
   /** Camelot (8A) vs musical (C#m) key display. */
   keyNotation?: KeyNotation;
   /** Condensed variant for 4-deck mode (hides the jog platter, tightens spacing). */
@@ -644,6 +649,16 @@ export function Deck({
               title="Key-lock: change tempo without changing pitch (master tempo)"
             >
               {state.keylock ? "🔒 KEY" : "KEY"}
+            </button>
+          )}
+          {dsp && onKeySync && (
+            <button
+              className="chip key-sync-btn"
+              onClick={onKeySync}
+              disabled={!keySyncEnabled}
+              title="Key Sync: transpose this deck to harmonically match the other deck"
+            >
+              KEY⇄
             </button>
           )}
           {dsp && (
