@@ -12,7 +12,7 @@ use std::sync::mpsc::{self, Sender};
 use compas_core::{ControllerProfile, InputKind, Mapping, Registry};
 use compas_script::ScriptRuntime;
 use midir::{MidiOutput, MidiOutputConnection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 /// Number of decks the control registry is built for (matches the engine).
@@ -91,6 +91,48 @@ pub fn save_profile(dir: &Path, profile: &ControllerProfile) -> Result<PathBuf, 
     let json = serde_json::to_string_pretty(profile).map_err(|e| e.to_string())?;
     fs::write(&path, json).map_err(|e| e.to_string())?;
     Ok(path)
+}
+
+// ---------------------------------------------------------------------------------
+// Profile packs — a shareable bundle of one or more `ControllerProfile`s (device maps,
+// scripts inline) as a single JSON file, for distributing controller mappings.
+// ---------------------------------------------------------------------------------
+
+/// Profile-pack schema version. Bump on any incompatible shape change; [`import_pack`] checks it.
+pub const PACK_VERSION: u32 = 1;
+
+/// A portable bundle of controller profiles.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProfilePack {
+    pub version: u32,
+    pub app: String,
+    pub profiles: Vec<ControllerProfile>,
+}
+
+/// Bundle profiles into a shareable pack (stamped with the schema version + app identity).
+pub fn pack_profiles(profiles: Vec<ControllerProfile>) -> ProfilePack {
+    ProfilePack {
+        version: PACK_VERSION,
+        app: crate::export::MANIFEST_APP.to_string(),
+        profiles,
+    }
+}
+
+/// Save every profile in a pack into the user controller `dir` (each as `<id>.json`, overwriting an
+/// existing profile with the same id), returning the imported ids. Rejects an unknown pack version.
+pub fn import_pack(dir: &Path, pack: &ProfilePack) -> Result<Vec<String>, String> {
+    if pack.version != PACK_VERSION {
+        return Err(format!(
+            "unsupported profile-pack version {} (expected {PACK_VERSION})",
+            pack.version
+        ));
+    }
+    let mut ids = Vec::with_capacity(pack.profiles.len());
+    for profile in &pack.profiles {
+        save_profile(dir, profile)?;
+        ids.push(profile.id.clone());
+    }
+    Ok(ids)
 }
 
 /// A resolved control change pushed to the frontend, which applies it through the deck/mixer setters.
@@ -445,6 +487,60 @@ mod tests {
         fs::write(tmp.join("broken.json"), "{ not json").unwrap();
         assert_eq!(list_profiles(&tmp).len(), 1);
 
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    fn sample_profile(id: &str, cc: u8) -> ControllerProfile {
+        let mut p = ControllerProfile {
+            id: id.into(),
+            name: format!("Profile {id}"),
+            ..Default::default()
+        };
+        p.bindings.push(compas_core::Binding {
+            channel: 0,
+            input: InputKind::Cc { cc },
+            control: "deck.0.gain".into(),
+            soft_takeover: true,
+        });
+        p
+    }
+
+    #[test]
+    fn profile_pack_round_trips_through_json_and_imports() {
+        let pack = pack_profiles(vec![sample_profile("dev-a", 7), sample_profile("dev-b", 8)]);
+        assert_eq!(pack.version, PACK_VERSION);
+        assert_eq!(pack.app, crate::export::MANIFEST_APP);
+
+        // Survives a JSON serialize/parse cycle unchanged (compared via re-serialization, since
+        // ControllerProfile doesn't implement PartialEq).
+        let json = serde_json::to_string_pretty(&pack).unwrap();
+        let parsed: ProfilePack = serde_json::from_str(&json).unwrap();
+        assert_eq!(serde_json::to_string_pretty(&parsed).unwrap(), json);
+
+        // Importing writes both profiles into a fresh user dir.
+        let tmp = std::env::temp_dir().join(format!("compas-pack-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let ids = import_pack(&tmp, &parsed).unwrap();
+        assert_eq!(ids, vec!["dev-a".to_string(), "dev-b".to_string()]);
+        let listed = list_profiles(&tmp);
+        assert_eq!(listed.len(), 2);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn import_pack_rejects_an_unknown_version() {
+        let tmp = std::env::temp_dir().join(format!("compas-pack-ver-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let pack = ProfilePack {
+            version: PACK_VERSION + 1,
+            app: crate::export::MANIFEST_APP.to_string(),
+            profiles: vec![sample_profile("dev-a", 7)],
+        };
+        assert!(import_pack(&tmp, &pack).is_err());
+        // Nothing was written.
+        assert!(list_profiles(&tmp).is_empty());
         let _ = fs::remove_dir_all(&tmp);
     }
 }

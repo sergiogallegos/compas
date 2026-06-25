@@ -446,6 +446,29 @@ export const controllerRegistry = () => invoke<ControlSpec[]>("controller_regist
 export const controllerList = () => invoke<ControllerProfile[]>("controller_list");
 /** Save (or overwrite) a controller profile. */
 export const controllerSave = (profile: ControllerProfile) => invoke("controller_save", { profile });
+
+/** Export controller profiles to a shareable `.compas-profiles.json` pack. `ids` selects which of
+ *  the merged (bundled + user) profiles to include; an empty list exports them all. Opens a save
+ *  dialog; resolves the number written, or null if cancelled. */
+export async function exportProfilePack(ids: string[] = []): Promise<number | null> {
+  const dest = await save({
+    defaultPath: "controllers.compas-profiles.json",
+    filters: [{ name: "Compás controller pack", extensions: ["json"] }],
+  });
+  if (!dest) return null;
+  return invoke<number>("export_profile_pack", { ids, destPath: dest });
+}
+
+/** Import a controller profile pack into the user directory (overwriting profiles with the same
+ *  id). Opens a file picker; resolves the imported profile ids, or null if cancelled. */
+export async function importProfilePack(): Promise<string[] | null> {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "Compás controller pack", extensions: ["json"] }],
+  });
+  if (typeof selected !== "string") return null;
+  return invoke<string[]>("import_profile_pack", { srcPath: selected });
+}
 /** Activate a profile (its bindings + script resolve incoming MIDI to controller:update events). */
 export const controllerActivate = (profile: ControllerProfile) =>
   invoke("controller_activate", { profile });

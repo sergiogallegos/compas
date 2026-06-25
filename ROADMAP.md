@@ -183,8 +183,11 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
     and each track relinks to its extracted copy. IPC `export_crate`/`export_crate_package`/
     `import_crate` (auto-detects `.zip` vs `.json`); ⤒ per-crate export + ⤓ CRATES-header import
     buttons. 7 round-trip tests (manifest + in-memory zip round-trip + dedup + bad-zip).
-  - **Controller profile packs** — export/import one or more `ControllerProfile`s (mappings +
-    optional script) as a shareable pack, for distributing device maps.
+  - ✅ **Controller profile packs** — *DONE.* Export/import one or more `ControllerProfile`s
+    (mappings + inline script) as a shareable `.compas-profiles.json` pack (`controllers::ProfilePack`).
+    Export bundles the merged bundled+user profiles (all, or a selected id set); import saves each into
+    the user controller dir (overwriting same-id). IPC `export_profile_pack`/`import_profile_pack`;
+    Export pack / Import pack buttons in the controller-mapping panel. 2 round-trip tests.
   - **Diagnostics bundle** — one click gathers logs, app/build info, engine status/RT telemetry,
     device list, and settings (no audio) into a `.zip` for bug reports.
   - **Backup / restore** — a full library package (DB + watched-folder list + controller profiles +

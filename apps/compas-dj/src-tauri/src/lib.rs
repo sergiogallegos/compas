@@ -2470,6 +2470,43 @@ fn controller_save(app: AppHandle, profile: compas_core::ControllerProfile) -> R
     controllers::save_profile(&dir, &profile).map(|_| ())
 }
 
+/// Export controller profiles to a shareable JSON pack. `ids` selects which of the merged
+/// (bundled + user) profiles to include; an empty list exports them all. Returns the count written.
+#[tauri::command]
+fn export_profile_pack(
+    app: AppHandle,
+    ids: Vec<String>,
+    dest_path: String,
+) -> Result<usize, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let user_dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|r| r.join("resources").join("controllers"));
+    let selected: Vec<_> = controllers::list_merged(bundled.as_deref(), &user_dir)
+        .into_iter()
+        .filter(|p| ids.is_empty() || ids.contains(&p.id))
+        .collect();
+    let count = selected.len();
+    let pack = controllers::pack_profiles(selected);
+    let json = serde_json::to_string_pretty(&pack).map_err(|e| e.to_string())?;
+    std::fs::write(&dest_path, json).map_err(|e| e.to_string())?;
+    Ok(count)
+}
+
+/// Import a controller profile pack into the user controller directory (each profile saved as
+/// `<id>.json`, overwriting one with the same id). Returns the imported profile ids.
+#[tauri::command]
+fn import_profile_pack(app: AppHandle, src_path: String) -> Result<Vec<String>, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let user_dir = controllers::profiles_dir(&base).map_err(|e| e.to_string())?;
+    let json = std::fs::read_to_string(&src_path).map_err(|e| e.to_string())?;
+    let pack: controllers::ProfilePack = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    controllers::import_pack(&user_dir, &pack)
+}
+
 /// Activate a controller profile (declarative bindings + optional script) in the controller engine.
 #[tauri::command]
 fn controller_activate(
@@ -2864,6 +2901,8 @@ pub fn run() {
             controller_registry,
             controller_list,
             controller_save,
+            export_profile_pack,
+            import_profile_pack,
             controller_activate,
             controller_deactivate,
             controller_feedback,

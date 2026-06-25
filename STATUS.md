@@ -45,8 +45,8 @@
 > is DONE** (manifest `33a43ae` + audio-bundling zip this session; see the session notes below).
 > Good next features (v0.2.0 candidates):
 > - **Package / export tools — remaining sub-parts.** Crate export/import (both `.compas-crate.json`
->   manifest and `.compas-crate.zip` with bundled audio) is complete. Remaining: **(a) controller
->   profile packs; (b) diagnostics bundle; (c) backup/restore.** See `ROADMAP.md` Tier 3.
+>   manifest and `.compas-crate.zip` with bundled audio) **and controller profile packs** are
+>   complete. Remaining: **(a) diagnostics bundle; (b) backup/restore.** See `ROADMAP.md` Tier 3.
 > - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
 >
 > **NOT yet exercised live:** Key Shift / Key Sync were committed + all checks green (52 compas-audio
@@ -136,8 +136,17 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   `.compas-crate.zip`; `importCrate` accepts `.zip`/`.json`. 3 new zip tests (round-trip, dedup,
   bad-zip-rejected) → **23 compas-dj lib tests**; clippy `-D warnings` + fmt + tsc/vite clean.
   **Not yet exercised in the running app.** *(Note: import loads all audio into memory at once — a
-  one-shot action, fine for now; stream-to-disk if huge crates become a problem.)* Remaining export
-  sub-parts: controller profile packs, diagnostics bundle, backup/restore.
+  one-shot action, fine for now; stream-to-disk if huge crates become a problem.)*
+- **Package / export — controller profile packs (DONE).** `controllers.rs` gained `ProfilePack`
+  (version + app stamp, reusing `export::MANIFEST_APP` + `pack_profiles()`/`import_pack()`): a
+  shareable `.compas-profiles.json` bundling one or more `ControllerProfile`s (mappings + inline
+  script). IPC `export_profile_pack(ids, dest)` (packs the merged bundled+user profiles — all, or a
+  selected id set) / `import_profile_pack(src)` (saves each into the user controller dir, overwriting
+  same-id; rejects an unknown version). Frontend `exportProfilePack`/`importProfilePack` + **Export
+  pack / Import pack** buttons in the controller-mapping panel. `ProfilePack` skips `PartialEq`
+  (ControllerProfile doesn't implement it) — the round-trip test compares re-serialized JSON. 2 new
+  tests → **25 compas-dj lib tests**; clippy `-D warnings` + fmt + tsc/vite clean. **Not yet
+  exercised in the running app.** Remaining export sub-parts: diagnostics bundle, backup/restore.
 - **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
   **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
   briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**

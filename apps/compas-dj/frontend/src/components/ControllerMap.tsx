@@ -4,6 +4,8 @@ import {
   controllerList,
   controllerRegistry,
   controllerSave,
+  exportProfilePack,
+  importProfilePack,
   hidConnect,
   hidDisconnect,
   hidList,
@@ -115,6 +117,26 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
       setStatus(`Activate failed: ${e}`);
     }
   };
+  // Share device maps: export all profiles to a pack file, or import a pack into the user dir.
+  const exportPack = async () => {
+    try {
+      const count = await exportProfilePack([]);
+      if (count !== null) setStatus(`Exported ${count} profile(s)`);
+    } catch (e) {
+      setStatus(`Export failed: ${e}`);
+    }
+  };
+  const importPack = async () => {
+    try {
+      const ids = await importProfilePack();
+      if (ids) {
+        setProfiles(await controllerList());
+        setStatus(`Imported ${ids.length} profile(s)`);
+      }
+    } catch (e) {
+      setStatus(`Import failed: ${e}`);
+    }
+  };
   const loadProfile = (p: ControllerProfile) => {
     setName(p.name);
     const map: Record<string, ControllerBinding> = {};
@@ -144,6 +166,8 @@ export function ControllerMap({ onClose }: { onClose: () => void }) {
           <button className="chip" onClick={save} disabled={!boundCount}>Save</button>
           <button className="chip chip--on" onClick={activate} disabled={!boundCount}>Activate</button>
           <span className="mono">{boundCount} bound</span>
+          <button className="chip" onClick={exportPack} disabled={!profiles.length} title="Export all profiles to a shareable pack">Export pack</button>
+          <button className="chip" onClick={importPack} title="Import controller profiles from a pack">Import pack</button>
         </div>
 
         {profiles.length > 0 && (
