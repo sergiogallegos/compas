@@ -201,6 +201,11 @@ pub enum AudioCommand {
         deck: usize,
         active: bool,
     },
+    /// Key shift: transpose the deck by ± semitones without changing tempo (WSOLA pitch shift).
+    SetDeckPitchShift {
+        deck: usize,
+        semitones: f64,
+    },
     /// Route a deck to a crossfader side (0 = A, 1 = thru, 2 = B) for 4-deck mixing.
     SetDeckXfaderAssign {
         deck: usize,
@@ -621,6 +626,9 @@ impl ToneStage {
 /// locks, or blocks on the audio thread. RT-SAFE.
 struct KeylockStage {
     active: bool,
+    /// Pitch multiplier `2^(semitones/12)`; 1.0 = no key shift. Scales the WSOLA grain read step so
+    /// pitch moves independently of tempo. A non-unity shift engages the stretcher like key-lock.
+    pitch: f64,
     engaged: bool,
     stretch: TimeStretch,
 }
@@ -629,6 +637,7 @@ impl KeylockStage {
     fn new() -> Self {
         KeylockStage {
             active: false,
+            pitch: 1.0,
             engaged: false,
             stretch: TimeStretch::new(),
         }
@@ -640,6 +649,19 @@ impl KeylockStage {
         self.engaged = false;
     }
 
+    /// Set the key-shift in semitones (0 = no shift). Pitch shifts run through the same WSOLA
+    /// stretcher as key-lock, so engaging a shift decouples pitch from tempo. RT-SAFE.
+    fn set_pitch_semitones(&mut self, semitones: f64) {
+        self.pitch = 2f64.powf(semitones / 12.0);
+        self.engaged = false;
+    }
+
+    /// Whether the WSOLA path is needed this frame: key-lock on, or a non-unity key shift.
+    #[inline]
+    fn wants_stretch(&self) -> bool {
+        self.active || (self.pitch - 1.0).abs() > 1e-9
+    }
+
     /// Flag that the play-head jumped (seek / loop / scratch release), so the next stretched frame
     /// re-primes the WSOLA grain windows. RT-SAFE.
     #[inline]
@@ -647,12 +669,12 @@ impl KeylockStage {
         self.engaged = false;
     }
 
-    /// Begin a frame: returns whether stretched (key-locked) reading is active this frame.
-    /// Re-primes the stretcher on the engage edge / after a play-head jump. `scratching` forces the
-    /// direct (varispeed) path. RT-SAFE.
+    /// Begin a frame: returns whether stretched (key-locked / key-shifted) reading is active this
+    /// frame. Re-primes the stretcher on the engage edge / after a play-head jump. `scratching`
+    /// forces the direct (varispeed) path. RT-SAFE.
     #[inline]
     fn begin_frame(&mut self, scratching: bool) -> bool {
-        let engaged = self.active && !scratching;
+        let engaged = self.wants_stretch() && !scratching;
         if engaged && !self.engaged {
             self.stretch.reset();
         }
@@ -660,7 +682,9 @@ impl KeylockStage {
         engaged
     }
 
-    /// Stretch one frame of the mix buffer at `playhead`. RT-SAFE.
+    /// Stretch one frame of the mix buffer at `playhead`. The grain read step is scaled by the pitch
+    /// factor (resampling each grain) while the caller advances the play-head at the tempo rate, so
+    /// pitch and tempo stay independent. RT-SAFE.
     #[inline]
     fn stretch_mix(
         &mut self,
@@ -670,7 +694,7 @@ impl KeylockStage {
         playhead: f64,
     ) -> (f32, f32) {
         self.stretch
-            .next_frame(samples, frames, base_ratio, playhead)
+            .next_frame(samples, frames, base_ratio * self.pitch, playhead)
     }
 }
 
@@ -1552,6 +1576,11 @@ impl Mixer {
                         d.keylock.set_active(active);
                     }
                 }
+                AudioCommand::SetDeckPitchShift { deck, semitones } => {
+                    if let Some(d) = self.decks.get_mut(deck) {
+                        d.keylock.set_pitch_semitones(semitones.clamp(-12.0, 12.0));
+                    }
+                }
                 AudioCommand::SetDeckXfaderAssign { deck, assign } => {
                     if let Some(d) = self.decks.get_mut(deck) {
                         d.xfader_assign = XfaderAssign::from_index(assign);
@@ -1613,6 +1642,7 @@ impl Mixer {
                         d.scratching = false;
                         d.scratch_speed = 0.0;
                         d.keylock.set_active(false);
+                        d.keylock.set_pitch_semitones(0.0);
                         d.fx.reset();
                         d.loop_active = false;
                         d.cue_point = 0.0;
@@ -1806,6 +1836,7 @@ impl Mixer {
                         d.scratching = false;
                         d.scratch_speed = 0.0;
                         d.keylock.set_active(false);
+                        d.keylock.set_pitch_semitones(0.0);
                         d.fx.reset();
                         d.playhead = 0.0;
                         d.loop_active = false;
@@ -2015,6 +2046,31 @@ mod tests {
         assert!(!k.begin_frame(true), "scratching forces the direct path");
         k.set_active(false);
         assert!(!k.begin_frame(false), "toggled off → not engaged");
+    }
+
+    #[test]
+    fn pitch_shift_engages_stretch_and_scales_grain_step() {
+        let mut k = KeylockStage::new();
+        // A key shift alone (key-lock off) engages the WSOLA path…
+        k.set_pitch_semitones(2.0);
+        assert!(k.begin_frame(false), "non-zero pitch shift → engaged");
+        assert!(
+            !k.begin_frame(true),
+            "scratching still forces the direct path"
+        );
+        // …and an octave up doubles the grain read step relative to base_ratio.
+        k.set_pitch_semitones(12.0);
+        assert!(
+            (k.pitch - 2.0).abs() < 1e-9,
+            "12 semitones = ×2 pitch: {}",
+            k.pitch
+        );
+        // Back to zero with key-lock off → direct path again.
+        k.set_pitch_semitones(0.0);
+        assert!(
+            !k.begin_frame(false),
+            "0 semitones + key-lock off → not engaged"
+        );
     }
 
     #[test]

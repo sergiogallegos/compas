@@ -7,6 +7,7 @@ import {
   deckSeek,
   deckUnload,
   setDeckKeylock,
+  setDeckPitchShift,
   inTauri,
   loadTrack,
   onDeckError,
@@ -120,6 +121,8 @@ export interface DeckState {
   tempo: number;
   /** Key-lock (master tempo): tempo changes preserve pitch. */
   keylock: boolean;
+  /** Key shift in semitones (± ), pitch-shifting the deck without changing tempo. */
+  pitchShift: number;
   /** Manual beatgrid nudge (seconds) added to the analyzed first-beat anchor. */
   gridOffset: number;
   /** True while this deck is a continuous sync follower. */
@@ -172,6 +175,7 @@ export function useDeck(deck: number, dsp = true, clock?: { active: boolean; bpm
   const [frameAt, setFrameAt] = useState(0);
   const [tempo, setTempo] = useState(1);
   const [keylock, setKeylockState] = useState(false);
+  const [pitchShift, setPitchShiftState] = useState(0);
   const [gridOffset, setGridOffset] = useState(0);
   const [synced, setSyncedState] = useState(false);
   const [syncLive, setSyncLiveState] = useState(false);
@@ -278,6 +282,7 @@ export function useDeck(deck: number, dsp = true, clock?: { active: boolean; bpm
         setPlaying(false);
         setTempo(1);
         setKeylockState(false); // engine resets key-lock on load
+        setPitchShiftState(0); // engine resets key shift on load
         setGridOffset(0);
         setSyncedState(false); // engine resets sync on load
         setHotCues(Array(8).fill(null));
@@ -442,6 +447,12 @@ export function useDeck(deck: number, dsp = true, clock?: { active: boolean; bpm
         const next = !keylockRef.current;
         setKeylockState(next);
         setDeckKeylock(deck, next).catch(swallow);
+      },
+      // Key shift: transpose ± semitones without changing tempo (runs through the key-lock WSOLA).
+      setPitchShift: (semitones: number) => {
+        const s = Math.max(-12, Math.min(12, Math.round(semitones)));
+        setPitchShiftState(s);
+        setDeckPitchShift(deck, s).catch(swallow);
       },
       // Manual beatgrid anchor: shift the grid to line it up with the audio. Feeds waveform
       // rendering + beat-loop math (frontend) and the engine sync PLL (pushBeatgrid).
@@ -693,7 +704,7 @@ export function useDeck(deck: number, dsp = true, clock?: { active: boolean; bpm
     };
   }, [deck, playing, tempo, meta, isLeader, syncLive, syncInternal, applyEcho, applyFlanger]);
 
-  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, gridOffset, synced, syncLive, syncInternal, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
+  const state: DeckState = { meta, frame, playing, level, rate, latencySecs, frameAt, tempo, keylock, pitchShift, gridOffset, synced, syncLive, syncInternal, quantize, cueMode, syncMode, isLeader, xfaderAssign, eq, filter, gain, hotCues, loop, echo, reverb, flanger, crusher, error, loading, dsp };
   return { state, actions, deck };
 }
 

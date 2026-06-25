@@ -420,6 +420,9 @@ export const setDeckTempo = (deck: number, ratio: number) =>
 /** Key-lock (master tempo): tempo changes preserve pitch. */
 export const setDeckKeylock = (deck: number, active: boolean) =>
   invoke("set_deck_keylock", { deck, active });
+/** Key shift: transpose a deck by ± semitones without changing tempo (WSOLA pitch shift). */
+export const setDeckPitchShift = (deck: number, semitones: number) =>
+  invoke("set_deck_pitch_shift", { deck, semitones });
 /** Update a deck's beatgrid (in source frames) for the sync engine after a manual nudge. */
 export const setBeatgrid = (deck: number, offsetFrames: number, intervalFrames: number) =>
   invoke("set_beatgrid", { deck, offsetFrames, intervalFrames });

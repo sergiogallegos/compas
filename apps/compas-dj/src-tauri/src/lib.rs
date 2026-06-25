@@ -139,6 +139,10 @@ enum EngineMsg {
         deck: usize,
         active: bool,
     },
+    DeckPitchShift {
+        deck: usize,
+        semitones: f64,
+    },
     DeckXfaderAssign {
         deck: usize,
         assign: u8,
@@ -527,6 +531,9 @@ fn spawn_engine() -> EngineHandle {
                     }
                     EngineMsg::DeckKeylock { deck, active } => {
                         AudioCommand::SetDeckKeylock { deck, active }
+                    }
+                    EngineMsg::DeckPitchShift { deck, semitones } => {
+                        AudioCommand::SetDeckPitchShift { deck, semitones }
                     }
                     EngineMsg::DeckXfaderAssign { deck, assign } => {
                         AudioCommand::SetDeckXfaderAssign { deck, assign }
@@ -1471,6 +1478,16 @@ fn set_deck_keylock(
     active: bool,
 ) -> Result<(), String> {
     state.send(EngineMsg::DeckKeylock { deck, active })
+}
+
+/// Key shift: transpose a deck by ± semitones without changing its tempo (WSOLA pitch shift).
+#[tauri::command]
+fn set_deck_pitch_shift(
+    state: State<'_, EngineHandle>,
+    deck: usize,
+    semitones: f64,
+) -> Result<(), String> {
+    state.send(EngineMsg::DeckPitchShift { deck, semitones })
 }
 
 #[tauri::command]
@@ -2720,6 +2737,7 @@ pub fn run() {
             deck_scratch,
             set_deck_tempo,
             set_deck_keylock,
+            set_deck_pitch_shift,
             set_beatgrid,
             set_deck_sync,
             set_deck_xfader_assign,

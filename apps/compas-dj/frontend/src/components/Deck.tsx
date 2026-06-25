@@ -646,6 +646,30 @@ export function Deck({
               {state.keylock ? "🔒 KEY" : "KEY"}
             </button>
           )}
+          {dsp && (
+            <div className="key-shift" title="Key shift: transpose ± semitones without changing tempo">
+              <button
+                onClick={() => actions.setPitchShift(state.pitchShift - 1)}
+                disabled={!meta || state.pitchShift <= -12}
+                title="Pitch down a semitone"
+              >
+                −
+              </button>
+              <span
+                className="mono key-shift-val"
+                style={state.pitchShift !== 0 ? { color } : undefined}
+              >
+                {state.pitchShift > 0 ? `+${state.pitchShift}` : state.pitchShift}
+              </span>
+              <button
+                onClick={() => actions.setPitchShift(state.pitchShift + 1)}
+                disabled={!meta || state.pitchShift >= 12}
+                title="Pitch up a semitone"
+              >
+                +
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {/* EQ/gain knobs live in the mixer channel strip per the design. */}
