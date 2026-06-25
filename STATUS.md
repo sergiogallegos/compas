@@ -1,11 +1,19 @@
 # compas — status & resume point
 
-> Checkpoint for picking work back up. Last updated: 2026-06-24 (UI/UX feature session — see the
-> "Resume here (2026-06-24)" section just below). Earlier 2026-06-23 work: Pioneer-style UI + one-window
-> layout, full live beat-tracking arc, mic/aux input, stem URL/checksum verified, and a library
-> polish round: OR search, smart crates, tags, watched folders). **Everything below is committed AND
-> pushed to `origin/main`** (through `adab4a4`). See `ROADMAP.md` for the full plan + **competitive
-> feature backlog**, `CHANGELOG.md` for history, `AGENTS.md` for conventions.
+> Checkpoint for picking work back up. Last updated: 2026-06-24 (v0.2.0 feature session — Key
+> Shift/Sync, KEY-follows-shift, and the **Package/export tools** build-out; see the "Resume here
+> (2026-06-24)" section just below). **Everything is committed AND pushed to `origin/main`** (through
+> `95e5c48`). See `ROADMAP.md` for the full plan + **competitive feature backlog**, `CHANGELOG.md`
+> for history, `AGENTS.md` for conventions.
+>
+> **▶ NEXT SESSION — resume here.** Package/export tools are 3-of-4 done (crate export `.json`/`.zip`,
+> controller profile packs, diagnostics bundle). **The one remaining sub-part is backup/restore** — a
+> full library package (DB + watched-folder list + controller profiles + settings; audio optional) to
+> snapshot and restore an install. Build it as the next slice (reuse `export::write_single_entry_zip`
+> / the zip read path; `ROADMAP.md` Tier 3). **Then: the big open item is a LIVE in-app pass** — none
+> of this session's work (Key Shift/Sync, KEY-follows-shift, and all four export sub-parts) has been
+> exercised in a running `tauri dev`; only unit-tested + tsc/vite/clippy/fmt clean. Verify by ear +
+> eye before calling v0.2.0 done.
 >
 > **⚠ STEM SEPARATION REMOVED (2026-06-24).** The Demucs/htdemucs AI stem-separation feature was
 > deleted entirely — the upstream Demucs project is archived and we're dropping AI for now. Gone:
