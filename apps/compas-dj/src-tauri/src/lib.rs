@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 mod controllers;
 mod db;
+mod export;
 mod hid;
 
 use compas_audio::{
@@ -1375,6 +1376,25 @@ fn db_crate_tracks(db: State<'_, db::Db>, crate_id: i64) -> Result<Vec<db::Track
     with_db(&db, |c| db::crate_tracks(c, crate_id))
 }
 
+/// Export a crate/playlist to a portable JSON manifest at `dest_path`: the resolved track list
+/// plus every track's cached analysis, grid nudge, gain, cues, loops, and tags. Audio files are
+/// not bundled yet (a manifest-only package); the importer relinks tracks by their stored path.
+#[tauri::command]
+fn export_crate(db: State<'_, db::Db>, crate_id: i64, dest_path: String) -> Result<(), String> {
+    let manifest = with_db(&db, |c| export::gather_crate(c, crate_id))?;
+    let json = export::to_json(&manifest).map_err(|e| e.to_string())?;
+    std::fs::write(&dest_path, json).map_err(|e| e.to_string())
+}
+
+/// Import a crate manifest written by [`export_crate`], reading its performance data back into the
+/// library and recreating the crate. Returns a summary of what was written.
+#[tauri::command]
+fn import_crate(db: State<'_, db::Db>, src_path: String) -> Result<export::ImportSummary, String> {
+    let json = std::fs::read_to_string(&src_path).map_err(|e| e.to_string())?;
+    let manifest = export::from_json(&json).map_err(|e| e.to_string())?;
+    with_db(&db, |c| export::apply_manifest(c, &manifest, true))
+}
+
 /// Suggest the next tracks to mix after `current_path`, ranked by harmonic + tempo compatibility
 /// (the auto-mix / set-construction planner). Returns up to `limit` library tracks, best first.
 #[tauri::command]
@@ -2726,6 +2746,8 @@ pub fn run() {
             db_remove_from_crate,
             db_crate_tracks,
             db_plan_next,
+            export_crate,
+            import_crate,
             load_track,
             deck_play,
             deck_pause,

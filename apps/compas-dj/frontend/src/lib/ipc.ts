@@ -374,6 +374,44 @@ export const dbRemoveFromCrate = (crateId: number, path: string) =>
   invoke("db_remove_from_crate", { crateId, path });
 export const dbCrateTracks = (crateId: number) =>
   invoke<DbTrack[]>("db_crate_tracks", { crateId });
+
+/** Counts of what `importCrate` wrote back into the library. */
+export interface ImportSummary {
+  tracks: number;
+  cues: number;
+  loops: number;
+  tags: number;
+  /** Id of the crate recreated on import. */
+  crate_id: number | null;
+}
+
+const CRATE_EXT = "compas-crate.json";
+
+/** Export a crate to a portable JSON manifest (tracks + cues/loops/grids/key/tags). Opens a save
+ *  dialog; resolves true when written, false if the user cancelled. */
+export async function exportCrate(crateId: number, crateName: string): Promise<boolean> {
+  const safe = crateName.replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "") || "crate";
+  const dest = await save({
+    defaultPath: `${safe}.${CRATE_EXT}`,
+    filters: [{ name: "Compás crate", extensions: [CRATE_EXT] }],
+  });
+  if (!dest) return false;
+  await invoke("export_crate", { crateId, destPath: dest });
+  return true;
+}
+
+/** Import a crate manifest written by `exportCrate`, reading its performance data back into the
+ *  library and recreating the crate. Opens a file picker; resolves the summary, or null if
+ *  cancelled. */
+export async function importCrate(): Promise<ImportSummary | null> {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "Compás crate", extensions: [CRATE_EXT, "json"] }],
+  });
+  if (typeof selected !== "string") return null;
+  return invoke<ImportSummary>("import_crate", { srcPath: selected });
+}
+
 /** Auto-mix planner: ranked next-track suggestions (harmonic + tempo) after `currentPath`. */
 export const dbPlanNext = (currentPath: string, limit: number) =>
   invoke<DbTrack[]>("db_plan_next", { currentPath, limit });

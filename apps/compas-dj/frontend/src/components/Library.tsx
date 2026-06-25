@@ -8,6 +8,8 @@ import {
   dbCreateSmartCrate,
   dbListCrates,
   dbRemoveTag,
+  exportCrate,
+  importCrate,
   listWatchFolders,
   onLibraryChanged,
   pickFolder,
@@ -102,6 +104,17 @@ export const Library = forwardRef<
     dbCreateSmartCrate(`✨ ${query}`, query)
       .then(() => refreshCrates())
       .catch(() => {});
+  };
+  // Export a crate to a portable manifest file; import one back (recreating the crate + its
+  // tracks' cues/loops/grids/key/tags). Refresh the rail + library after an import.
+  const exportCrateFile = (c: DbCrate) => {
+    exportCrate(c.id, c.name).catch(() => {});
+  };
+  const importCrateFile = async () => {
+    const summary = await importCrate().catch(() => null);
+    if (!summary) return;
+    refreshCrates();
+    lib.refresh();
   };
   const viewCrate = (c: DbCrate) => {
     setActiveCrate(c);
@@ -236,6 +249,7 @@ export const Library = forwardRef<
             {q.trim() && (
               <button className="crate-add" onClick={saveSearchAsCrate} title={`Save this search as a smart crate: ${q.trim()}`}>✨</button>
             )}
+            <button className="crate-add" onClick={importCrateFile} title="Import a crate package (.compas-crate.json)">⤓</button>
             <button className="crate-add" onClick={createCrate} title="New crate">＋</button>
           </span>
         </div>
@@ -250,6 +264,13 @@ export const Library = forwardRef<
             <span className="src-dot" style={{ background: c.is_smart ? "var(--accent)" : c.is_playlist ? "var(--stream)" : "var(--status-warn)" }} />
             <span className="src-name">{c.name}</span>
             <span className="ctrl-tag">{c.is_smart ? "✨" : c.track_count}</span>
+            <button
+              className="crate-add"
+              onClick={(e) => { e.stopPropagation(); exportCrateFile(c); }}
+              title="Export this crate as a portable package"
+            >
+              ⤒
+            </button>
           </div>
         ))}
 

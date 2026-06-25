@@ -111,6 +111,15 @@ pub fn open(path: impl AsRef<Path>) -> rusqlite::Result<Db> {
     Ok(Db(Mutex::new(conn)))
 }
 
+/// A fresh in-memory connection with the schema applied — shared by unit tests across modules
+/// (e.g. the `export` round-trip tests) so the schema lives in exactly one place.
+#[cfg(test)]
+pub(crate) fn open_in_memory() -> Connection {
+    let conn = Connection::open_in_memory().expect("open in-memory db");
+    conn.execute_batch(SCHEMA).expect("apply schema");
+    conn
+}
+
 #[derive(Serialize, Clone)]
 pub struct TrackRow {
     pub path: String,

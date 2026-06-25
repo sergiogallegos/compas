@@ -41,11 +41,14 @@
 > **▶ RESUME POINTER (start here next session):** keep focus on **Compás DJ**; the DAW is plan-only
 > (no code until its phases start deliberately). The 2026-06-24 session (below) is **all committed AND
 > pushed** to `origin/main` (through `5704639`). **Key Shift + Key Sync are DONE this session.**
-> **KEY readout follows the shift is also DONE** (committed locally, see the session note below).
+> **KEY readout follows the shift is also DONE** (`c2304d0`, see the session note below). **Package /
+> export tools — crate manifest slice is DONE** (committed locally; see the session note below).
 > Good next features (v0.2.0 candidates):
-> - **Package / export tools** (rekordbox-inspired, pure-Rust zip, no AI) — crate/playlist export
->   with a cues+grids+key+tags manifest, controller profile packs, diagnostics bundle, backup/restore;
->   see `ROADMAP.md` Tier 3.
+> - **Package / export tools — finish the remaining parts.** The crate→JSON-manifest export/import
+>   round-trip is in (`export.rs` + IPC + UI). Remaining: **(a) audio bundling** — zip the crate's
+>   audio files alongside the manifest (the `ManifestTrack.file` slot + path-relink are already
+>   designed for this; needs a pure-Rust `zip` dep and the importer to extract + rewrite `path`);
+>   **(b) controller profile packs; (c) diagnostics bundle; (d) backup/restore.** See `ROADMAP.md` Tier 3.
 > - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
 >
 > **NOT yet exercised live:** Key Shift / Key Sync were committed + all checks green (52 compas-audio
@@ -107,6 +110,22 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   class + mode (name first, Camelot fallback), transposes mod-12, preserves major/minor. The
   **library KEY column stays on the detected key on purpose** (library tracks aren't loaded/shifted;
   only a deck carries a shift). tsc + vite build clean. *Not yet eyeballed in the running app.*
+- **Package / export tools — crate manifest slice (first of the Tier-3 feature).** New
+  `apps/compas-dj/src-tauri/src/export.rs`: a pure, serde **`CrateManifest`** (version + app stamp +
+  crate name/is_playlist/smart_query + tracks) where each `ManifestTrack` carries the full
+  performance payload — analysis (BPM/confidence/first-beat/interval/key), grid offset, gain, tags,
+  cues, loops, plus a `file` slot reserved for future audio bundling. `gather_crate()` snapshots a
+  crate (resolves smart crates once, recording the query); `apply_manifest()` re-imports into a
+  (possibly different) library DB — idempotent `add_track`, then analysis/grid/gain/cues/loops/tags,
+  and optionally recreates the crate. Reuses `db::track_state` for cues/loops so the schema stays in
+  one place; added a shared `db::open_in_memory()` test helper. IPC `export_crate` (gather → JSON →
+  write file) / `import_crate` (read → parse → apply, recreate crate); `ipc.ts` `exportCrate`/
+  `importCrate` over the existing save/open dialogs (`.compas-crate.json`); Library rail gained a
+  ⤒ per-crate export button + a ⤓ CRATES-header import button. **No audio bundling yet** —
+  manifest-only; the importer relinks tracks by their stored path. 4 round-trip tests; 20 compas-dj
+  lib tests pass, clippy `-D warnings` + fmt + tsc/vite clean. **Not yet exercised in the running
+  app.** Remaining export sub-parts: audio-bundling zip, controller profile packs, diagnostics
+  bundle, backup/restore.
 - **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
   **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
   briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**

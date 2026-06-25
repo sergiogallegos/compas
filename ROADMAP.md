@@ -172,12 +172,15 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
 - ⬜ Streaming services (unpark when ready; PKCE auth already built).
 - ⬜ **Ableton Link / MIDI clock** — tempo-sync with Ableton and external gear.
 - ⬜ Auto-gain / loudness normalization on analysis.
-- ⬜ **Package / export tools** (rekordbox-inspired; pure-Rust ZIP/deflate, no AI) — bundle data
+- 🔨 **Package / export tools** (rekordbox-inspired; pure-Rust ZIP/deflate, no AI) — bundle data
   into portable archives:
-  - **Crate/playlist export** — a `.zip` of the crate's audio files **plus a sidecar manifest**
-    carrying each track's cues, saved loops, beatgrid (BPM/first-beat/offset), key, gain, and tags,
-    so a set moves between machines (or to a USB) without losing performance data. Re-import reads
-    the manifest back into the library DB.
+  - 🔨 **Crate/playlist export** — *manifest slice DONE.* The `src-tauri/src/export.rs` module
+    builds a portable JSON manifest from a crate (resolved track list + each track's cues, saved
+    loops, beatgrid/grid-offset, BPM/key, gain, and tags) and re-imports it back into the library DB
+    (recreating the crate). IPC `export_crate`/`import_crate`; ⤒ per-crate export + ⤓ CRATES-header
+    import buttons. 4 round-trip tests. **Remaining: bundle the audio files into a `.zip`** (the
+    manifest already carries a per-track `file` slot + path-relink design) so a set moves between
+    machines without the originals.
   - **Controller profile packs** — export/import one or more `ControllerProfile`s (mappings +
     optional script) as a shareable pack, for distributing device maps.
   - **Diagnostics bundle** — one click gathers logs, app/build info, engine status/RT telemetry,
