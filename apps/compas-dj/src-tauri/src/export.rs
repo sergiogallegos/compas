@@ -360,6 +360,22 @@ where
     Ok(())
 }
 
+/// Write a single named entry into a fresh `.zip` (Stored). Used for one-file bundles like the
+/// diagnostics report — a zip (rather than a bare file) so logs/other files can join it later.
+pub fn write_single_entry_zip<W: Write + Seek>(
+    writer: W,
+    name: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    let mut zip = zip::ZipWriter::new(writer);
+    let opts =
+        zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+    zip.start_file(name, opts).map_err(std::io::Error::other)?;
+    zip.write_all(bytes)?;
+    zip.finish().map_err(std::io::Error::other)?;
+    Ok(())
+}
+
 /// Read a package's manifest plus every `audio/<file>` payload into memory, keyed by the archive
 /// filename (matching each track's `file`). Audio is loaded eagerly — fine for a one-shot import.
 pub fn read_package<R: Read + Seek>(
@@ -552,6 +568,19 @@ mod tests {
         assert_eq!(files.len(), 2);
         assert_ne!(files[0], files[1]); // deduped
         assert!(files.iter().all(|f| f.ends_with(".mp3")));
+    }
+
+    #[test]
+    fn single_entry_zip_round_trips() {
+        let mut buf = std::io::Cursor::new(Vec::new());
+        write_single_entry_zip(&mut buf, "diagnostics.json", b"{\"ok\":true}").unwrap();
+        buf.set_position(0);
+        let mut archive = zip::ZipArchive::new(buf).unwrap();
+        assert_eq!(archive.len(), 1);
+        let mut entry = archive.by_name("diagnostics.json").unwrap();
+        let mut s = String::new();
+        entry.read_to_string(&mut s).unwrap();
+        assert_eq!(s, "{\"ok\":true}");
     }
 
     #[test]

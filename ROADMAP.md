@@ -188,8 +188,11 @@ what's worth adding. Status: ✅ have · 🔶 partial · ⬜ missing.
     Export bundles the merged bundled+user profiles (all, or a selected id set); import saves each into
     the user controller dir (overwriting same-id). IPC `export_profile_pack`/`import_profile_pack`;
     Export pack / Import pack buttons in the controller-mapping panel. 2 round-trip tests.
-  - **Diagnostics bundle** — one click gathers logs, app/build info, engine status/RT telemetry,
-    device list, and settings (no audio) into a `.zip` for bug reports.
+  - ✅ **Diagnostics bundle** — *DONE.* One click (Settings → Diagnostics) gathers app/build info,
+    host platform, engine status + RT telemetry counters, the I/O device list (output/input/MIDI/HID),
+    a library summary (track/crate counts + watched folders), and the frontend settings into a `.zip`
+    (`diagnostics.json`) for bug reports — no audio. IPC `export_diagnostics`. (Log-file bundling is a
+    follow-up once a file log appender exists; the zip is the place for it.)
   - **Backup / restore** — a full library package (DB + watched-folder list + controller profiles +
     settings; audio optional) to snapshot and restore an install.
   - *Rust: a `compas-export`/packaging module over a pure-Rust zip+deflate crate (e.g. `zip`); the

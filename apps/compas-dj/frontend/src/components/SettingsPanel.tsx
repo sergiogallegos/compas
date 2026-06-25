@@ -2,7 +2,7 @@ import type { AuxApi } from "../hooks/useAux";
 import type { BoothApi } from "../hooks/useBooth";
 import type { CueApi } from "../hooks/useCue";
 import type { InternalClockApi } from "../hooks/useInternalClock";
-import type { KeyNotation } from "../lib/ipc";
+import { exportDiagnostics, type KeyNotation } from "../lib/ipc";
 import { Aux, Booth, InternalClock } from "./Mixer";
 import { Icon } from "./icons";
 
@@ -131,6 +131,14 @@ export function SettingsPanel({
           <button className="settings-tile" onClick={onOpenControllers}>
             <Icon name="sliders" size={18} />
             <span>Controllers</span>
+          </button>
+          <button
+            className="settings-tile"
+            onClick={() => void exportDiagnostics({ keyNotation, deckCount, highContrast: contrast })}
+            title="Save a diagnostics bundle (.zip) for a bug report — no audio"
+          >
+            <Icon name="sliders" size={18} />
+            <span>Diagnostics</span>
           </button>
         </div>
       </div>

@@ -44,9 +44,10 @@
 > **KEY readout follows the shift is also DONE** (`c2304d0`). **Package / export tools — crate export
 > is DONE** (manifest `33a43ae` + audio-bundling zip this session; see the session notes below).
 > Good next features (v0.2.0 candidates):
-> - **Package / export tools — remaining sub-parts.** Crate export/import (both `.compas-crate.json`
->   manifest and `.compas-crate.zip` with bundled audio) **and controller profile packs** are
->   complete. Remaining: **(a) diagnostics bundle; (b) backup/restore.** See `ROADMAP.md` Tier 3.
+> - **Package / export tools — one sub-part left.** Crate export/import (both `.compas-crate.json`
+>   manifest and `.compas-crate.zip` with bundled audio), controller profile packs, **and the
+>   diagnostics bundle** are complete. Remaining: **backup/restore** (full library package — DB +
+>   watched folders + profiles + settings; audio optional). See `ROADMAP.md` Tier 3.
 > - **macOS/Windows code-signing** — deferred by the maintainer; pick up only when asked.
 >
 > **NOT yet exercised live:** Key Shift / Key Sync were committed + all checks green (52 compas-audio
@@ -147,6 +148,17 @@ Worked Claude+Codex in parallel via scoped, non-overlapping files (briefs in `do
   (ControllerProfile doesn't implement it) — the round-trip test compares re-serialized JSON. 2 new
   tests → **25 compas-dj lib tests**; clippy `-D warnings` + fmt + tsc/vite clean. **Not yet
   exercised in the running app.** Remaining export sub-parts: diagnostics bundle, backup/restore.
+- **Package / export — diagnostics bundle (DONE).** A **Settings → Diagnostics** tile exports a
+  `.zip` (containing `diagnostics.json`) for bug reports — no audio. The `export_diagnostics`
+  command gathers: `build_info()` (version/SHA/built-at), host platform (os/arch/family), the
+  `engine_status` snapshot (refactored into a shared `engine_status_snapshot` helper), RT telemetry
+  counters (rt_load/xruns/ring-full/drops via `EngineLoadEvent`), the I/O device list
+  (output/input/MIDI/HID — reusing the existing list fns), a library summary (track + crate counts +
+  watched folders), and the frontend's settings blob (key notation, deck count, contrast) passed in
+  with an ISO timestamp. Zip writing reuses a new `export::write_single_entry_zip` (Stored; room to
+  add log files later). 1 new test (`single_entry_zip_round_trips`) → **26 compas-dj lib tests**;
+  clippy `-D warnings` + fmt + tsc/vite clean. **Not yet exercised in the running app.** Only
+  backup/restore remains in the Package/export feature.
 - **Agent-workflow conventions** (`df43705`, from studying `openclaw/openclaw`): AGENTS.md gained an
   **Agent coordination** section (split parallel work by file, delegate via `docs/codex-tasks/`
   briefs on a branch, lead reviews before merge, no surprise GH writes) + a **Refactoring discipline**

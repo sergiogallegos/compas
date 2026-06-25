@@ -185,6 +185,24 @@ export async function buildInfo(): Promise<BuildInfo> {
   return invoke<BuildInfo>("build_info");
 }
 
+/** Export a diagnostics bundle (app/build info, engine status + RT telemetry, device list, library
+ *  summary, and the given `settings`) to a `.zip` for bug reports — no audio. Opens a save dialog;
+ *  resolves true when written, false if cancelled. */
+export async function exportDiagnostics(settings: Record<string, unknown> = {}): Promise<boolean> {
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
+  const dest = await save({
+    defaultPath: `compas-diagnostics-${stamp}.zip`,
+    filters: [{ name: "Diagnostics bundle", extensions: ["zip"] }],
+  });
+  if (!dest) return false;
+  await invoke("export_diagnostics", {
+    generatedAt: new Date().toISOString(),
+    settings,
+    destPath: dest,
+  });
+  return true;
+}
+
 /**
  * Manual update check (fired from the title-bar version chip). Talks to the configured
  * GitHub Releases `latest.json` endpoint; if a newer signed build exists, prompts the

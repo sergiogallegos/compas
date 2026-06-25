@@ -787,6 +787,16 @@ fn engine_status(
     cue: State<'_, CueState>,
     booth: State<'_, BoothState>,
 ) -> EngineStatus {
+    engine_status_snapshot(&state, &cue, &booth)
+}
+
+/// Build the engine-status snapshot from the shared handles. Shared by the `engine_status` command
+/// and the diagnostics bundle (which gathers it alongside RT counters + device lists).
+fn engine_status_snapshot(
+    state: &EngineHandle,
+    cue: &CueState,
+    booth: &BoothState,
+) -> EngineStatus {
     let sample_rate = state.audio.sample_rate.load(Ordering::Relaxed);
     let decks = (0..2)
         .map(|deck| DeckStatus {
@@ -808,6 +818,106 @@ fn engine_status(
         booth_prime_latency_secs: booth.latency.prime_latency_secs(),
         decks,
     }
+}
+
+/// Host platform facts for a bug report.
+#[derive(Serialize)]
+struct PlatformInfo {
+    os: &'static str,
+    arch: &'static str,
+    family: &'static str,
+}
+
+/// Enumerated I/O devices at report time (no audio captured).
+#[derive(Serialize)]
+struct DeviceLists {
+    output: Vec<String>,
+    input: Vec<String>,
+    midi: Vec<String>,
+    hid: Vec<hid::HidDeviceInfo>,
+}
+
+/// A snapshot of the library's size + watched folders (no track contents).
+#[derive(Serialize)]
+struct LibrarySummary {
+    tracks: usize,
+    crates: usize,
+    watch_folders: Vec<String>,
+}
+
+/// The full diagnostics report bundled for a bug report (no audio).
+#[derive(Serialize)]
+struct Diagnostics {
+    /// ISO-8601 timestamp from the frontend (the backend has no UTC formatter).
+    generated_at: String,
+    build: BuildInfo,
+    platform: PlatformInfo,
+    engine: EngineStatus,
+    rt: EngineLoadEvent,
+    devices: DeviceLists,
+    library: LibrarySummary,
+    /// Frontend-side settings (key notation, deck count, theme, …) passed through verbatim.
+    settings: serde_json::Value,
+}
+
+/// Gather app/build info, engine status + RT telemetry, the device list, and a library summary into
+/// a `.zip` (containing `diagnostics.json`) for bug reports. `settings` is the frontend's own
+/// settings blob; `generated_at` is an ISO timestamp from the frontend. No audio is captured.
+#[tauri::command]
+fn export_diagnostics(
+    state: State<'_, EngineHandle>,
+    cue: State<'_, CueState>,
+    booth: State<'_, BoothState>,
+    db: State<'_, db::Db>,
+    generated_at: String,
+    settings: serde_json::Value,
+    dest_path: String,
+) -> Result<(), String> {
+    let engine = engine_status_snapshot(&state, &cue, &booth);
+    let rt = EngineLoadEvent {
+        load: state.telemetry.rt_load(),
+        xruns: state.telemetry.xruns(),
+        command_ring_full: state.telemetry.command_ring_full(),
+        record_ring_drops: state.telemetry.record_ring_drops(),
+        cue_ring_drops: state.telemetry.cue_ring_drops(),
+        reclaim_ring_full: state.telemetry.reclaim_ring_full(),
+    };
+    let (tracks, crates, watch_folders) = with_db(&db, |c| {
+        Ok((
+            db::list_tracks(c)?.len(),
+            db::list_crates(c)?.len(),
+            db::list_watch_folders(c)?,
+        ))
+    })?;
+
+    let report = Diagnostics {
+        generated_at,
+        build: build_info(),
+        platform: PlatformInfo {
+            os: std::env::consts::OS,
+            arch: std::env::consts::ARCH,
+            family: std::env::consts::FAMILY,
+        },
+        engine,
+        rt,
+        devices: DeviceLists {
+            output: list_output_devices(),
+            input: list_input_devices(),
+            midi: midi_list_ports().unwrap_or_default(),
+            hid: hid_list().unwrap_or_default(),
+        },
+        library: LibrarySummary {
+            tracks,
+            crates,
+            watch_folders,
+        },
+        settings,
+    };
+
+    let json = serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?;
+    let file = File::create(&dest_path).map_err(|e| e.to_string())?;
+    export::write_single_entry_zip(file, "diagnostics.json", json.as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 /// Decode + analyze a file on a worker thread, then install it on `deck` and emit
@@ -2798,6 +2908,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             build_info,
             engine_status,
+            export_diagnostics,
             probe_track,
             db_list_tracks,
             db_add_track,
